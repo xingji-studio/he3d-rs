@@ -19,6 +19,17 @@ use he3d_math::{Vec2, Vec3};
 /// 顶点上限）时返回相应错误。
 /// Returns an error when the input is not valid UTF-8, when parsing fails, or when
 /// the produced mesh is invalid (empty, non-triangle vertex count, or over budget).
+///
+/// # Examples
+/// 示例
+/// ```
+/// use he3d_assets::parse_obj;
+///
+/// let obj = b"v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+/// let mesh = parse_obj(obj)?;
+/// assert_eq!(mesh.triangle_count(), 1);
+/// # Ok::<(), he3d_core::Error>(())
+/// ```
 pub fn parse_obj(bytes: &[u8]) -> Result<Mesh, Error> {
    let text = core::str::from_utf8(bytes).map_err(|_| Error::InvalidData)?;
 

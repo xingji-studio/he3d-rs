@@ -29,6 +29,33 @@ pub struct PhysicsWorld {
 impl PhysicsWorld {
    /// Create an empty world with the reference default gravity `(0, -9.8, 0)`.
    /// 创建一个空世界，重力为参考默认值 `(0, -9.8, 0)`。
+   ///
+   /// # Examples
+   /// 示例
+   /// ```
+   /// use he3d_core::{Material, Mesh, RenderObject, Rgb, Scene, Transform};
+   /// use he3d_math::Vec3;
+   /// use he3d_physics::PhysicsWorld;
+   ///
+   /// let mut scene = Scene::new();
+   /// let mesh = scene.meshes.insert(Mesh::cube(1.0, 1.0, 1.0)?);
+   /// let cube = scene.spawn(RenderObject {
+   ///    mesh,
+   ///    texture: None,
+   ///    transform: Transform::from_position(Vec3::new(0.0, 3.0, 0.0)),
+   ///    material: Material::new(Rgb::WHITE),
+   ///    visible: true,
+   /// });
+   ///
+   /// let mut world = PhysicsWorld::new();
+   /// world.add_dynamic_box(cube, Vec3::splat(0.5), Transform::from_position(Vec3::new(0.0, 3.0, 0.0)));
+   /// for _ in 0..60 {
+   ///    world.step(1.0 / 120.0);
+   /// }
+   /// let y = world.transform(cube).unwrap().position.y;
+   /// assert!(y > 0.0 && y < 3.0, "cube fell part-way, got y={y}");
+   /// # Ok::<(), he3d_core::Error>(())
+   /// ```
    #[must_use]
    pub fn new() -> Self {
       let mut scene = gp3d::PhysicsScene::new();

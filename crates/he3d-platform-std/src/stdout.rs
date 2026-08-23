@@ -81,7 +81,7 @@ impl PlatformFactory for StdBackend {
    type CreateError = StdBackendError;
 
    /// Configure the standard library's input/output for `width` × `height` source pixels.
-   /// 按 `width` × `height` 源像素配置终端。
+   /// 配置标准库的输入输出以呈现 `width` × `height` 源像素。
    fn create(config: BackendConfig<'_>) -> Result<Self, StdBackendError> {
       let mut backend = Self::create_raw(config.width, config.height)?;
       backend.configure_input()?;
@@ -167,7 +167,7 @@ impl StdBackend {
 
    fn restore_input(&mut self) {
       // Best-effort input restore: the destructor cannot report failures, and panicking here (e.g. broken stdout) would escalate to an abort.
-      // 尽力恢复终端：析构函数无法报告失败，而在此处 panic（例如标准输出损坏）会升级为直接中止进程。
+      // 尽力恢复输入状态：析构函数无法报告失败，而在此处 panic（例如标准输出损坏）会升级为直接中止进程。
       if let Some(termios) = self.termios.take() {
          // SAFETY: `termios` is the previously saved, still-valid terminal state and
          // `STDIN_FILENO` is a valid descriptor; a failure only means the restore is skipped.

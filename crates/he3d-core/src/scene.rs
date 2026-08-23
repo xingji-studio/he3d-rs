@@ -46,6 +46,24 @@ pub struct Scene {
 impl Scene {
    /// Create an empty scene.
    /// 创建一个空场景。
+   ///
+   /// # Examples
+   /// 示例
+   /// ```
+   /// use he3d_core::{Material, Mesh, RenderObject, Rgb, Scene, Transform};
+   ///
+   /// let mut scene = Scene::new();
+   /// let mesh = scene.meshes.insert(Mesh::triangle(1.0, 1.0)?);
+   /// let object = scene.spawn(RenderObject {
+   ///    mesh,
+   ///    texture: None,
+   ///    transform: Transform::default(),
+   ///    material: Material::new(Rgb::WHITE),
+   ///    visible: true,
+   /// });
+   /// assert!(scene.objects.contains(object));
+   /// # Ok::<(), he3d_core::Error>(())
+   /// ```
    #[must_use]
    pub fn new() -> Self {
       Self {

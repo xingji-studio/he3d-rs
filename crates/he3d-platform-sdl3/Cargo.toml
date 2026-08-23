@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+keywords = ["sdl3", "window", "input", "backend", "3d"]
+categories = ["game-engines", "gui"]
 description = "std SDL3 backend: window, input, and framebuffer presentation"
 
 [features]

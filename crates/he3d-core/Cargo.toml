@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+keywords = ["scene-graph", "resources", "3d", "generation", "handle"]
+categories = ["game-engines", "graphics"]
 description = "no_std + alloc core: resources, scene graph, materials, and stable generational IDs"
 
 [features]

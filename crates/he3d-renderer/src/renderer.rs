@@ -42,8 +42,20 @@ impl Renderer {
    /// Allocate a framebuffer, validating size and budget.
    /// 分配帧缓冲，校验尺寸与预算。
    ///
+   /// # Examples
+   /// 示例
+   /// ```
+   /// use he3d_core::{Camera, Rgb, Scene};
+   /// use he3d_renderer::{Renderer, RendererConfig};
+   ///
+   /// let mut renderer = Renderer::new(RendererConfig::new(64, 36))?;
+   /// renderer.render(&Scene::new(), &Camera::default(), Rgb::new(0.1, 0.1, 0.1))?;
+   /// assert_eq!(renderer.pixels().len(), 64 * 36);
+   /// # Ok::<(), he3d_core::Error>(())
+   /// ```
+   ///
    /// # Errors
-   /// 尺寸为 0、超过 [`MAX_FRAMEBUFFER_PIXELS`] 预算，或尺寸乘积溢出时返回相应错误。
+   /// 尺寸为 0、超过 `MAX_FRAMEBUFFER_PIXELS` 预算，或尺寸乘积溢出时返回相应错误。
    /// Returns an error when a dimension is zero, when the pixel budget
    /// exceeds `MAX_FRAMEBUFFER_PIXELS`, or when the product overflows.
    ///

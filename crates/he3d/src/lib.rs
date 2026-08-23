@@ -51,16 +51,24 @@ pub use he3d_platform_std;
 
 // Commonly used types, flattened for `use he3d::*;`.
 // 常用类型扁平化，方便 `use he3d::*;`。
+// `#[doc(inline)]` keeps each type's own documentation at this path.
+// `#[doc(inline)]` 让每个类型自身的文档显示在此路径下。
+#[doc(inline)]
 pub use he3d_assets::{decode_image, parse_obj};
+#[doc(inline)]
 pub use he3d_core::{
    Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, RenderObject,
    Rgb, Scene, Texture, TextureId, Transform,
 };
+#[doc(inline)]
 pub use he3d_math::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
+#[doc(inline)]
 pub use he3d_physics::PhysicsWorld;
+#[doc(inline)]
 pub use he3d_platform::{
    BackendConfig, Event, KEY_ESCAPE, KeyCode, Platform, PlatformError, PlatformFactory,
 };
+#[doc(inline)]
 pub use he3d_renderer::{AntiAliasing, Renderer, RendererConfig};
 
 /// Error produced when no enabled backend could be constructed.
@@ -113,6 +121,20 @@ impl From<he3d_platform_sdl3::BackendError> for BackendInitError {
 /// Returns [`BackendInitError`] when none of the enabled backends could be created
 /// (or when no backend feature is enabled).
 /// 当所有已启用的后端都无法创建（或未启用任何后端特性）时返回 [`BackendInitError`]。
+///
+/// # Examples
+/// 示例
+/// ```
+/// use he3d::{create_backend, BackendConfig};
+///
+/// let config = BackendConfig::new("demo", 64, 36);
+/// match create_backend(config) {
+///    Ok(mut backend) => {
+///       backend.request_close();
+///    }
+///    Err(error) => println!("no backend available: {error}"),
+/// }
+/// ```
 ///
 /// # Errors
 /// 未启用任何后端特性，或所有已启用后端都无法构造时返回 [`BackendInitError`]；

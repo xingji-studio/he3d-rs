@@ -1,5 +1,9 @@
 # HE3D (Rust)
 
+[![crates.io](https://img.shields.io/crates/v/he3d.svg)](https://crates.io/crates/he3d)
+[![docs.rs](https://docs.rs/he3d/badge.svg)](https://docs.rs/he3d)
+[![CI](https://github.com/xingji-studio/he3d-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/xingji-studio/he3d-rs/actions/workflows/ci.yml)
+
 A `no_std + alloc` software 3D engine: rasterizer, scene graph, assets, physics, and
 platform backends — a Rust port of the [HE3D](https://github.com/xingji-studio/HE3D)
 reference renderer (right-handed, +Z forward, inverse-depth buffer).

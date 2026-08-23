@@ -29,6 +29,16 @@ const MAX_IMAGE_DIMENSION: u32 = 8192;
 /// 具体格式的解析错误由各解码器返回。
 /// Returns [`Error::UnsupportedFormat`] when the data matches no enabled decoder or
 /// its decoder was compiled out; format-specific parse errors are passed through.
+///
+/// # Examples
+/// 示例
+/// ```
+/// use he3d_assets::decode_image;
+///
+/// // Unknown magic bytes are rejected rather than mis-decoded.
+/// // 无法识别的魔数字节会被拒绝，而不是被误解码。
+/// assert!(decode_image(b"not-an-image").is_err());
+/// ```
 #[cfg_attr(
    not(any(feature = "bmp", feature = "png", feature = "jpeg")),
    allow(dead_code)
