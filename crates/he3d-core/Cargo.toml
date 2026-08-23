@@ -1,0 +1,14 @@
+[package]
+name = "he3d-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "no_std + alloc core: resources, scene graph, materials, and stable generational IDs"
+
+[features]
+default = []
+std = ["he3d-math/std"]
+
+[dependencies]
+he3d-math = { workspace = true, default-features = false }

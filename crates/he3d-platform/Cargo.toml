@@ -1,0 +1,14 @@
+[package]
+name = "he3d-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "no_std backend-neutral input/presentation traits"
+
+[features]
+default = []
+std = ["he3d-core/std"]
+
+[dependencies]
+he3d-core = { workspace = true, default-features = false }

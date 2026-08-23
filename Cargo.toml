@@ -1,0 +1,43 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/he3d-math",
+    "crates/he3d-core",
+    "crates/he3d-renderer",
+    "crates/he3d-assets",
+    "crates/he3d-physics",
+    "crates/he3d-platform",
+    "crates/he3d-platform-std",
+    "crates/he3d-platform-sdl3",
+    "examples/triangle",
+    "examples/biplane",
+    "examples/physics-test",
+    "examples/flight-simulator",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.86"
+license = "MIT"
+repository = "https://github.com/xingji-studio/he3d-rs"
+
+[workspace.dependencies]
+glam = { version = "0.33", default-features = false, features = ["libm"] }
+
+he3d-math = { path = "crates/he3d-math", version = "0.1.0", default-features = false }
+he3d-core = { path = "crates/he3d-core", version = "0.1.0", default-features = false }
+he3d-renderer = { path = "crates/he3d-renderer", version = "0.1.0", default-features = false }
+he3d-assets = { path = "crates/he3d-assets", version = "0.1.0", default-features = false }
+he3d-physics = { path = "crates/he3d-physics", version = "0.1.0", default-features = false }
+he3d-platform = { path = "crates/he3d-platform", version = "0.1.0", default-features = false }
+he3d-platform-std = { path = "crates/he3d-platform-std", version = "0.1.0", default-features = false }
+he3d-platform-sdl3 = { path = "crates/he3d-platform-sdl3", version = "0.1.0", default-features = false }
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

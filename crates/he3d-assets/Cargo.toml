@@ -1,0 +1,24 @@
+[package]
+name = "he3d-assets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "no_std + alloc byte-based OBJ/glTF/image decoding"
+
+[features]
+default = ["bmp"]
+bmp = []
+png = ["dep:zune-png"]
+jpeg = ["dep:zune-jpeg"]
+gltf = ["dep:serde", "dep:serde_json"]
+std = ["he3d-core/std"]
+
+[dependencies]
+he3d-core = { workspace = true, default-features = false }
+he3d-math = { workspace = true, default-features = false }
+
+serde = { version = "1", optional = true, default-features = false, features = ["derive"] }
+serde_json = { version = "1", optional = true, default-features = false, features = ["alloc"] }
+zune-png = { version = "0.5", optional = true, default-features = false }
+zune-jpeg = { version = "0.4", optional = true, default-features = false }

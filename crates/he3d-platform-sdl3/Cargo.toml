@@ -1,0 +1,17 @@
+[package]
+name = "he3d-platform-sdl3"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "std SDL3 backend: window, input, and framebuffer presentation"
+
+[features]
+default = ["std"]
+std = ["he3d-platform/std", "he3d-renderer/std", "he3d-assets/std"]
+
+[dependencies]
+he3d-platform = { workspace = true, default-features = false }
+he3d-renderer = { workspace = true, default-features = false }
+he3d-assets = { workspace = true, default-features = false }
+sdl3 = { version = "0.18", features = ["unsafe_textures", "test-mode"] }

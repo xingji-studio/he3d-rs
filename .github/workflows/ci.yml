@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  no-std:
+    name: no_std check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # he3d-physics depends on the standalone gp3d engine (sibling repo);
+      # check it out where the path dependency expects it.
+      # he3d-physics 依赖独立引擎 gp3d（同级仓库）；检出到 path 依赖期望的位置。
+      - uses: actions/checkout@v4
+        with:
+          repository: xingji-studio/gp3d-rs
+          path: ../gp3d-rs
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-none
+      - name: Check core crates (host, --no-default-features)
+        run: >
+          cargo check
+          -p he3d-math -p he3d-core -p he3d-renderer
+          -p he3d-assets -p he3d-physics -p he3d-platform
+          --no-default-features
+      - name: Check core crates (bare-metal target)
+        run: >
+          cargo check
+          -p he3d-math -p he3d-core -p he3d-renderer
+          -p he3d-assets -p he3d-physics -p he3d-platform
+          --no-default-features --target x86_64-unknown-none
+
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: xingji-studio/gp3d-rs
+          path: ../gp3d-rs
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install SDL3
+        run: sudo apt-get update && sudo apt-get install -y libsdl3-dev
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: xingji-studio/gp3d-rs
+          path: ../gp3d-rs
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install SDL3
+        run: sudo apt-get update && sudo apt-get install -y libsdl3-dev
+      - run: cargo test --workspace
+      - name: Check examples with terminal backend (no SDL)
+        run: |
+          set -euo pipefail
+          for pkg in he3d-triangle he3d-biplane he3d-physics-test he3d-flight-simulator; do
+            cargo check -p "$pkg" --no-default-features --features terminal
+          done
+
+  audit-features:
+    name: dependency feature audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: xingji-studio/gp3d-rs
+          path: ../gp3d-rs
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Verify no std leaks into core crates
+        run: |
+          set -euo pipefail
+          for pkg in he3d-renderer he3d-assets he3d-physics; do
+            tree=$(cargo tree -p "$pkg" --no-default-features -e features)
+            if echo "$tree" | grep -Eq '(^|[^a-z])std($|[^a-z])'; then
+              echo "std leak detected in $pkg:"
+              echo "$tree"
+              exit 1
+            fi
+          done
+          echo "no std leaks detected"

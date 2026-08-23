@@ -1,0 +1,101 @@
+use he3d_core::{Camera, ColorRgba8, Material, Mesh, RenderObject, Rgb, Scene, Texture, Transform};
+use he3d_math::{Quat, Vec3};
+use he3d_platform::{BackendConfig, Event, KEY_ESCAPE, PlatformFactory};
+use he3d_renderer::{Renderer, RendererConfig};
+
+const WINDOW_WIDTH: u32 = 640;
+const WINDOW_HEIGHT: u32 = 360;
+
+fn main() {
+   let config = BackendConfig {
+      title: "HE3D TriangleTest",
+      width: WINDOW_WIDTH,
+      height: WINDOW_HEIGHT,
+   };
+   #[cfg(feature = "sdl3")]
+   run::<he3d_platform_sdl3::SdlBackend>(config);
+   #[cfg(feature = "terminal")]
+   run::<he3d_platform_std::TerminalBackend>(config);
+}
+
+fn run<B: PlatformFactory>(config: BackendConfig<'_>) {
+   let frames = parse_frames(std::env::args());
+
+   let mut backend = match B::create(config) {
+      Ok(backend) => backend,
+      Err(error) => {
+         eprintln!("backend init failed: {error}");
+         std::process::exit(1);
+      }
+   };
+
+   let mut scene = Scene::new();
+   let triangle_mesh = Mesh::triangle(1.6, 1.4).expect("triangle mesh");
+   let mesh = scene.meshes.insert(triangle_mesh);
+   let solid = scene
+      .textures
+      .insert(Texture::solid(ColorRgba8::from_rgb(255, 89, 38)));
+   let object = scene.spawn(RenderObject {
+      mesh,
+      texture: Some(solid),
+      transform: Transform::from_position(Vec3::new(0.0, 0.0, 3.0)),
+      material: Material::new(Rgb::WHITE),
+      visible: true,
+   });
+   let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+
+   let mut renderer = match Renderer::new(RendererConfig::new(WINDOW_WIDTH, WINDOW_HEIGHT)) {
+      Ok(renderer) => renderer,
+      Err(error) => {
+         eprintln!("renderer init failed: {error}");
+         std::process::exit(1);
+      }
+   };
+
+   let mut angle = 0.0f32;
+   let mut last_time = backend.time_seconds();
+   let mut frame = 0u32;
+
+   loop {
+      for event in backend.poll_events() {
+         if let Event::KeyDown(KEY_ESCAPE) = event {
+            backend.request_close();
+         }
+      }
+      if backend.should_close() {
+         break;
+      }
+      if let Some(limit) = frames {
+         if frame >= limit {
+            break;
+         }
+      }
+
+      let now = backend.time_seconds();
+      let delta = ((now - last_time) as f32).clamp(0.0, 0.1);
+      last_time = now;
+      angle += delta;
+
+      if let Some(object) = scene.objects.get_mut(object) {
+         object.transform.orientation = Quat::from_rotation_z(angle);
+      }
+
+      renderer
+         .render(&scene, &camera, Rgb::new(0.08, 0.10, 0.14))
+         .expect("render frame");
+      backend
+         .present(renderer.width(), renderer.height(), renderer.pixels())
+         .expect("present frame");
+      frame += 1;
+   }
+}
+
+fn parse_frames(mut args: impl Iterator<Item = String>) -> Option<u32> {
+   let mut frames = None;
+   while let Some(arg) = args.next() {
+      if arg == "--frames" {
+         frames = args.next().and_then(|value| value.parse().ok());
+      }
+   }
+   frames
+}

@@ -1,0 +1,15 @@
+[package]
+name = "he3d-math"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "no_std math layer: coordinate conventions and linear algebra via glam"
+
+[features]
+default = []
+std = ["glam/std"]
+
+[dependencies]
+glam = { workspace = true }
+libm = { version = "0.2", default-features = false }

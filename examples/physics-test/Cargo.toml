@@ -1,0 +1,25 @@
+[package]
+name = "he3d-physics-test"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "PhysicsTest demo: a controllable dynamic cube over a static floor (WASD/space/R), backend selected by feature"
+
+[[bin]]
+name = "physics-test"
+path = "src/main.rs"
+
+[features]
+default = ["sdl3"]
+sdl3 = ["dep:he3d-platform-sdl3"]
+terminal = ["dep:he3d-platform-std"]
+
+[dependencies]
+he3d-core = { path = "../../crates/he3d-core" }
+he3d-math = { path = "../../crates/he3d-math" }
+he3d-physics = { path = "../../crates/he3d-physics" }
+he3d-platform = { path = "../../crates/he3d-platform" }
+he3d-platform-sdl3 = { path = "../../crates/he3d-platform-sdl3", optional = true }
+he3d-platform-std = { path = "../../crates/he3d-platform-std", optional = true }
+he3d-renderer = { path = "../../crates/he3d-renderer" }

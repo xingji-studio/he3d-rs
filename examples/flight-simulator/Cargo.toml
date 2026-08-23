@@ -1,0 +1,26 @@
+[package]
+name = "he3d-flight-simulator"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Flight Simulator demo: streamed procedural terrain, textured biplane, flight controls and chase camera, backend selected by feature"
+
+[[bin]]
+name = "flight-simulator"
+path = "src/main.rs"
+
+[features]
+default = ["sdl3"]
+sdl3 = ["dep:he3d-platform-sdl3"]
+terminal = ["dep:he3d-platform-std"]
+
+[dependencies]
+he3d-assets = { path = "../../crates/he3d-assets" }
+he3d-core = { path = "../../crates/he3d-core" }
+he3d-math = { path = "../../crates/he3d-math" }
+he3d-physics = { path = "../../crates/he3d-physics" }
+he3d-platform = { path = "../../crates/he3d-platform" }
+he3d-platform-sdl3 = { path = "../../crates/he3d-platform-sdl3", optional = true }
+he3d-platform-std = { path = "../../crates/he3d-platform-std", optional = true }
+he3d-renderer = { path = "../../crates/he3d-renderer" }
