@@ -96,13 +96,11 @@ impl PhysicsWorld {
       if self.handle(object).is_some() {
          return false;
       }
-      let desc = BodyDesc {
-         motion,
-         collider: gp3d::Collider::Box { half_extents },
-         position: transform.position,
-         orientation: transform.orientation,
-         ..BodyDesc::default()
-      };
+      let mut desc = BodyDesc::default();
+      desc.motion = motion;
+      desc.collider = gp3d::Collider::box_collider(half_extents);
+      desc.position = transform.position;
+      desc.orientation = transform.orientation;
       match self.scene.add_body(desc) {
          Ok(handle) => {
             self.bodies.push((object, handle));

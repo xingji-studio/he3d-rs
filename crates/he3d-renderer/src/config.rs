@@ -1,6 +1,7 @@
 /// Anti-aliasing mode. Only `None` is implemented today; other modes are added in later stages and are rejected by [`crate::Renderer::new`].
 /// 抗锯齿模式。目前只实现了 `None`；其余模式将在后续阶段加入，且会被 [`crate::Renderer::new`] 拒绝。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum AntiAliasing {
    /// No anti-aliasing.
    /// 无抗锯齿。
@@ -11,6 +12,7 @@ pub enum AntiAliasing {
 /// Construction parameters for the software renderer.
 /// 软件渲染器的构造参数。
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[non_exhaustive]
 pub struct RendererConfig {
    /// Framebuffer width in pixels.
    /// 帧缓冲宽度（像素）。

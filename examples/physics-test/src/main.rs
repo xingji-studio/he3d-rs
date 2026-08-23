@@ -17,11 +17,7 @@ const CUBE_HALF: f32 = 0.5;
 fn main() {
    let frames = parse_frames(std::env::args());
 
-   let config = BackendConfig {
-      title: "HE3D PhysicsTest",
-      width: WINDOW_WIDTH,
-      height: WINDOW_HEIGHT,
-   };
+   let config = BackendConfig::new("HE3D PhysicsTest", WINDOW_WIDTH, WINDOW_HEIGHT);
    let backend = match create_backend(config) {
       Ok(backend) => backend,
       Err(error) => {
@@ -106,11 +102,12 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
       for event in backend.poll_events() {
          match event {
             Event::KeyDown(KEY_ESCAPE) => backend.request_close(),
-            Event::KeyDown(code) | Event::KeyUp(code) => {
-               if (0..keys.len()).contains(&(code as usize)) {
-                  keys[code as usize] = matches!(event, Event::KeyDown(_));
-               }
+            Event::KeyDown(code) | Event::KeyUp(code)
+               if (0..keys.len()).contains(&(code as usize)) =>
+            {
+               keys[code as usize] = matches!(event, Event::KeyDown(_));
             }
+            _ => {}
          }
       }
       if backend.should_close() {

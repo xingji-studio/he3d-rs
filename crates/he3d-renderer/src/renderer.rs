@@ -26,6 +26,18 @@ pub struct Renderer {
    missing_texture: Texture,
 }
 
+impl core::fmt::Debug for Renderer {
+   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+      // Framebuffer contents would flood the debug output; print dimensions instead.
+      // 帧缓冲内容会淹没调试输出；改为打印尺寸。
+      f.debug_struct("Renderer")
+         .field("width", &self.width)
+         .field("height", &self.height)
+         .field("anti_aliasing", &self.anti_aliasing)
+         .finish_non_exhaustive()
+   }
+}
+
 impl Renderer {
    /// Allocate a framebuffer, validating size and budget.
    /// 分配帧缓冲，校验尺寸与预算。

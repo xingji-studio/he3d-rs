@@ -25,6 +25,7 @@ pub const KEY_ESCAPE: KeyCode = 27;
 /// Input events delivered by [`Platform::poll_events`].
 /// 由 [`Platform::poll_events`] 投递的输入事件。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Event {
    /// A key was pressed.
    /// 某个键被按下。
@@ -37,6 +38,7 @@ pub enum Event {
 /// Errors returned by presentation and backend operations.
 /// 呈现和后端操作返回的错误。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum PlatformError {
    /// The pixel buffer does not match the declared dimensions.
    /// 像素缓冲区与声明的尺寸不匹配。
@@ -75,6 +77,7 @@ pub fn normalize_key(key: KeyCode) -> KeyCode {
 /// Every backend accepts the same shape; backends without a native title (such as the standard-library (stdout) backend) simply ignore [`BackendConfig::title`].
 /// 每个后端都接受相同的结构；没有原生标题的后端（如终端）会直接忽略 [`BackendConfig::title`]。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BackendConfig<'a> {
    /// Window title; ignored by backends that have no title.
    /// 窗口标题；无标题的后端会忽略它。
@@ -85,6 +88,19 @@ pub struct BackendConfig<'a> {
    /// Render height in pixels.
    /// 以像素计的渲染高度。
    pub height: u32,
+}
+
+impl<'a> BackendConfig<'a> {
+   /// Construct a backend configuration.
+   /// 构造一个后端配置。
+   #[must_use]
+   pub const fn new(title: &'a str, width: u32, height: u32) -> Self {
+      Self {
+         title,
+         width,
+         height,
+      }
+   }
 }
 
 /// A platform backend that can construct itself from a [`BackendConfig`].

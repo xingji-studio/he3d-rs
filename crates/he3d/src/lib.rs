@@ -28,8 +28,13 @@
 
 extern crate alloc;
 
+#[cfg(feature = "std")]
+extern crate std;
+
 use alloc::boxed::Box;
+use alloc::format;
 use alloc::string::String;
+use alloc::vec::Vec;
 use core::fmt;
 
 pub use he3d_assets;
@@ -61,6 +66,7 @@ pub use he3d_renderer::{AntiAliasing, Renderer, RendererConfig};
 /// Error produced when no enabled backend could be constructed.
 /// 没有启用的后端可被构造时产生的错误。
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct BackendInitError {
    message: String,
 }
@@ -77,6 +83,27 @@ impl fmt::Display for BackendInitError {
    }
 }
 
+#[cfg(feature = "std")]
+impl std::error::Error for BackendInitError {}
+
+/// Convert a `std`-backend construction error into a [`BackendInitError`].
+/// 将标准库后端的构造错误转换为 [`BackendInitError`]。
+#[cfg(feature = "std")]
+impl From<he3d_platform_std::StdBackendError> for BackendInitError {
+   fn from(error: he3d_platform_std::StdBackendError) -> Self {
+      Self::new(format!("std backend: {error}"))
+   }
+}
+
+/// Convert an SDL3-backend construction error into a [`BackendInitError`].
+/// 将 SDL3 后端的构造错误转换为 [`BackendInitError`]。
+#[cfg(feature = "sdl3")]
+impl From<he3d_platform_sdl3::BackendError> for BackendInitError {
+   fn from(error: he3d_platform_sdl3::BackendError) -> Self {
+      Self::new(format!("sdl3 backend: {error}"))
+   }
+}
+
 /// Construct the platform backend selected by the enabled features.
 /// 构造由已启用特性选中的平台后端。
 ///
@@ -88,22 +115,29 @@ impl fmt::Display for BackendInitError {
 /// 当所有已启用的后端都无法创建（或未启用任何后端特性）时返回 [`BackendInitError`]。
 ///
 /// # Errors
-/// 未启用任何后端特性，或所有已启用后端都无法构造时返回 [`BackendInitError`]。
+/// 未启用任何后端特性，或所有已启用后端都无法构造时返回 [`BackendInitError`]；
+/// 错误信息包含每个失败后端的名称与原因。
 /// Returns [`BackendInitError`] when no backend feature is enabled or every
-/// enabled backend fails to construct.
+/// enabled backend fails to construct; the message lists each failing backend.
 pub fn create_backend(config: BackendConfig<'_>) -> Result<Box<dyn Platform>, BackendInitError> {
+   let mut failures: Vec<String> = Vec::new();
+   #[cfg(feature = "sdl3")]
+   match he3d_platform_sdl3::SdlBackend::create(config) {
+      Ok(backend) => return Ok(Box::new(backend)),
+      Err(error) => failures.push(format!("sdl3: {error}")),
+   }
+   #[cfg(feature = "std")]
+   match he3d_platform_std::StdBackend::create(config) {
+      Ok(backend) => return Ok(Box::new(backend)),
+      Err(error) => failures.push(format!("std: {error}")),
+   }
    // `config` is unused in builds where no backend feature is enabled.
    // 在未启用任何后端特性的构建中，`config` 不会被使用。
    let _ = config;
-   #[cfg(feature = "sdl3")]
-   if let Ok(backend) = he3d_platform_sdl3::SdlBackend::create(config) {
-      return Ok(Box::new(backend));
-   }
-   #[cfg(feature = "std")]
-   if let Ok(backend) = he3d_platform_std::StdBackend::create(config) {
-      return Ok(Box::new(backend));
-   }
-   Err(BackendInitError::new(
-      "no backend available: enable the `std` or `sdl3` feature of `he3d`".into(),
-   ))
+   let message = if failures.is_empty() {
+      "no backend enabled: enable the `std` or `sdl3` feature of `he3d`".into()
+   } else {
+      failures.join("; ")
+   };
+   Err(BackendInitError::new(message))
 }

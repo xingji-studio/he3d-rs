@@ -6,6 +6,7 @@ use core::fmt;
 /// Construction uses `checked_*` arithmetic and explicit limits, so oversized or malformed inputs return an error instead of overflowing or panicking.
 /// 构造使用 `checked_*` 算术和显式限制，因此过大或畸形的输入会返回错误，而不是溢出或 panic。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[non_exhaustive]
 pub enum Error {
    /// A dimension or size is zero, negative, or exceeds a configured limit.
    /// 维度或大小为 0、为负，或超过配置的限制。

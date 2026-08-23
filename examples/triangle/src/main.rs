@@ -11,11 +11,7 @@ const WINDOW_HEIGHT: u32 = 360;
 fn main() {
    let frames = parse_frames(std::env::args());
 
-   let config = BackendConfig {
-      title: "HE3D TriangleTest",
-      width: WINDOW_WIDTH,
-      height: WINDOW_HEIGHT,
-   };
+   let config = BackendConfig::new("HE3D TriangleTest", WINDOW_WIDTH, WINDOW_HEIGHT);
    let mut backend = match create_backend(config) {
       Ok(backend) => backend,
       Err(error) => {

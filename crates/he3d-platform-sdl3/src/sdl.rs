@@ -13,6 +13,7 @@ use he3d_platform::{
 /// Errors from SDL3 backend construction.
 /// SDL3 后端构造错误。
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum BackendError {
    /// SDL initialization failed.
    /// SDL 初始化失败。
@@ -61,6 +62,17 @@ pub struct SdlBackend {
    // 字段顺序影响释放顺序：`_sdl` 最后释放，因此 SDL_Quit 只在窗口、画布和事件泵被销毁之后发生。
    _video: VideoSubsystem,
    _sdl: Sdl,
+}
+
+impl core::fmt::Debug for SdlBackend {
+   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+      // SDL handle types are not `Debug`; print the tracking state only.
+      // SDL 句柄类型未实现 `Debug`；只打印跟踪状态。
+      f.debug_struct("SdlBackend")
+         .field("texture_size", &self.texture_size)
+         .field("close_requested", &self.close_requested)
+         .finish_non_exhaustive()
+   }
 }
 
 impl PlatformFactory for SdlBackend {

@@ -10,6 +10,7 @@ use he3d_platform::{
 /// Errors from standard-output (stdout) backend construction.
 /// 标准库标准输出（stdout）后端构造错误。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StdBackendError {
    /// A zero or invalid framebuffer size was requested.
    /// 请求了为零或无效的帧缓冲尺寸。
@@ -60,6 +61,20 @@ pub struct StdBackend {
    stdin_flags: i32,
    configured: bool,
    first_present: bool,
+}
+
+impl core::fmt::Debug for StdBackend {
+   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+      // `termios`/`Instant` are not `Debug`; print the meaningful state only.
+      // `termios`/`Instant` 未实现 `Debug`；只打印有意义的状态。
+      f.debug_struct("StdBackend")
+         .field("columns", &self.columns)
+         .field("rows", &self.rows)
+         .field("close_requested", &self.close_requested)
+         .field("escape_pending", &self.escape_pending)
+         .field("configured", &self.configured)
+         .finish_non_exhaustive()
+   }
 }
 
 impl PlatformFactory for StdBackend {
@@ -410,12 +425,7 @@ mod tests {
 
    #[test]
    fn stdout_smoke_non_tty() {
-      let mut backend = StdBackend::create(BackendConfig {
-         title: "",
-         width: 64,
-         height: 36,
-      })
-      .expect("backend");
+      let mut backend = StdBackend::create(BackendConfig::new("", 64, 36)).expect("backend");
       assert!(!backend.should_close());
 
       let events = backend.poll_events();
@@ -435,12 +445,7 @@ mod tests {
 
    #[test]
    fn present_rejects_bad_framebuffer() {
-      let mut backend = StdBackend::create(BackendConfig {
-         title: "",
-         width: 64,
-         height: 36,
-      })
-      .expect("backend");
+      let mut backend = StdBackend::create(BackendConfig::new("", 64, 36)).expect("backend");
       let pixels = vec![ColorRgba8::BLACK; 3];
       assert_eq!(
          backend.present(2, 2, &pixels),

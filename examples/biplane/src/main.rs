@@ -14,11 +14,7 @@ const BMP_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/biplane.bmp"
 fn main() {
    let frames = parse_frames(std::env::args());
 
-   let config = BackendConfig {
-      title: "HE3D Biplane",
-      width: WINDOW_WIDTH,
-      height: WINDOW_HEIGHT,
-   };
+   let config = BackendConfig::new("HE3D Biplane", WINDOW_WIDTH, WINDOW_HEIGHT);
    let mut backend = match create_backend(config) {
       Ok(backend) => backend,
       Err(error) => {
