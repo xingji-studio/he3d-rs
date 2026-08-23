@@ -1,6 +1,6 @@
 use he3d::{
-   BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, RenderObject, Renderer,
-   RendererConfig, Rgb, Scene, Texture, Transform, Vec3, Quat, create_backend,
+   BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, Quat, RenderObject,
+   Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3, create_backend,
 };
 
 const WINDOW_WIDTH: u32 = 640;

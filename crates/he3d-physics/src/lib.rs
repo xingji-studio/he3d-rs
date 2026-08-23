@@ -15,5 +15,5 @@ extern crate alloc;
 
 mod world;
 
-pub use world::PhysicsWorld;
 pub use gp3d::StepResult;
+pub use world::PhysicsWorld;

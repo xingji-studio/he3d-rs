@@ -2,8 +2,8 @@
 //! 飞行模拟核心逻辑：地形噪声、网格生成、飞行控制、相机跟随和流式地形块。
 
 use he3d::{
-   Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, RenderObject,
-   Rgb, Scene, Texture, Transform, EulerRot, PhysicsWorld, Quat, Vec2, Vec3,
+   Camera, ColorRgba8, Error, EulerRot, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId,
+   PhysicsWorld, Quat, RenderObject, Rgb, Scene, Texture, Transform, Vec2, Vec3,
 };
 
 /// Default gravity used by the reference flight simulator.

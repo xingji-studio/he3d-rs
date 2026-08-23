@@ -1,6 +1,6 @@
 use he3d::{
    BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, ObjectId, PhysicsWorld,
-   Platform, RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3, Quat,
+   Platform, Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3,
    create_backend,
 };
 

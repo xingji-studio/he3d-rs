@@ -6,7 +6,7 @@ use flight_sim::{
 };
 use he3d::{
    BackendConfig, Camera, Event, KEY_ESCAPE, Material, Mesh, ObjectId, PhysicsWorld, Platform,
-   RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3, Quat,
+   Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3,
    create_backend, decode_image, parse_obj,
 };
 

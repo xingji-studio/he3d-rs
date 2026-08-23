@@ -31,29 +31,29 @@ use alloc::boxed::Box;
 use alloc::string::String;
 use core::fmt;
 
-pub use he3d_math;
-pub use he3d_core;
-pub use he3d_renderer;
 pub use he3d_assets;
+pub use he3d_core;
+pub use he3d_math;
 pub use he3d_physics;
 pub use he3d_platform;
+pub use he3d_renderer;
 
-#[cfg(feature = "std")]
-pub use he3d_platform_std;
 #[cfg(feature = "sdl3")]
 pub use he3d_platform_sdl3;
+#[cfg(feature = "std")]
+pub use he3d_platform_std;
 
 // Commonly used types, flattened for `use he3d::*;`.
 // 常用类型扁平化，方便 `use he3d::*;`。
 pub use he3d_assets::{decode_image, parse_obj};
 pub use he3d_core::{
-    Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, RenderObject,
-    Rgb, Scene, Texture, TextureId, Transform,
+   Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, RenderObject,
+   Rgb, Scene, Texture, TextureId, Transform,
 };
 pub use he3d_math::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
 pub use he3d_physics::PhysicsWorld;
 pub use he3d_platform::{
-    BackendConfig, Event, KeyCode, Platform, PlatformError, PlatformFactory, KEY_ESCAPE,
+   BackendConfig, Event, KEY_ESCAPE, KeyCode, Platform, PlatformError, PlatformFactory,
 };
 pub use he3d_renderer::{AntiAliasing, Renderer, RendererConfig};
 
@@ -61,19 +61,19 @@ pub use he3d_renderer::{AntiAliasing, Renderer, RendererConfig};
 /// 没有启用的后端可被构造时产生的错误。
 #[derive(Clone, Debug)]
 pub struct BackendInitError {
-    message: String,
+   message: String,
 }
 
 impl BackendInitError {
-    fn new(message: String) -> Self {
-        Self { message }
-    }
+   fn new(message: String) -> Self {
+      Self { message }
+   }
 }
 
 impl fmt::Display for BackendInitError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
+   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      f.write_str(&self.message)
+   }
 }
 
 /// Construct the platform backend selected by the enabled features.
@@ -86,15 +86,15 @@ impl fmt::Display for BackendInitError {
 /// (or when no backend feature is enabled).
 /// 当所有已启用的后端都无法创建（或未启用任何后端特性）时返回 [`BackendInitError`]。
 pub fn create_backend(config: BackendConfig<'_>) -> Result<Box<dyn Platform>, BackendInitError> {
-    #[cfg(feature = "sdl3")]
-    if let Ok(backend) = he3d_platform_sdl3::SdlBackend::create(config) {
-        return Ok(Box::new(backend));
-    }
-    #[cfg(feature = "std")]
-    if let Ok(backend) = he3d_platform_std::StdBackend::create(config) {
-        return Ok(Box::new(backend));
-    }
-    Err(BackendInitError::new(
-        "no backend available: enable the `std` or `sdl3` feature of `he3d`".into(),
-    ))
+   #[cfg(feature = "sdl3")]
+   if let Ok(backend) = he3d_platform_sdl3::SdlBackend::create(config) {
+      return Ok(Box::new(backend));
+   }
+   #[cfg(feature = "std")]
+   if let Ok(backend) = he3d_platform_std::StdBackend::create(config) {
+      return Ok(Box::new(backend));
+   }
+   Err(BackendInitError::new(
+      "no backend available: enable the `std` or `sdl3` feature of `he3d`".into(),
+   ))
 }
