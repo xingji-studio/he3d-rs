@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![forbid(unsafe_code)]
 
 //! HE3D platform.
 //! HE3D 平台。
@@ -59,9 +60,10 @@ impl fmt::Display for PlatformError {
 /// Normalize an ASCII key to lowercase, matching the reference renderer.
 /// 将 ASCII 键规范化为小写，与参考渲染器保持一致。
 #[inline]
+#[must_use]
 pub fn normalize_key(key: KeyCode) -> KeyCode {
-   if (b'A' as KeyCode..=b'Z' as KeyCode).contains(&key) {
-      key + (b'a' as KeyCode - b'A' as KeyCode)
+   if (i32::from(b'A')..=i32::from(b'Z')).contains(&key) {
+      key + (i32::from(b'a') - i32::from(b'A'))
    } else {
       key
    }
@@ -97,6 +99,11 @@ pub trait PlatformFactory: Platform {
 
    /// Construct the backend, or return a backend-specific error.
    /// 构造后端，或返回后端特有的错误。
+   ///
+   /// # Errors
+   /// 返回后端特有的 [`PlatformFactory::CreateError`]，例如初始化失败或尺寸无效。
+   /// Returns a backend-specific [`PlatformFactory::CreateError`], such as an
+   /// initialization failure or an invalid size.
    fn create(config: BackendConfig<'_>) -> Result<Self, Self::CreateError>
    where
       Self: Sized;
@@ -107,6 +114,13 @@ pub trait PlatformFactory: Platform {
 pub trait Platform {
    /// Present an RGBA framebuffer (top-to-bottom, left-to-right).
    /// 呈现一个 RGBA 帧缓冲（自上而下、从左到右）。
+   ///
+   /// # Errors
+   /// 像素缓冲长度与声明尺寸不符时返回 [`PlatformError::InvalidFramebuffer`]；
+   /// 后端无法完成呈现时返回 [`PlatformError::BackendUnavailable`]。
+   /// Returns [`PlatformError::InvalidFramebuffer`] when the pixel buffer length
+   /// does not match the declared dimensions, or [`PlatformError::BackendUnavailable`]
+   /// when the backend cannot complete the presentation.
    fn present(
       &mut self,
       width: u32,

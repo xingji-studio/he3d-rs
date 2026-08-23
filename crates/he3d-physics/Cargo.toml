@@ -17,3 +17,6 @@ he3d-math = { workspace = true, default-features = false }
 # (version 0.1.0) before he3d-physics, and the `version` here mirrors it.
 # gp3d 是独立包（../gp3d-rs）；he3d-physics 发布前必须先发布 gp3d 0.1.0，此处的 `version` 与之对应。
 gp3d = { path = "../../../gp3d-rs", version = "0.1.0" }
+
+[lints]
+workspace = true

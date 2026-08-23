@@ -1,3 +1,5 @@
+//! Biplane demo: an OBJ-loaded textured biplane over the scene grid.
+//! 双翼机示例：场景网格上加载 OBJ 的带纹理双翼机。
 use he3d::{
    BackendConfig, Camera, Event, KEY_ESCAPE, Material, Quat, RenderObject, Renderer,
    RendererConfig, Rgb, Scene, Transform, Vec3, create_backend, decode_image, parse_obj,

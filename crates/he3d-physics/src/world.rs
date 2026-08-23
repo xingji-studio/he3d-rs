@@ -27,6 +27,9 @@ pub struct PhysicsWorld {
 }
 
 impl PhysicsWorld {
+   /// Create an empty world with the reference default gravity `(0, -9.8, 0)`.
+   /// 创建一个空世界，重力为参考默认值 `(0, -9.8, 0)`。
+   #[must_use]
    pub fn new() -> Self {
       let mut scene = gp3d::PhysicsScene::new();
       scene.set_gravity(DEFAULT_GRAVITY);
@@ -42,6 +45,7 @@ impl PhysicsWorld {
    }
 
    /// The current world gravity. 当前世界重力。
+   #[must_use]
    pub fn gravity(&self) -> Vec3 {
       self.scene.gravity()
    }
@@ -148,6 +152,7 @@ impl PhysicsWorld {
 
    /// Read the current body transform. Returns `None` for unknown objects.
    /// 读取当前刚体变换。对未知对象返回 `None`。
+   #[must_use]
    pub fn transform(&self, object: ObjectId) -> Option<Transform> {
       let handle = self.handle(object)?;
       let position = self.scene.position(handle)?;
@@ -176,6 +181,7 @@ impl PhysicsWorld {
 
    /// Whether the body is currently touching another collider.
    /// 刚体当前是否与另一碰撞体接触。
+   #[must_use]
    pub fn has_contacts(&self, object: ObjectId) -> bool {
       match self.handle(object) {
          Some(handle) => self.scene.has_contacts(handle),
@@ -183,6 +189,8 @@ impl PhysicsWorld {
       }
    }
 
+   /// Remove a body. Returns `false` for unknown objects.
+   /// 移除一个刚体。对未知对象返回 `false`。
    pub fn remove_body(&mut self, object: ObjectId) -> bool {
       let Some(position) = self.bodies.iter().position(|(id, _)| *id == object) else {
          return false;
@@ -191,6 +199,9 @@ impl PhysicsWorld {
       self.scene.remove_body(handle)
    }
 
+   /// Whether the object currently has a registered body.
+   /// 对象当前是否注册了刚体。
+   #[must_use]
    pub fn has_body(&self, object: ObjectId) -> bool {
       self.handle(object).is_some()
    }
@@ -203,6 +214,9 @@ impl PhysicsWorld {
       }
    }
 
+   /// The body's linear velocity, or zero for unknown objects.
+   /// 刚体线速度；未知对象返回零向量。
+   #[must_use]
    pub fn velocity(&self, object: ObjectId) -> Vec3 {
       match self.handle(object) {
          Some(handle) => self.scene.velocity(handle),
@@ -218,6 +232,9 @@ impl PhysicsWorld {
       }
    }
 
+   /// The body's angular velocity, or zero for unknown objects.
+   /// 刚体角速度；未知对象返回零向量。
+   #[must_use]
    pub fn angular_velocity(&self, object: ObjectId) -> Vec3 {
       match self.handle(object) {
          Some(handle) => self.scene.angular_velocity(handle),
@@ -225,6 +242,7 @@ impl PhysicsWorld {
       }
    }
 
+   /// Apply an instantaneous force for the next step only. 施加仅作用于下一步的瞬时力。
    pub fn add_force(&mut self, object: ObjectId, force: Vec3) -> bool {
       match self.handle(object) {
          Some(handle) => self.scene.add_force(handle, force),
@@ -232,6 +250,7 @@ impl PhysicsWorld {
       }
    }
 
+   /// Apply an instantaneous torque for the next step only. 施加仅作用于下一步的瞬时力矩。
    pub fn add_torque(&mut self, object: ObjectId, torque: Vec3) -> bool {
       match self.handle(object) {
          Some(handle) => self.scene.add_torque(handle, torque),
@@ -239,6 +258,7 @@ impl PhysicsWorld {
       }
    }
 
+   /// Apply an instantaneous impulse. 施加瞬时冲量。
    pub fn add_impulse(&mut self, object: ObjectId, impulse: Vec3) -> bool {
       match self.handle(object) {
          Some(handle) => self.scene.add_impulse(handle, impulse),
@@ -246,6 +266,7 @@ impl PhysicsWorld {
       }
    }
 
+   /// Apply an instantaneous angular impulse. 施加瞬时角冲量。
    pub fn add_angular_impulse(&mut self, object: ObjectId, impulse: Vec3) -> bool {
       match self.handle(object) {
          Some(handle) => self.scene.add_angular_impulse(handle, impulse),
@@ -396,7 +417,7 @@ mod tests {
 
       // Unknown objects are no-ops. 未知对象为无操作。
       let stale = spawn_box(&mut scene, Vec3::ZERO);
-      scene.objects.remove(stale);
+      let _ = scene.objects.remove(stale);
       assert!(!world.set_transform(stale, Transform::default()));
       assert_eq!(world.transform(stale), None);
    }
@@ -520,6 +541,10 @@ mod tests {
    }
 
    #[test]
+   // A kinematic body ignores gravity, so `position.y` stays exactly zero by
+   // construction; the exact equality is intentional.
+   // 运动学刚体忽略重力，因此 `position.y` 在构造上严格保持为零；此精确相等是有意为之。
+   #[expect(clippy::float_cmp)]
    fn kinematic_body_moves_and_ignores_gravity() {
       let mut scene = Scene::new();
       let mover = spawn_box(&mut scene, Vec3::ZERO);

@@ -44,3 +44,6 @@ he3d-physics = { workspace = true }
 he3d-platform = { workspace = true }
 he3d-platform-std = { workspace = true, optional = true }
 he3d-platform-sdl3 = { workspace = true, optional = true }
+
+[lints]
+workspace = true

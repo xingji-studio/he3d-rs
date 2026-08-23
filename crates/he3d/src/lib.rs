@@ -24,6 +24,7 @@
 //! 因此应用代码从不提及任何后端类型。
 
 #![no_std]
+#![forbid(unsafe_code)]
 
 extern crate alloc;
 
@@ -85,7 +86,15 @@ impl fmt::Display for BackendInitError {
 /// Returns [`BackendInitError`] when none of the enabled backends could be created
 /// (or when no backend feature is enabled).
 /// 当所有已启用的后端都无法创建（或未启用任何后端特性）时返回 [`BackendInitError`]。
+///
+/// # Errors
+/// 未启用任何后端特性，或所有已启用后端都无法构造时返回 [`BackendInitError`]。
+/// Returns [`BackendInitError`] when no backend feature is enabled or every
+/// enabled backend fails to construct.
 pub fn create_backend(config: BackendConfig<'_>) -> Result<Box<dyn Platform>, BackendInitError> {
+   // `config` is unused in builds where no backend feature is enabled.
+   // 在未启用任何后端特性的构建中，`config` 不会被使用。
+   let _ = config;
    #[cfg(feature = "sdl3")]
    if let Ok(backend) = he3d_platform_sdl3::SdlBackend::create(config) {
       return Ok(Box::new(backend));

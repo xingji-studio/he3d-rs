@@ -13,3 +13,6 @@ std = ["he3d-core/std", "he3d-math/std"]
 [dependencies]
 he3d-core = { workspace = true, default-features = false }
 he3d-math = { workspace = true, default-features = false }
+
+[lints]
+workspace = true

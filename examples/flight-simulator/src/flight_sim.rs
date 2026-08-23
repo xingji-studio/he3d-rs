@@ -16,9 +16,9 @@ pub fn flight_noise_grid(x: i32, z: i32) -> f32 {
    let n = x.wrapping_add(z.wrapping_mul(57));
    let n = (n << 13) ^ n;
    let mixed = n
-      .wrapping_mul(n.wrapping_mul(n).wrapping_mul(15731).wrapping_add(789221))
-      .wrapping_add(1376312589);
-   1.0 - (mixed & 0x7fff_ffff) as f32 / 1073741824.0
+      .wrapping_mul(n.wrapping_mul(n).wrapping_mul(15_731).wrapping_add(789_221))
+      .wrapping_add(1_376_312_589);
+   1.0 - (mixed & 0x7fff_ffff) as f32 / 1_073_741_824.0
 }
 
 fn smooth_step(t: f32) -> f32 {
@@ -592,7 +592,7 @@ impl TerrainManager {
          // placeholder is kept so inactive tiles can keep referencing it.
          // 在替换前释放旧的逐块网格。共享占位网格保留，使未激活块仍可引用它。
          if tile.mesh_id != self.placeholder_mesh {
-            scene.meshes.remove(tile.mesh_id);
+            let _ = scene.meshes.remove(tile.mesh_id);
          }
          tile.grid_x = grid_x;
          tile.grid_z = grid_z;

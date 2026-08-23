@@ -19,6 +19,11 @@ pub struct Texture {
 impl Texture {
    /// Construct a texture, validating dimensions and buffer length.
    /// 构造一个纹理，校验尺寸和缓冲长度。
+   ///
+   /// # Errors
+   /// 尺寸为 0 或超过 [`MAX_TEXTURE_DIMENSION`]、像素数量与尺寸不符，或尺寸乘积溢出时返回相应错误。
+   /// Returns an error when a dimension is zero or exceeds [`MAX_TEXTURE_DIMENSION`],
+   /// when the pixel count does not match the dimensions, or when the product overflows.
    pub fn new(width: u32, height: u32, pixels: Vec<ColorRgba8>) -> Result<Self, Error> {
       if width == 0
          || height == 0
@@ -42,12 +47,17 @@ impl Texture {
 
    /// Construct a texture from a borrowed pixel slice.
    /// 从借用的像素切片构造一个纹理。
+   ///
+   /// # Errors
+   /// 与 [`Texture::new`] 相同。
+   /// Same errors as [`Texture::new`].
    pub fn from_pixels(width: u32, height: u32, pixels: &[ColorRgba8]) -> Result<Self, Error> {
       Self::new(width, height, pixels.to_vec())
    }
 
    /// Build a 1×1 solid-color texture: any UV samples the same color.
    /// 构建一个 1×1 纯色纹理：任何 UV 都采样到相同颜色。
+   #[must_use]
    pub fn solid(color: ColorRgba8) -> Self {
       Self {
          width: 1,
@@ -56,14 +66,23 @@ impl Texture {
       }
    }
 
+   /// Texture width in pixels.
+   /// 纹理宽度（像素）。
+   #[must_use]
    pub fn width(&self) -> u32 {
       self.width
    }
 
+   /// Texture height in pixels.
+   /// 纹理高度（像素）。
+   #[must_use]
    pub fn height(&self) -> u32 {
       self.height
    }
 
+   /// The underlying pixel buffer, row-major.
+   /// 底层像素缓冲，按行优先排列。
+   #[must_use]
    pub fn pixels(&self) -> &[ColorRgba8] {
       &self.pixels
    }
@@ -73,23 +92,38 @@ impl Texture {
    ///
    /// Out-of-range or non-finite coordinates are wrapped/clamped and never index out of bounds.
    /// 越界或非有限坐标会被环绕/截断，绝不会产生越界索引。
+   #[must_use]
    pub fn sample(&self, u: f32, v: f32) -> ColorRgba8 {
-      let x = self.sample_axis(u, self.width);
-      let y = self.sample_axis(v, self.height);
+      let x = sample_axis(u, self.width);
+      let y = sample_axis(v, self.height);
       self.pixels[y * self.width as usize + x]
    }
 
    /// Sample and convert to linear light.
    /// 采样并转换为线性光。
+   #[must_use]
    pub fn sample_linear(&self, u: f32, v: f32) -> Rgb {
       self.sample(u, v).to_linear()
    }
+}
 
-   fn sample_axis(&self, coord: f32, size: u32) -> usize {
-      let wrapped = wrap_uv(coord);
-      let index = (wrapped * size as f32) as i64;
-      index.clamp(0, size as i64 - 1) as usize
-   }
+/// Map a wrapped `[0, 1)` coordinate to a texel index in `[0, size)`.
+/// 将环绕后的 `[0, 1)` 坐标映射到 `[0, size)` 范围内的纹素索引。
+//
+// `size` is bounded by MAX_TEXTURE_DIMENSION and `wrapped` is in [0, 1), so the
+// float→i64→usize path below cannot overflow or meaningfully lose precision.
+// `size` 受 MAX_TEXTURE_DIMENSION 约束且 `wrapped` 位于 [0, 1) 内，因此下面的
+// float→i64→usize 路径不会溢出或产生有意义的精度损失。
+#[expect(
+   clippy::cast_possible_truncation,
+   clippy::cast_precision_loss,
+   clippy::cast_sign_loss
+)]
+fn sample_axis(coord: f32, size: u32) -> usize {
+   let wrapped = wrap_uv(coord);
+   let scaled = wrapped * size as f32;
+   let index = scaled as i64;
+   index.clamp(0, i64::from(size) - 1) as usize
 }
 
 /// Return the fractional part of `x` in `[0, 1)`, matching the reference renderer's `fracf` wrap semantics.

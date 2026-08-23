@@ -12,3 +12,6 @@ std = ["he3d-math/std"]
 
 [dependencies]
 he3d-math = { workspace = true, default-features = false }
+
+[lints]
+workspace = true

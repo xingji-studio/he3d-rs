@@ -17,3 +17,23 @@ std = ["he3d/std"]
 
 [dependencies]
 he3d = { path = "../../crates/he3d" }
+
+[lints]
+# Demo binaries: keep pedantic active but allow the procedural-cast noise that is
+# idiomatic in these single-file applications (the library crates keep strict lints).
+# 演示二进制：保留 pedantic，但放行这些单文件应用惯用的过程式转换噪音（库 crate 保持严格）。
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+cast_possible_truncation = { level = "allow", priority = 1 }
+cast_sign_loss = { level = "allow", priority = 1 }
+cast_precision_loss = { level = "allow", priority = 1 }
+cast_lossless = { level = "allow", priority = 1 }
+cast_possible_wrap = { level = "allow", priority = 1 }
+many_single_char_names = { level = "allow", priority = 1 }
+too_many_lines = { level = "allow", priority = 1 }
+items_after_statements = { level = "allow", priority = 1 }
+float_cmp = { level = "allow", priority = 1 }
+
+[lints.rust]
+missing_docs = "allow"

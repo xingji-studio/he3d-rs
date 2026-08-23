@@ -23,6 +23,12 @@ const MAX_IMAGE_DIMENSION: u32 = 8192;
 /// 通过魔数字节进行格式检测。
 /// Decoders for formats compiled out (via the `bmp`/`png`/`jpeg` features) report [`Error::UnsupportedFormat`].
 /// 未编译进来的格式解码器（通过 `bmp`/`png`/`jpeg` 特性）会返回 [`Error::UnsupportedFormat`]。
+///
+/// # Errors
+/// 数据无法被任何已启用的解码器识别，或对应的解码器被编译掉时返回 [`Error::UnsupportedFormat`]；
+/// 具体格式的解析错误由各解码器返回。
+/// Returns [`Error::UnsupportedFormat`] when the data matches no enabled decoder or
+/// its decoder was compiled out; format-specific parse errors are passed through.
 #[cfg_attr(
    not(any(feature = "bmp", feature = "png", feature = "jpeg")),
    allow(dead_code)
@@ -55,6 +61,9 @@ pub fn decode_image(bytes: &[u8]) -> Result<Texture, Error> {
 /// Channels: 1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA.
 /// 通道数：1 = 灰度，2 = 灰度+alpha，3 = RGB，4 = RGBA。
 #[cfg_attr(not(any(feature = "png", feature = "jpeg")), allow(dead_code))]
+// The channel-decode closure uses single-letter channel variables; idiomatic here.
+// 通道解码闭包使用单字母通道变量；在此处是惯用法。
+#[expect(clippy::many_single_char_names)]
 pub(crate) fn expand<F>(
    out: &mut Vec<ColorRgba8>,
    channels: usize,

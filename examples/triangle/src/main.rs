@@ -1,3 +1,5 @@
+//! Triangle demo: a rotating textured triangle.
+//! 三角形示例：一个旋转的带纹理三角形。
 use he3d::{
    BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, Quat, RenderObject,
    Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3, create_backend,

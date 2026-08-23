@@ -14,9 +14,17 @@ use he3d_platform::{
 /// SDL3 后端构造错误。
 #[derive(Clone, Debug)]
 pub enum BackendError {
+   /// SDL initialization failed.
+   /// SDL 初始化失败。
    Init(String),
+   /// An SDL subsystem failed to start.
+   /// SDL 子系统启动失败。
    Sdl(String),
+   /// Window creation failed.
+   /// 窗口创建失败。
    Window(String),
+   /// Texture creation failed.
+   /// 纹理创建失败。
    Texture(String),
 }
 
@@ -128,10 +136,15 @@ impl Platform for SdlBackend {
          .ensure_texture(width, height)
          .map_err(|_| PlatformError::BackendUnavailable)?;
 
-      // `ColorRgba8` is `#[repr(C)]` with four `u8` fields, so its slice is layout-compatible with `[u8; 4]` and safe to view as bytes.
-      // `ColorRgba8` 是 `#[repr(C)]`，包含四个 `u8` 字段，因此其切片与`[u8; 4]` 布局兼容，可以安全地按字节查看。
+      // SAFETY: `ColorRgba8` is `#[repr(C)]` with four `u8` fields, so a
+      // `&[ColorRgba8]` is layout-compatible with `&[u8; 4]`; the `size_of == 4`
+      // assertion above guards this, and the length stays in-bounds because
+      // `pixels.len() * 4` mirrors the exact byte count of the slice.
+      // 安全性：`ColorRgba8` 是 `#[repr(C)]` 且含四个 `u8` 字段，因此 `&[ColorRgba8]`
+      // 与 `&[u8; 4]` 布局兼容；上面的 `size_of == 4` 断言为此兜底，且 `pixels.len() * 4`
+      // 与该切片的实际字节数严格一致，不会越界。
       let bytes =
-         unsafe { core::slice::from_raw_parts(pixels.as_ptr() as *const u8, pixels.len() * 4) };
+         unsafe { core::slice::from_raw_parts(pixels.as_ptr().cast::<u8>(), pixels.len() * 4) };
 
       let Self {
          canvas, texture, ..
@@ -148,6 +161,12 @@ impl Platform for SdlBackend {
       Ok(())
    }
 
+   // SDL keycodes are enum-backed `u32` values that always fit in the `i32`
+   // `KeyCode` space (the SDL extended-key mask lives below `i32::MAX`), so the
+   // wrapping cast cannot occur in practice.
+   // SDL 键码是由枚举承载的 `u32` 值，且始终能容纳在 `i32` 的 `KeyCode` 空间中
+   // （SDL 扩展键掩码低于 `i32::MAX`），因此实际不会发生回绕。
+   #[expect(clippy::cast_possible_wrap)]
    fn poll_events(&mut self) -> Vec<Event> {
       let mut events = Vec::new();
       for event in self.event_pump.poll_iter() {

@@ -13,6 +13,12 @@ use he3d_math::{Vec2, Vec3};
 /// `vn` 及其他行（`o`、`s`、`mtllib`、`usemtl`、注释）被忽略。
 /// Negative indices are rejected by skipping that face.
 /// 负索引通过跳过该面来拒绝。
+///
+/// # Errors
+/// 输入不是合法 UTF-8、解析失败，或产出的网格无效（空、顶点数不是 3 的倍数、超过
+/// 顶点上限）时返回相应错误。
+/// Returns an error when the input is not valid UTF-8, when parsing fails, or when
+/// the produced mesh is invalid (empty, non-triangle vertex count, or over budget).
 pub fn parse_obj(bytes: &[u8]) -> Result<Mesh, Error> {
    let text = core::str::from_utf8(bytes).map_err(|_| Error::InvalidData)?;
 

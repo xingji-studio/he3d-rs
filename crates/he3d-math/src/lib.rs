@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![forbid(unsafe_code)]
 
 //! HE3D math layer.
 //! HE3D 数学层。
@@ -24,9 +25,17 @@ pub use glam::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
 /// Semantic aliases so call sites read as domain types rather than raw `glam` names. These are the portable surface of this crate.
 /// 语义别名，使调用处读起来像领域类型而非原始的 `glam` 名称。这些别名是本 crate 的可移植表面。
 pub type Vector2 = Vec2;
+/// Alias of [`Vector2`] with a domain-friendly name.
+/// [`Vector2`] 的领域友好别名。
 pub type Vector3 = Vec3;
+/// Alias of [`Vec3`] with a domain-friendly name.
+/// [`Vec3`] 的领域友好别名。
 pub type Vector4 = Vec4;
+/// Alias of [`Vec4`] with a domain-friendly name.
+/// [`Vec4`] 的领域友好别名。
 pub type Matrix4 = Mat4;
+/// Alias of [`Mat4`] with a domain-friendly name.
+/// [`Mat4`] 的领域友好别名。
 pub type Quaternion = Quat;
 
 /// Angle-unit conversion helpers.
@@ -41,12 +50,18 @@ pub mod conv {
    /// 乘以它可将弧度转换为度。
    pub const RAD_TO_DEG: f32 = 180.0 / PI;
 
+   /// Convert an angle in degrees to radians.
+   /// 将角度从度转换为弧度。
    #[inline]
+   #[must_use]
    pub fn deg_to_rad(degrees: f32) -> f32 {
       degrees * DEG_TO_RAD
    }
 
+   /// Convert an angle in radians to degrees.
+   /// 将角度从弧度转换为度。
    #[inline]
+   #[must_use]
    pub fn rad_to_deg(radians: f32) -> f32 {
       radians * RAD_TO_DEG
    }

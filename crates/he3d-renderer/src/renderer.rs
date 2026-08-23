@@ -29,17 +29,27 @@ pub struct Renderer {
 impl Renderer {
    /// Allocate a framebuffer, validating size and budget.
    /// 分配帧缓冲，校验尺寸与预算。
+   ///
+   /// # Errors
+   /// 尺寸为 0、超过 [`MAX_FRAMEBUFFER_PIXELS`] 预算，或尺寸乘积溢出时返回相应错误。
+   /// Returns an error when a dimension is zero, when the pixel budget
+   /// exceeds `MAX_FRAMEBUFFER_PIXELS`, or when the product overflows.
+   ///
+   /// # Panics
+   /// 内建 2×2 回退棋盘纹理构造失败时 panic（静态上不可能发生）。
+   /// Panics only if the built-in 2×2 fallback texture cannot be constructed,
+   /// which is statically impossible.
    pub fn new(config: RendererConfig) -> Result<Self, Error> {
       if config.width == 0 || config.height == 0 {
          return Err(Error::InvalidSize);
       }
-      let pixel_count = (config.width as u64)
-         .checked_mul(config.height as u64)
+      let pixel_count = u64::from(config.width)
+         .checked_mul(u64::from(config.height))
          .ok_or(Error::Overflow)?;
       if pixel_count > MAX_FRAMEBUFFER_PIXELS {
          return Err(Error::InvalidSize);
       }
-      let count = pixel_count as usize;
+      let count = usize::try_from(pixel_count).expect("framebuffer budget fits host usize");
       let missing_texture = Texture::new(
          2,
          2,
@@ -61,22 +71,34 @@ impl Renderer {
       })
    }
 
+   /// Framebuffer width in pixels.
+   /// 帧缓冲宽度（像素）。
+   #[must_use]
    pub fn width(&self) -> u32 {
       self.width
    }
 
+   /// Framebuffer height in pixels.
+   /// 帧缓冲高度（像素）。
+   #[must_use]
    pub fn height(&self) -> u32 {
       self.height
    }
 
    /// The rendered frame, top-to-bottom, left-to-right.
    /// 渲染完成的帧，从上到下、从左到右。
+   #[must_use]
    pub fn pixels(&self) -> &[ColorRgba8] {
       &self.color_buf
    }
 
    /// Draw the scene into the framebuffer.
    /// 将场景绘制到帧缓冲中。
+   ///
+   /// # Errors
+   /// `camera.near` 或 `camera.fov_y_degrees` 不是有限正数时返回 [`Error::InvalidSize`]。
+   /// Returns [`Error::InvalidSize`] when `camera.near` or `camera.fov_y_degrees`
+   /// is not a positive finite number.
    pub fn render(&mut self, scene: &Scene, camera: &Camera, clear_color: Rgb) -> Result<(), Error> {
       if !camera.near.is_finite() || camera.near <= 0.0 {
          return Err(Error::InvalidSize);
@@ -120,6 +142,11 @@ impl Renderer {
       self.depth_buf.fill(0.0);
    }
 
+   // Framebuffer dimensions are bounded by MAX_FRAMEBUFFER_PIXELS, so the
+   // u32→f32 conversions in this function cannot meaningfully lose precision.
+   // 帧缓冲尺寸受 MAX_FRAMEBUFFER_PIXELS 约束，因此本函数中的 u32→f32
+   // 转换不会产生有意义的精度损失。
+   #[expect(clippy::cast_precision_loss)]
    fn draw_mesh(
       &mut self,
       mesh: &Mesh,
@@ -213,6 +240,17 @@ impl Renderer {
       }
    }
 
+   // The casts below are deliberate rasterizer math: screen coordinates are
+   // bounded by the framebuffer size, fixed-point lighting mirrors the reference
+   // renderer, and the x/y-paired names are idiomatic here.
+   // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照
+   // 与参考渲染器一致，x/y 成对命名在此处是惯用法。
+   #[expect(
+      clippy::cast_possible_truncation,
+      clippy::cast_precision_loss,
+      clippy::cast_sign_loss,
+      clippy::similar_names
+   )]
    fn rasterize_textured(
       &mut self,
       view: &[Vec3; 3],
@@ -221,18 +259,18 @@ impl Renderer {
       light: Rgb,
       tex: &Texture,
    ) {
-      let min_xf = screen[0].x.min(screen[1].x).min(screen[2].x);
-      let max_xf = screen[0].x.max(screen[1].x).max(screen[2].x);
-      let min_yf = screen[0].y.min(screen[1].y).min(screen[2].y);
-      let max_yf = screen[0].y.max(screen[1].y).max(screen[2].y);
+      let left_f = screen[0].x.min(screen[1].x).min(screen[2].x);
+      let right_f = screen[0].x.max(screen[1].x).max(screen[2].x);
+      let top_f = screen[0].y.min(screen[1].y).min(screen[2].y);
+      let bottom_f = screen[0].y.max(screen[1].y).max(screen[2].y);
 
-      let width_i = self.width as i64;
-      let height_i = self.height as i64;
-      let mn_x = (min_xf as i64).clamp(0, width_i - 1);
-      let mx_x = (max_xf as i64).saturating_add(1).clamp(0, width_i - 1);
-      let mn_y = (min_yf as i64).clamp(0, height_i - 1);
-      let mx_y = (max_yf as i64).saturating_add(1).clamp(0, height_i - 1);
-      if mn_x > mx_x || mn_y > mx_y {
+      let width_i = i64::from(self.width);
+      let height_i = i64::from(self.height);
+      let x_start = (left_f as i64).clamp(0, width_i - 1);
+      let x_end = (right_f as i64).saturating_add(1).clamp(0, width_i - 1);
+      let y_start = (top_f as i64).clamp(0, height_i - 1);
+      let y_end = (bottom_f as i64).saturating_add(1).clamp(0, height_i - 1);
+      if x_start > x_end || y_start > y_end {
          return;
       }
 
@@ -266,9 +304,9 @@ impl Renderer {
       let lb = ((light.b * 256.0) as i32).clamp(0, 512);
 
       let stride = self.width as usize;
-      for y in mn_y..=mx_y {
+      for y in y_start..=y_end {
          let py = y as f32 + 0.5;
-         let px0 = mn_x as f32 + 0.5;
+         let px0 = x_start as f32 + 0.5;
          let mut w0 = ((x1 - px0) * (y2 - py) - (y1 - py) * (x2 - px0)) * inv_a;
          let mut w1 = ((x2 - px0) * (y0 - py) - (y2 - py) * (x0 - px0)) * inv_a;
          let mut w2 = 1.0 - w0 - w1;
@@ -277,7 +315,7 @@ impl Renderer {
          let mut cvz = w0 * uz0.y + w1 * uz1.y + w2 * uz2.y;
 
          let row = (y as usize) * stride;
-         for x in mn_x..=mx_x {
+         for x in x_start..=x_end {
             let idx = row + x as usize;
             if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 && ciz > self.depth_buf[idx] {
                self.depth_buf[idx] = ciz;
@@ -365,12 +403,18 @@ fn project_triangle(
 }
 
 fn triangle_outside_viewport(screen: &[Vec2; 3], width: u32, height: u32) -> bool {
-   let w = width as f32;
-   let h = height as f32;
-   (screen[0].x < 0.0 && screen[1].x < 0.0 && screen[2].x < 0.0)
-      || (screen[0].x >= w && screen[1].x >= w && screen[2].x >= w)
-      || (screen[0].y < 0.0 && screen[1].y < 0.0 && screen[2].y < 0.0)
-      || (screen[0].y >= h && screen[1].y >= h && screen[2].y >= h)
+   // Viewport size is bounded by MAX_FRAMEBUFFER_PIXELS, so u32→f32 is exact enough
+   // for these comparisons.
+   // 视口尺寸受 MAX_FRAMEBUFFER_PIXELS 约束，因此 u32→f32 对这些比较而言足够精确。
+   #[expect(clippy::cast_precision_loss)]
+   {
+      let w = width as f32;
+      let h = height as f32;
+      (screen[0].x < 0.0 && screen[1].x < 0.0 && screen[2].x < 0.0)
+         || (screen[0].x >= w && screen[1].x >= w && screen[2].x >= w)
+         || (screen[0].y < 0.0 && screen[1].y < 0.0 && screen[2].y < 0.0)
+         || (screen[0].y >= h && screen[1].y >= h && screen[2].y >= h)
+   }
 }
 
 fn screen_triangle_area(screen: &[Vec2; 3]) -> f32 {
@@ -590,7 +634,7 @@ mod tests {
       let renderer = render_triangle(64, 64);
       // Frozen snapshot of a known scene; guards against accidental renderer regressions. Regenerate by deleting this value and reading the failure output.
       // 已知场景的固定快照，防止渲染器意外回归。如需重新生成，请删除该值并读取失败输出。
-      assert_eq!(fnv1a_pixels(renderer.pixels()), 8090596331343206561);
+      assert_eq!(fnv1a_pixels(renderer.pixels()), 8_090_596_331_343_206_561);
    }
 
    #[test]
@@ -734,7 +778,7 @@ mod tests {
       // 失效的网格 id。
       let mut scene = Scene::new();
       let stale = scene.meshes.insert(Mesh::triangle(1.0, 1.0).unwrap());
-      scene.meshes.remove(stale);
+      let _ = scene.meshes.remove(stale);
       scene.spawn(RenderObject {
          mesh: stale,
          texture: None,

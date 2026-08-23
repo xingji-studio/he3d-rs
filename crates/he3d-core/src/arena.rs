@@ -20,12 +20,18 @@ pub struct Id<T> {
 }
 
 impl<T> Id<T> {
+   /// The slot index of this handle.
+   /// 此句柄的槽位索引。
    #[inline]
+   #[must_use]
    pub fn index(self) -> u32 {
       self.index
    }
 
+   /// The generation of this handle.
+   /// 此句柄的代际。
    #[inline]
+   #[must_use]
    pub fn generation(self) -> u32 {
       self.generation
    }
@@ -98,6 +104,9 @@ pub struct Arena<T> {
 }
 
 impl<T> Arena<T> {
+   /// Create an empty arena.
+   /// 创建一个空 arena。
+   #[must_use]
    pub fn new() -> Self {
       Self {
          slots: Vec::new(),
@@ -106,6 +115,9 @@ impl<T> Arena<T> {
       }
    }
 
+   /// Create an empty arena with storage reserved for `capacity` values.
+   /// 创建一个预留 `capacity` 个值存储空间的空 arena。
+   #[must_use]
    pub fn with_capacity(capacity: usize) -> Self {
       Self {
          slots: Vec::with_capacity(capacity),
@@ -116,6 +128,10 @@ impl<T> Arena<T> {
 
    /// Insert a value and return its handle.
    /// 插入一个值并返回其句柄。
+   ///
+   /// # Panics
+   /// 当活跃槽位数量超过 `u32` 上限时 panic（实践中不可能达到）。
+   /// Panics if the number of live slots exceeds the `u32` index space.
    pub fn insert(&mut self, value: T) -> Id<T> {
       self.len += 1;
       if let Some(index) = self.free.pop() {
@@ -141,6 +157,9 @@ impl<T> Arena<T> {
       }
    }
 
+   /// Fetch a live value by handle.
+   /// 按句柄获取存活的值。
+   #[must_use]
    pub fn get(&self, id: Id<T>) -> Option<&T> {
       let slot = self.slots.get(id.index as usize)?;
       if slot.generation != id.generation {
@@ -149,6 +168,9 @@ impl<T> Arena<T> {
       slot.value.as_ref()
    }
 
+   /// Fetch a live value by handle, for mutation.
+   /// 按句柄获取存活的值，用于修改。
+   #[must_use]
    pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
       let slot = self.slots.get_mut(id.index as usize)?;
       if slot.generation != id.generation {
@@ -157,12 +179,16 @@ impl<T> Arena<T> {
       slot.value.as_mut()
    }
 
+   /// Whether `id` currently refers to a live value.
+   /// `id` 当前是否指向一个存活的值。
+   #[must_use]
    pub fn contains(&self, id: Id<T>) -> bool {
       self.get(id).is_some()
    }
 
    /// Remove a value, invalidating the handle.
    /// 移除一个值，并使该句柄失效。
+   #[must_use]
    pub fn remove(&mut self, id: Id<T>) -> Option<T> {
       let slot = self.slots.get_mut(id.index as usize)?;
       if slot.generation != id.generation {
@@ -175,10 +201,16 @@ impl<T> Arena<T> {
       Some(value)
    }
 
+   /// The number of live values.
+   /// 存活值的数量。
+   #[must_use]
    pub fn len(&self) -> usize {
       self.len
    }
 
+   /// Whether the arena holds no live values.
+   /// arena 是否不含任何存活值。
+   #[must_use]
    pub fn is_empty(&self) -> bool {
       self.len == 0
    }
@@ -236,7 +268,7 @@ mod tests {
    fn reused_slot_invalidates_previous_handle() {
       let mut arena = Arena::new();
       let first = arena.insert(1u32);
-      arena.remove(first);
+      let _ = arena.remove(first);
       let second = arena.insert(2u32);
       // Same slot index, but the generation advanced.
       // 槽位索引相同，但代际已经递增。
@@ -252,7 +284,7 @@ mod tests {
       let a = arena.insert("a");
       let b = arena.insert("b");
       let c = arena.insert("c");
-      arena.remove(b);
+      let _ = arena.remove(b);
       let mut seen: Vec<&str> = arena.iter().map(|(_, v)| *v).collect();
       seen.sort_unstable();
       assert_eq!(seen, ["a", "c"]);

@@ -1,3 +1,5 @@
+//! `PhysicsTest` demo: a controllable dynamic cube over a static floor.
+//! 物理测试示例：静态地板上一个可操控的动态方块。
 use he3d::{
    BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, ObjectId, PhysicsWorld,
    Platform, Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3,

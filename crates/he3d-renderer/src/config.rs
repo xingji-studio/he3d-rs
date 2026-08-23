@@ -2,6 +2,8 @@
 /// 抗锯齿模式。目前只实现了 `None`；其余模式将在后续阶段加入，且会被 [`crate::Renderer::new`] 拒绝。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AntiAliasing {
+   /// No anti-aliasing.
+   /// 无抗锯齿。
    #[default]
    None,
 }
@@ -24,6 +26,7 @@ pub struct RendererConfig {
 impl RendererConfig {
    /// A full-resolution config with no anti-aliasing.
    /// 无抗锯齿的全分辨率配置。
+   #[must_use]
    pub const fn new(width: u32, height: u32) -> Self {
       Self {
          width,

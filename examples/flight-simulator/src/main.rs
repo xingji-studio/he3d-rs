@@ -1,3 +1,5 @@
+//! Flight Simulator demo: streamed procedural terrain and a textured biplane.
+//! 飞行模拟示例：流式程序化地形与带纹理双翼机。
 mod flight_sim;
 
 use flight_sim::{

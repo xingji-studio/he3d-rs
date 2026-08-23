@@ -8,7 +8,11 @@ pub const DEFAULT_NEAR: f32 = 0.1;
 /// 针孔相机。一个普通的数值类型；它从不被存放在渲染器内部。
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Camera {
+   /// Camera position in world space.
+   /// 相机在世界空间中的位置。
    pub position: Vec3,
+   /// Camera orientation in world space.
+   /// 相机在世界空间中的朝向。
    pub orientation: Quat,
    /// Vertical field of view in degrees.
    /// 垂直视野，以度为单位。
@@ -19,6 +23,9 @@ pub struct Camera {
 }
 
 impl Camera {
+   /// Construct a camera with the default near-plane distance.
+   /// 用默认的近平面距离构造一个相机。
+   #[must_use]
    pub const fn new(position: Vec3, orientation: Quat, fov_y_degrees: f32) -> Self {
       Self {
          position,

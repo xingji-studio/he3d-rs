@@ -37,6 +37,10 @@ he3d-platform-sdl3 = { path = "crates/he3d-platform-sdl3", version = "0.1.0", de
 
 [workspace.lints.clippy]
 all = "warn"
+pedantic = "warn"
+
+[workspace.lints.rust]
+missing_docs = "warn"
 
 [profile.release]
 opt-level = 3

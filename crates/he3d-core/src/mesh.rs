@@ -26,6 +26,12 @@ pub struct Mesh {
 impl Mesh {
    /// Construct a mesh, validating invariants and computing flat normals.
    /// 构造一个网格，校验不变式并计算平面法线。
+   ///
+   /// # Errors
+   /// 顶点列表为空、超过 [`MAX_VERTEX_COUNT`]、顶点数不是 3 的倍数，或 UV 数量与顶点数不符时返回相应错误。
+   /// Returns an error when the vertex list is empty or exceeds [`MAX_VERTEX_COUNT`],
+   /// when the vertex count is not a multiple of three, or when the UV count
+   /// does not match the vertex count.
    pub fn new(vertices: Vec<Vec3>, uvs: Vec<Vec2>) -> Result<Self, Error> {
       if vertices.is_empty() || vertices.len() > MAX_VERTEX_COUNT {
          return Err(Error::InvalidSize);
@@ -47,6 +53,11 @@ impl Mesh {
 
    /// Construct a mesh from vertices only, defaulting UVs to zero.
    /// 仅从顶点构造网格，UV 默认置零。
+   ///
+   /// # Errors
+   /// 顶点列表为空、超过 [`MAX_VERTEX_COUNT`]，或顶点数不是 3 的倍数时返回相应错误。
+   /// Returns an error when the vertex list is empty or exceeds [`MAX_VERTEX_COUNT`],
+   /// or when the vertex count is not a multiple of three.
    pub fn from_vertices(vertices: Vec<Vec3>) -> Result<Self, Error> {
       let count = vertices.len();
       if count == 0 || count > MAX_VERTEX_COUNT {
@@ -58,26 +69,44 @@ impl Mesh {
       Self::new(vertices, vec![Vec2::ZERO; count])
    }
 
+   /// The number of vertices.
+   /// 顶点数量。
+   #[must_use]
    pub fn vertex_count(&self) -> usize {
       self.vertices.len()
    }
 
+   /// The number of triangles.
+   /// 三角形数量。
+   #[must_use]
    pub fn triangle_count(&self) -> usize {
       self.vertices.len() / 3
    }
 
+   /// Whether the mesh has at least one full triangle.
+   /// 网格是否至少包含一个完整三角形。
+   #[must_use]
    pub fn is_valid(&self) -> bool {
       !self.vertices.is_empty() && self.vertices.len() % 3 == 0
    }
 
+   /// The raw vertex list.
+   /// 原始顶点列表。
+   #[must_use]
    pub fn vertices(&self) -> &[Vec3] {
       &self.vertices
    }
 
+   /// The per-vertex UV list.
+   /// 逐顶点 UV 列表。
+   #[must_use]
    pub fn uvs(&self) -> &[Vec2] {
       &self.uvs
    }
 
+   /// The per-triangle flat normals.
+   /// 逐三角形平面法线。
+   #[must_use]
    pub fn triangle_normals(&self) -> &[Vec3] {
       &self.triangle_normals
    }
@@ -97,6 +126,10 @@ impl Mesh {
 
    /// A single triangle lying in the XY plane.
    /// 一个位于 XY 平面上的三角形。
+   ///
+   /// # Errors
+   /// `width` 或 `height` 不是正有限数时返回 [`Error::InvalidSize`]。
+   /// Returns [`Error::InvalidSize`] when `width` or `height` is not a positive finite number.
    pub fn triangle(width: f32, height: f32) -> Result<Self, Error> {
       if !positive_finite(width) || !positive_finite(height) {
          return Err(Error::InvalidSize);
@@ -118,6 +151,10 @@ impl Mesh {
 
    /// A flat quad on the XZ plane (two triangles).
    /// XZ 平面上的一个平面四边形（两个三角形）。
+   ///
+   /// # Errors
+   /// `width` 或 `depth` 不是正有限数时返回 [`Error::InvalidSize`]。
+   /// Returns [`Error::InvalidSize`] when `width` or `depth` is not a positive finite number.
    pub fn plane(width: f32, depth: f32) -> Result<Self, Error> {
       if !positive_finite(width) || !positive_finite(depth) {
          return Err(Error::InvalidSize);
@@ -145,6 +182,10 @@ impl Mesh {
 
    /// An axis-aligned cube (12 triangles, 36 vertices).
    /// 一个轴对齐的立方体（12 个三角形，36 个顶点）。
+   ///
+   /// # Errors
+   /// 任一尺寸不是正有限数时返回 [`Error::InvalidSize`]。
+   /// Returns [`Error::InvalidSize`] when any dimension is not a positive finite number.
    pub fn cube(width: f32, height: f32, depth: f32) -> Result<Self, Error> {
       if !positive_finite(width) || !positive_finite(height) || !positive_finite(depth) {
          return Err(Error::InvalidSize);
@@ -195,6 +236,17 @@ impl Mesh {
    ///
    /// Sizing is checked: the total vertex count must fit within [`MAX_VERTEX_COUNT`] without overflowing.
    /// 尺寸经过校验：顶点总数必须在不溢出的前提下落在 [`MAX_VERTEX_COUNT`] 之内。
+   ///
+   /// # Errors
+   /// `radius` 不是正有限数、总顶点数超过 [`MAX_VERTEX_COUNT`]，或计算过程溢出时返回相应错误。
+   /// Returns an error when `radius` is not a positive finite number, when the total
+   /// vertex count exceeds [`MAX_VERTEX_COUNT`], or when the computation overflows.
+   // UV coordinates are built from loop indices bounded by `segments`/`rings`; the
+   // f32 mantissa is far larger than any realistic tessellation count, so the
+   // conversion cannot meaningfully lose precision here.
+   // UV 坐标由受 `segments`/`rings` 约束的循环索引构造；f32 的有效数字远大于任何
+   // 现实的细分数量，因此这里的转换不会产生有意义的精度损失。
+   #[expect(clippy::cast_precision_loss)]
    pub fn sphere(radius: f32, segments: u32, rings: u32) -> Result<Self, Error> {
       if !positive_finite(radius) {
          return Err(Error::InvalidSize);

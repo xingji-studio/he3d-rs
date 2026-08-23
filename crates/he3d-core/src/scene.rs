@@ -6,10 +6,20 @@ use crate::{
 /// 一个可渲染实例：一个网格、可选纹理、变换和材质。
 #[derive(Clone, Debug)]
 pub struct RenderObject {
+   /// The mesh to draw.
+   /// 要绘制的网格。
    pub mesh: MeshId,
+   /// Optional texture applied on top of the material tint.
+   /// 叠加在材质色调上的可选纹理。
    pub texture: Option<TextureId>,
+   /// Placement in world space.
+   /// 世界空间中的放置。
    pub transform: Transform,
+   /// Surface shading parameters.
+   /// 表面着色参数。
    pub material: Material,
+   /// Whether the object participates in rendering.
+   /// 对象是否参与渲染。
    pub visible: bool,
 }
 
@@ -19,13 +29,24 @@ pub struct RenderObject {
 /// Resources live in [`Arena`]s; the scene exposes the arenas directly so callers can insert assets and get stable handles back.
 /// 资源存放在 [`Arena`] 中；场景直接暴露这些 arena，以便调用方可以插入资源并获得稳定的句柄。
 pub struct Scene {
+   /// Mesh storage.
+   /// 网格存储。
    pub meshes: Arena<Mesh>,
+   /// Texture storage.
+   /// 纹理存储。
    pub textures: Arena<Texture>,
+   /// Render-object storage.
+   /// 渲染对象存储。
    pub objects: Arena<RenderObject>,
+   /// The single directional light of the scene.
+   /// 场景中唯一的方向光。
    pub light: DirectionalLight,
 }
 
 impl Scene {
+   /// Create an empty scene.
+   /// 创建一个空场景。
+   #[must_use]
    pub fn new() -> Self {
       Self {
          meshes: Arena::new(),
@@ -82,7 +103,7 @@ mod tests {
          visible: true,
       });
       assert_eq!(scene.objects.len(), 1);
-      scene.objects.remove(object);
+      let _ = scene.objects.remove(object);
       assert!(scene.objects.is_empty());
    }
 }

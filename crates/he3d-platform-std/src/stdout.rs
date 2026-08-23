@@ -1,4 +1,5 @@
-use std::io::{self, Write};
+use std::fmt::Write;
+use std::io::{self, Write as _};
 use std::time::{Duration, Instant};
 
 use he3d_platform::{
@@ -10,7 +11,11 @@ use he3d_platform::{
 /// 标准库标准输出（stdout）后端构造错误。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StdBackendError {
+   /// A zero or invalid framebuffer size was requested.
+   /// 请求了为零或无效的帧缓冲尺寸。
    InvalidSize,
+   /// Raw-mode input configuration on stdin failed.
+   /// 标准输入原始模式配置失败。
    InputConfigureFailed,
 }
 
@@ -37,6 +42,10 @@ impl core::fmt::Display for StdBackendError {
 ///
 /// When stdin is not a TTY (e.g. CI pipelines), raw input configuration is skipped and `poll_events` returns nothing; presentation still works, so the backend is usable for headless smoke tests.
 /// 当标准输入不是 TTY（例如 CI 流水线）时，跳过原始输入配置，`poll_events` 不返回任何内容；呈现仍然可用，因此该后端可用于无头冒烟测试。
+// The stdin state machine legitimately tracks many boolean flags; grouping them
+// would obscure the terminal-mode transitions they represent.
+// 标准输入状态机合理地持有许多布尔标志；强行分组反而会掩盖它们所代表的终端模式切换。
+#[expect(clippy::struct_excessive_bools)]
 pub struct StdBackend {
    columns: u32,
    rows: u32,
@@ -91,12 +100,18 @@ impl StdBackend {
    }
 
    fn configure_input(&mut self) -> Result<(), StdBackendError> {
+      // SAFETY: `isatty` takes a valid file descriptor (`STDIN_FILENO`) and returns an int.
+      // 安全性：`isatty` 接收有效的文件描述符（`STDIN_FILENO`）并返回一个整数。
       if unsafe { libc::isatty(libc::STDIN_FILENO) } == 0 {
          return Ok(());
       }
 
       let mut original: libc::termios = unsafe { std::mem::zeroed() };
-      if unsafe { libc::tcgetattr(libc::STDIN_FILENO, &mut original) } != 0 {
+      // SAFETY: `original` points to a valid `termios` buffer for the whole call, and
+      // `STDIN_FILENO` is a valid descriptor; `tcgetattr` initializes the struct on success.
+      // 安全性：`original` 在整个调用期间指向有效的 `termios` 缓冲区，`STDIN_FILENO`
+      // 是有效描述符；成功时 `tcgetattr` 会初始化该结构体。
+      if unsafe { libc::tcgetattr(libc::STDIN_FILENO, std::ptr::from_mut(&mut original)) } != 0 {
          return Err(StdBackendError::InputConfigureFailed);
       }
       self.termios = Some(original);
@@ -106,16 +121,28 @@ impl StdBackend {
       raw.c_iflag &= !(libc::IXON | libc::ICRNL);
       raw.c_cc[libc::VMIN] = 0;
       raw.c_cc[libc::VTIME] = 0;
-      if unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw) } != 0 {
+      // SAFETY: `raw` is fully initialized (a copy of `original`), `STDIN_FILENO` is valid,
+      // and `TCSANOW` applies the change synchronously.
+      // 安全性：`raw` 已完全初始化（`original` 的副本），`STDIN_FILENO` 有效，
+      // `TCSANOW` 同步应用该改动。
+      if unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, std::ptr::from_ref(&raw)) }
+         != 0
+      {
          return Err(StdBackendError::InputConfigureFailed);
       }
 
+      // SAFETY: `fcntl` with `F_GETFL` on the valid `STDIN_FILENO` returns the current flags.
+      // 安全性：在有效的 `STDIN_FILENO` 上以 `F_GETFL` 调用 `fcntl` 返回当前标志位。
       let flags = unsafe { libc::fcntl(libc::STDIN_FILENO, libc::F_GETFL) };
       if flags < 0 {
          self.restore_input();
          return Err(StdBackendError::InputConfigureFailed);
       }
       self.stdin_flags = flags;
+      // SAFETY: `flags` came from `F_GETFL` above and is a valid bitmask for `F_SETFL`;
+      // setting `O_NONBLOCK` on stdin cannot fail in a way we can recover from.
+      // 安全性：`flags` 来自上面的 `F_GETFL`，是 `F_SETFL` 的有效位掩码；在标准输入上
+      // 设置 `O_NONBLOCK` 不会以我们无法恢复的方式失败。
       unsafe {
          libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL, flags | libc::O_NONBLOCK);
       }
@@ -127,11 +154,21 @@ impl StdBackend {
       // Best-effort input restore: the destructor cannot report failures, and panicking here (e.g. broken stdout) would escalate to an abort.
       // 尽力恢复终端：析构函数无法报告失败，而在此处 panic（例如标准输出损坏）会升级为直接中止进程。
       if let Some(termios) = self.termios.take() {
+         // SAFETY: `termios` is the previously saved, still-valid terminal state and
+         // `STDIN_FILENO` is a valid descriptor; a failure only means the restore is skipped.
+         // 安全性：`termios` 是先前保存且仍有效的终端状态，`STDIN_FILENO` 有效；
+         // 失败只意味着恢复被跳过。
          unsafe {
-            let _ = libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &termios);
+            let _ = libc::tcsetattr(
+               libc::STDIN_FILENO,
+               libc::TCSANOW,
+               std::ptr::from_ref(&termios),
+            );
          }
       }
       if self.stdin_flags >= 0 {
+         // SAFETY: `self.stdin_flags` was returned by `F_GETFL` earlier and is a valid mask.
+         // 安全性：`self.stdin_flags` 是先前由 `F_GETFL` 返回的有效掩码。
          unsafe {
             let _ = libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL, self.stdin_flags);
          }
@@ -142,15 +179,21 @@ impl StdBackend {
 
    fn press_key(&mut self, key: KeyCode, now: f64, events: &mut Vec<Event>) {
       let key = if key == 3 { 27 } else { normalize_key(key) };
-      if (0..256).contains(&key) {
-         self.key_last_seen[key as usize] = now;
-         if !self.key_down[key as usize] {
-            self.key_down[key as usize] = true;
+      // The index is only used after the `(0..256)` bounds check, so the sign
+      // loss cannot occur. 索引只在 `(0..256)` 边界检查之后使用，因此不会发生符号丢失。
+      #[expect(clippy::cast_sign_loss)]
+      {
+         if (0..256).contains(&key) {
+            let index = key as usize;
+            self.key_last_seen[index] = now;
+            if !self.key_down[index] {
+               self.key_down[index] = true;
+               events.push(Event::KeyDown(key));
+            }
+         } else {
             events.push(Event::KeyDown(key));
+            events.push(Event::KeyUp(key));
          }
-      } else {
-         events.push(Event::KeyDown(key));
-         events.push(Event::KeyUp(key));
       }
    }
 
@@ -172,6 +215,10 @@ impl Drop for StdBackend {
 }
 
 impl Platform for StdBackend {
+   // `fg`/`bg` (and their `has_*` flags) are intentionally parallel names for the
+   // foreground/background ANSI state tracking.
+   // `fg`/`bg`（及其 `has_*` 标志）是前景/背景 ANSI 状态跟踪刻意使用的平行命名。
+   #[expect(clippy::similar_names)]
    fn present(
       &mut self,
       width: u32,
@@ -219,15 +266,12 @@ impl Platform for StdBackend {
             let bottom = bottom_row[src_x];
 
             if !has_fg || fg != top {
-               out.push_str(&format!("\x1b[38;2;{};{};{}m", top.r, top.g, top.b));
+               let _ = write!(out, "\x1b[38;2;{};{};{}m", top.r, top.g, top.b);
                fg = top;
                has_fg = true;
             }
             if !has_bg || bg != bottom {
-               out.push_str(&format!(
-                  "\x1b[48;2;{};{};{}m",
-                  bottom.r, bottom.g, bottom.b
-               ));
+               let _ = write!(out, "\x1b[48;2;{};{};{}m", bottom.r, bottom.g, bottom.b);
                bg = bottom;
                has_bg = true;
             }
@@ -253,18 +297,27 @@ impl Platform for StdBackend {
 
       let mut buffer = [0u8; 64];
       loop {
+         // SAFETY: `buffer` is a valid `[u8; 64]`, so `as_mut_ptr` points to
+         // writable memory of `buffer.len()` bytes; `STDIN_FILENO` is a valid
+         // descriptor opened for reading. A short read or an error just exits the loop.
+         // 安全性：`buffer` 是有效的 `[u8; 64]`，因此 `as_mut_ptr` 指向 `buffer.len()`
+         // 字节的可写内存；`STDIN_FILENO` 是以读方式打开的有效描述符。短读或错误只会退出循环。
          let n = unsafe {
             libc::read(
                libc::STDIN_FILENO,
-               buffer.as_mut_ptr() as *mut libc::c_void,
+               buffer.as_mut_ptr().cast::<libc::c_void>(),
                buffer.len(),
             )
          };
          if n <= 0 {
             break;
          }
-         for &b in &buffer[..n as usize] {
-            let raw = b as KeyCode;
+         // `n > 0` is checked above, so the isize→usize conversion cannot lose the sign.
+         // 上面已检查 `n > 0`，因此 isize→usize 转换不会丢失符号。
+         #[expect(clippy::cast_sign_loss)]
+         let count = n as usize;
+         for &b in &buffer[..count] {
+            let raw = i32::from(b);
             if self.escape_sequence_active {
                if is_escape_final(raw) {
                   self.escape_sequence_active = false;
@@ -292,10 +345,11 @@ impl Platform for StdBackend {
          self.flush_pending_escape(now, &mut events);
       }
 
-      for key in 0..256 {
-         if self.key_down[key] && now - self.key_last_seen[key] > 0.35 {
-            self.key_down[key] = false;
-            events.push(Event::KeyUp(key as KeyCode));
+      for key in 0u8..=255u8 {
+         let index = usize::from(key);
+         if self.key_down[index] && now - self.key_last_seen[index] > 0.35 {
+            self.key_down[index] = false;
+            events.push(Event::KeyUp(i32::from(key)));
          }
       }
       events
@@ -319,7 +373,7 @@ impl Platform for StdBackend {
 }
 
 fn is_escape_lead(key: KeyCode) -> bool {
-   key == b'[' as KeyCode || key == b'O' as KeyCode
+   key == i32::from(b'[') || key == i32::from(b'O')
 }
 
 fn is_escape_final(key: KeyCode) -> bool {

@@ -13,6 +13,9 @@ pub struct Material {
 }
 
 impl Material {
+   /// Construct a material from a tint.
+   /// 用色调构造一个材质。
+   #[must_use]
    pub const fn new(tint: Rgb) -> Self {
       Self { tint }
    }

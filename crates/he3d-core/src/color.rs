@@ -8,9 +8,17 @@ use core::ops::{Add, Mul, Sub};
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash)]
 #[repr(C)]
 pub struct ColorRgba8 {
+   /// Red channel.
+   /// 红色通道。
    pub r: u8,
+   /// Green channel.
+   /// 绿色通道。
    pub g: u8,
+   /// Blue channel.
+   /// 蓝色通道。
    pub b: u8,
+   /// Alpha channel.
+   /// 透明通道。
    pub a: u8,
 }
 
@@ -21,19 +29,31 @@ pub struct ColorRgba8 {
 const _: () = assert!(core::mem::size_of::<ColorRgba8>() == 4);
 
 impl ColorRgba8 {
+   /// Opaque black.
+   /// 不透明黑色。
    pub const BLACK: Self = Self::from_rgba(0, 0, 0, 255);
+   /// Opaque white.
+   /// 不透明白色。
    pub const WHITE: Self = Self::from_rgba(255, 255, 255, 255);
+   /// Fully transparent black.
+   /// 完全透明的黑色。
    pub const TRANSPARENT: Self = Self::from_rgba(0, 0, 0, 0);
    /// The conventional "missing texture" color.
    /// 约定的“缺失纹理”颜色。
    pub const MAGENTA: Self = Self::from_rgb(255, 0, 255);
 
+   /// Pack four components into a color.
+   /// 将四个分量打包成一个颜色。
    #[inline]
+   #[must_use]
    pub const fn from_rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
       Self { r, g, b, a }
    }
 
+   /// Pack three components into an opaque color.
+   /// 将三个分量打包成一个不透明颜色。
    #[inline]
+   #[must_use]
    pub const fn from_rgb(r: u8, g: u8, b: u8) -> Self {
       Self { r, g, b, a: 255 }
    }
@@ -41,11 +61,12 @@ impl ColorRgba8 {
    /// Convert to linear-light components in `[0, 1]`.
    /// 转换为 `[0, 1]` 范围内的线性光分量。
    #[inline]
+   #[must_use]
    pub fn to_linear(self) -> Rgb {
       Rgb {
-         r: self.r as f32 / 255.0,
-         g: self.g as f32 / 255.0,
-         b: self.b as f32 / 255.0,
+         r: f32::from(self.r) / 255.0,
+         g: f32::from(self.g) / 255.0,
+         b: f32::from(self.b) / 255.0,
       }
    }
 }
@@ -57,16 +78,29 @@ impl ColorRgba8 {
 /// 分量通常位于 `[0, 1]` 内，但默认不会截断；光照运算可能产生超出该范围的值，转换为 [`ColorRgba8`] 时会进行截断。
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct Rgb {
+   /// Red component.
+   /// 红色分量。
    pub r: f32,
+   /// Green component.
+   /// 绿色分量。
    pub g: f32,
+   /// Blue component.
+   /// 蓝色分量。
    pub b: f32,
 }
 
 impl Rgb {
+   /// Pure black.
+   /// 纯黑。
    pub const BLACK: Self = Self::new(0.0, 0.0, 0.0);
+   /// Pure white.
+   /// 纯白。
    pub const WHITE: Self = Self::new(1.0, 1.0, 1.0);
 
+   /// Construct a color from three components.
+   /// 用三个分量构造一个颜色。
    #[inline]
+   #[must_use]
    pub const fn new(r: f32, g: f32, b: f32) -> Self {
       Self { r, g, b }
    }
@@ -79,6 +113,11 @@ impl Rgb {
    /// This matches the reference renderer's `(uint8_t)(color * 255.0f)` behavior.
    /// 这与参考渲染器的 `(uint8_t)(color * 255.0f)` 行为一致。
    #[inline]
+   #[must_use]
+   // The float→u8 truncation and sign loss are the documented, reference-matching
+   // quantization behavior of this function; do not "fix" the casts.
+   // float→u8 的截断与符号丢失正是本函数文档化、且与参考渲染器一致的量化行为，请勿“修正”这些转换。
+   #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
    pub fn to_rgba8(self) -> ColorRgba8 {
       ColorRgba8 {
          r: (self.r * 255.0) as u8,

@@ -6,8 +6,17 @@ use super::MAX_IMAGE_DIMENSION;
 /// Decode a BMP image from memory into RGBA8.
 /// 从内存解码 BMP 图像为 RGBA8。
 ///
-/// Supports 24/32-bit uncompressed (BI_RGB) bitmaps, bottom-up or top-down (negative height), with rows padded to 4 bytes.
-/// 支持 24/32 位未压缩（BI_RGB）位图，自底向上或自顶向下（负高度），行按 4 字节对齐。
+/// Supports `24`/`32`-bit uncompressed (`BI_RGB`) bitmaps, bottom-up or top-down
+/// (negative height), with rows padded to 4 bytes.
+/// 支持 `24`/`32` 位未压缩（`BI_RGB`）位图，自底向上或自顶向下（负高度），行按 4 字节对齐。
+///
+/// # Errors
+/// 数据不是合法的 BMP、尺寸非法或溢出，或使用不支持的压缩格式/位深时返回相应错误。
+/// Returns an error when the data is not a valid BMP, when dimensions are invalid
+/// or overflow, or when the format uses unsupported compression or bit depth.
+// BMP 解码循环惯用单字母循环变量与 BGR 分量名；刻意保留。
+// Single-letter loop and BGR component names are idiomatic in this decode loop.
+#[expect(clippy::many_single_char_names)]
 pub fn decode(bytes: &[u8]) -> Result<Texture, Error> {
    if bytes.len() < 54 || bytes[0] != b'B' || bytes[1] != b'M' {
       return Err(Error::InvalidData);
@@ -35,7 +44,7 @@ pub fn decode(bytes: &[u8]) -> Result<Texture, Error> {
    };
 
    let top_down = height < 0;
-   let width = width as u32;
+   let width = width.unsigned_abs();
    let height = height.unsigned_abs();
 
    if width == 0 || height == 0 || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION {
@@ -105,7 +114,7 @@ mod tests {
       let mut b = vec![0u8; 54 + data_size];
       b[0] = b'B';
       b[1] = b'M';
-      let file_size = (54 + data_size) as u32;
+      let file_size = u32::try_from(54 + data_size).expect("test buffer fits u32");
       b[2..6].copy_from_slice(&file_size.to_le_bytes());
       b[10..14].copy_from_slice(&54u32.to_le_bytes());
       b[14..18].copy_from_slice(&40u32.to_le_bytes()); // BITMAPINFOHEADER structure / BITMAPINFOHEADER 结构体

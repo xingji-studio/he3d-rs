@@ -15,3 +15,6 @@ he3d-platform = { workspace = true, default-features = false }
 he3d-renderer = { workspace = true, default-features = false }
 he3d-assets = { workspace = true, default-features = false }
 sdl3 = { version = "0.18", features = ["unsafe_textures", "test-mode"] }
+
+[lints]
+workspace = true
