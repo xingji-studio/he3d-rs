@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "std backend: terminal framebuffer presentation, filesystem, clock, and test host"
+description = "std backend: standard-output (stdout) framebuffer presentation, filesystem, clock, and test host"
 
 [features]
 default = ["std"]

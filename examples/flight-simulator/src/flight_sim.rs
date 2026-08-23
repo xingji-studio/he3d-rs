@@ -1,12 +1,10 @@
 //! Flight simulator core logic: terrain noise, mesh generation, flight controls, camera follow, and streamed terrain tiles.
 //! 飞行模拟核心逻辑：地形噪声、网格生成、飞行控制、相机跟随和流式地形块。
 
-use he3d_core::{
+use he3d::{
    Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, RenderObject,
-   Rgb, Scene, Texture, Transform,
+   Rgb, Scene, Texture, Transform, EulerRot, PhysicsWorld, Quat, Vec2, Vec3,
 };
-use he3d_math::{EulerRot, Quat, Vec2, Vec3};
-use he3d_physics::PhysicsWorld;
 
 /// Default gravity used by the reference flight simulator.
 /// 参考飞行模拟器使用的默认重力。
@@ -630,7 +628,7 @@ impl TerrainManager {
 #[cfg(test)]
 mod tests {
    use super::*;
-   use he3d_math::Vec3;
+   use he3d::Vec3;
 
    #[test]
    fn noise_is_deterministic_and_bounded() {

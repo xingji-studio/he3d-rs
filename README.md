@@ -8,13 +8,14 @@ reference renderer (right-handed, +Z forward, inverse-depth buffer).
 
 | Crate | Purpose |
 |---|---|
+| `he3d` | **Single entry point** — depends on and re-exports every crate below; `cargo add he3d` |
 | `he3d-math` | Coordinate conventions and linear algebra via `glam` |
 | `he3d-core` | Scene graph, resources, materials, stable generational IDs |
 | `he3d-renderer` | Software rasterizer and post-processing |
 | `he3d-assets` | OBJ / glTF / BMP / PNG / JPEG byte-based decoders |
 | `he3d-physics` | `ObjectId` adapter over the [gp3d](https://github.com/xingji-studio/gp3d-rs) engine |
 | `he3d-platform` | Backend-neutral input / presentation / timing traits |
-| `he3d-platform-std` | Terminal framebuffer backend (Unix) |
+| `he3d-platform-std` | Rust standard-library backend, presenting to standard output (stdout) |
 | `he3d-platform-sdl3` | SDL3 window backend |
 
 All crates are `no_std + alloc` by default; the optional `std` feature only adds
@@ -22,15 +23,18 @@ convenience impls (`std::error::Error`) and never enables `std` for dependencies
 
 ## Quick start
 
+Presentation backends are opt-in features on `he3d` and interchangeable:
+
 ```sh
-cargo run -p he3d-triangle --features terminal        # terminal demo
-cargo run -p he3d-physics-test                        # SDL3 window (default)
-cargo run -p he3d-physics-test --features terminal -- --frames 60
-cargo run -p he3d-flight-simulator --features terminal -- --frames 60
+cargo run -p he3d-triangle --no-default-features --features std   # stdout backend
+cargo run -p he3d-physics-test                                    # SDL3 window (default)
+cargo run -p he3d-physics-test --no-default-features --features std -- --frames 60
+cargo run -p he3d-flight-simulator --no-default-features --features std -- --frames 60
 ```
 
-`--frames N` limits the run (useful headless); backends are chosen with the
-`terminal` / `sdl3` features.
+`he3d::create_backend` picks among the enabled backends at runtime (sdl3 first,
+then std), so application code never names a backend type. `--frames N` limits
+the run (useful headless).
 
 ## Build & test
 

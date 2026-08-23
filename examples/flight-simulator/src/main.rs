@@ -4,12 +4,11 @@ use flight_sim::{
    FlightCamera, FlightControls, TerrainManager, fallback_aircraft_mesh, update_camera,
    update_flight_controls,
 };
-use he3d_assets::{decode_image, parse_obj};
-use he3d_core::{Camera, Material, Mesh, RenderObject, Rgb, Scene, Transform};
-use he3d_math::{Quat, Vec3};
-use he3d_physics::PhysicsWorld;
-use he3d_platform::{BackendConfig, Event, KEY_ESCAPE, PlatformFactory};
-use he3d_renderer::{Renderer, RendererConfig};
+use he3d::{
+   BackendConfig, Camera, Event, KEY_ESCAPE, Material, Mesh, ObjectId, PhysicsWorld, Platform,
+   RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3, Quat,
+   create_backend, decode_image, parse_obj,
+};
 
 const WINDOW_WIDTH: u32 = 800;
 const WINDOW_HEIGHT: u32 = 600;
@@ -30,27 +29,24 @@ const SPAWN_POS: Vec3 = Vec3::new(0.0, 13.0, 0.0);
 const CRASH_SPEED: f32 = 3.0;
 
 fn main() {
+   let frames = parse_frames(std::env::args());
+
    let config = BackendConfig {
       title: "HE3D Flight Simulator",
       width: WINDOW_WIDTH,
       height: WINDOW_HEIGHT,
    };
-   #[cfg(feature = "sdl3")]
-   run::<he3d_platform_sdl3::SdlBackend>(config);
-   #[cfg(feature = "terminal")]
-   run::<he3d_platform_std::TerminalBackend>(config);
-}
-
-fn run<B: PlatformFactory>(config: BackendConfig<'_>) {
-   let frames = parse_frames(std::env::args());
-
-   let mut backend = match B::create(config) {
+   let backend = match create_backend(config) {
       Ok(backend) => backend,
       Err(error) => {
          eprintln!("backend init failed: {error}");
          std::process::exit(1);
       }
    };
+   run(backend, frames);
+}
+
+fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
    let mut renderer = match Renderer::new(RendererConfig::new(WINDOW_WIDTH, WINDOW_HEIGHT)) {
       Ok(renderer) => renderer,
       Err(error) => {
@@ -306,13 +302,13 @@ fn read_obj() -> Option<Mesh> {
    }
 }
 
-fn reset_plane(physics: &mut PhysicsWorld, plane: he3d_core::ObjectId) {
+fn reset_plane(physics: &mut PhysicsWorld, plane: ObjectId) {
    physics.set_transform(plane, Transform::from_position(SPAWN_POS));
    physics.set_velocity(plane, Vec3::ZERO);
    physics.set_angular_velocity(plane, Vec3::ZERO);
 }
 
-fn read_texture() -> Option<he3d_core::Texture> {
+fn read_texture() -> Option<Texture> {
    let bytes = std::fs::read(BMP_PATH).ok()?;
    match decode_image(&bytes) {
       Ok(texture) => Some(texture),

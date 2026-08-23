@@ -12,13 +12,8 @@ path = "src/main.rs"
 
 [features]
 default = ["sdl3"]
-sdl3 = ["dep:he3d-platform-sdl3"]
-terminal = ["dep:he3d-platform-std"]
+sdl3 = ["he3d/sdl3"]
+std = ["he3d/std"]
 
 [dependencies]
-he3d-core = { path = "../../crates/he3d-core" }
-he3d-math = { path = "../../crates/he3d-math" }
-he3d-platform = { path = "../../crates/he3d-platform" }
-he3d-platform-sdl3 = { path = "../../crates/he3d-platform-sdl3", optional = true }
-he3d-platform-std = { path = "../../crates/he3d-platform-std", optional = true }
-he3d-renderer = { path = "../../crates/he3d-renderer" }
+he3d = { path = "../../crates/he3d" }

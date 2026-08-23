@@ -1,0 +1,46 @@
+[package]
+name = "he3d"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HE3D: a no_std software 3D renderer, scene graph, assets, physics, and platform backends"
+keywords = ["renderer", "3d", "engine", "software", "rasterizer"]
+categories = ["game-engines", "graphics"]
+
+[features]
+# Presentation backends are opt-in and interchangeable. `create_backend` picks
+# among the enabled backends at runtime (sdl3 first, then std), so application
+# code never names a backend type.
+# 呈现后端按需选择且可互换。`create_backend` 在运行时从已启用的后端中选择
+# （先 sdl3，后 std），应用代码从不提及后端类型。
+default = []
+std = [
+    "dep:he3d-platform-std",
+    "he3d-math/std",
+    "he3d-core/std",
+    "he3d-renderer/std",
+    "he3d-assets/std",
+    "he3d-physics/std",
+    "he3d-platform/std",
+]
+sdl3 = [
+    "dep:he3d-platform-sdl3",
+    "he3d-math/std",
+    "he3d-core/std",
+    "he3d-renderer/std",
+    "he3d-assets/std",
+    "he3d-physics/std",
+    "he3d-platform/std",
+]
+
+[dependencies]
+he3d-math = { workspace = true }
+he3d-core = { workspace = true }
+he3d-renderer = { workspace = true }
+he3d-assets = { workspace = true, features = ["bmp"] }
+he3d-physics = { workspace = true }
+he3d-platform = { workspace = true }
+he3d-platform-std = { workspace = true, optional = true }
+he3d-platform-sdl3 = { workspace = true, optional = true }

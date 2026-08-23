@@ -28,7 +28,7 @@ pub enum Event {
    /// A key was pressed.
    /// 某个键被按下。
    KeyDown(KeyCode),
-   /// A key was released (may be synthesized by backends without release events, such as a terminal).
+   /// A key was released (may be synthesized by backends without release events, such as the standard-library (stdout) backend).
    /// 某个键被释放（可能由没有释放事件的后端合成，例如终端）。
    KeyUp(KeyCode),
 }
@@ -70,7 +70,7 @@ pub fn normalize_key(key: KeyCode) -> KeyCode {
 /// Backend-neutral construction parameters for a platform backend.
 /// 与后端无关的平台后端构造参数。
 ///
-/// Every backend accepts the same shape; backends without a native title (such as a terminal) simply ignore [`BackendConfig::title`].
+/// Every backend accepts the same shape; backends without a native title (such as the standard-library (stdout) backend) simply ignore [`BackendConfig::title`].
 /// 每个后端都接受相同的结构；没有原生标题的后端（如终端）会直接忽略 [`BackendConfig::title`]。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BackendConfig<'a> {
@@ -134,7 +134,7 @@ pub trait Platform {
    /// 休眠给定的毫秒数。
    fn sleep_ms(&mut self, milliseconds: u64);
 
-   /// Update the surface title. Backends without a title (e.g. a terminal) use the default no-op implementation.
+   /// Update the surface title. Backends without a title (e.g. the standard-library stdout backend) use the default no-op implementation.
    /// 更新表面标题。没有标题的后端（如终端）使用默认的空实现。
    fn set_title(&mut self, _title: &str) {}
 }

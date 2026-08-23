@@ -6,34 +6,38 @@ use he3d_platform::{
    normalize_key,
 };
 
-/// Errors from terminal backend construction.
-/// 终端后端构造错误。
+/// Errors from standard-output (stdout) backend construction.
+/// 标准库标准输出（stdout）后端构造错误。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TerminalError {
+pub enum StdBackendError {
    InvalidSize,
    InputConfigureFailed,
 }
 
-impl core::fmt::Display for TerminalError {
+impl core::fmt::Display for StdBackendError {
    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
       match self {
-         TerminalError::InvalidSize => f.write_str("invalid terminal size"),
-         TerminalError::InputConfigureFailed => f.write_str("failed to configure terminal input"),
+         StdBackendError::InvalidSize => f.write_str("invalid size"),
+         StdBackendError::InputConfigureFailed => f.write_str("failed to configure input"),
       }
    }
 }
 
-/// The std terminal backend.
-/// 标准库终端后端。
+/// The Rust standard-library backend.
+/// Rust 标准库后端。
 ///
-/// Presents an RGBA framebuffer to a Unix terminal using ANSI 24-bit color, two pixels per character cell (upper = foreground, lower = background, `U+2580`).
-/// 使用 ANSI 24 位真彩色把 RGBA 帧缓冲呈现到 Unix 终端，每个字符单元显示两个像素（上半=前景色，下半=背景色，`U+2580`）。
-/// Reads keys from stdin in raw non-blocking mode and synthesizes key-up events, since terminals do not report release events.
-/// 以原始非阻塞模式从标准输入读取按键，并合成按键释放事件，因为终端不报告释放事件。
+/// Presents an RGBA framebuffer to the standard library's standard output (stdout)
+/// using ANSI 24-bit color, two pixels per character cell (upper = foreground,
+/// lower = background, `U+2580`).
+/// 使用 ANSI 24 位真彩色把 RGBA 帧缓冲呈现到标准库标准输出（stdout），每个字符单元
+/// 显示两个像素（上半=前景色，下半=背景色，`U+2580`）。
+/// Reads keys from stdin in raw non-blocking mode and synthesizes key-up events,
+/// since standard input does not report release events.
+/// 以原始非阻塞模式从标准输入读取按键，并合成按键释放事件，因为标准输入不报告释放事件。
 ///
 /// When stdin is not a TTY (e.g. CI pipelines), raw input configuration is skipped and `poll_events` returns nothing; presentation still works, so the backend is usable for headless smoke tests.
 /// 当标准输入不是 TTY（例如 CI 流水线）时，跳过原始输入配置，`poll_events` 不返回任何内容；呈现仍然可用，因此该后端可用于无头冒烟测试。
-pub struct TerminalBackend {
+pub struct StdBackend {
    columns: u32,
    rows: u32,
    close_requested: bool,
@@ -49,12 +53,12 @@ pub struct TerminalBackend {
    first_present: bool,
 }
 
-impl PlatformFactory for TerminalBackend {
-   type CreateError = TerminalError;
+impl PlatformFactory for StdBackend {
+   type CreateError = StdBackendError;
 
-   /// Configure the terminal for `width` × `height` source pixels.
+   /// Configure the standard library's input/output for `width` × `height` source pixels.
    /// 按 `width` × `height` 源像素配置终端。
-   fn create(config: BackendConfig<'_>) -> Result<Self, TerminalError> {
+   fn create(config: BackendConfig<'_>) -> Result<Self, StdBackendError> {
       let mut backend = Self::create_raw(config.width, config.height)?;
       backend.configure_input()?;
       print!("\x1b[2J\x1b[H\x1b[?25l");
@@ -63,10 +67,10 @@ impl PlatformFactory for TerminalBackend {
    }
 }
 
-impl TerminalBackend {
-   fn create_raw(width: u32, height: u32) -> Result<Self, TerminalError> {
+impl StdBackend {
+   fn create_raw(width: u32, height: u32) -> Result<Self, StdBackendError> {
       if width == 0 || height == 0 {
-         return Err(TerminalError::InvalidSize);
+         return Err(StdBackendError::InvalidSize);
       }
       let (columns, rows) = compute_grid(width, height);
       Ok(Self {
@@ -86,14 +90,14 @@ impl TerminalBackend {
       })
    }
 
-   fn configure_input(&mut self) -> Result<(), TerminalError> {
+   fn configure_input(&mut self) -> Result<(), StdBackendError> {
       if unsafe { libc::isatty(libc::STDIN_FILENO) } == 0 {
          return Ok(());
       }
 
       let mut original: libc::termios = unsafe { std::mem::zeroed() };
       if unsafe { libc::tcgetattr(libc::STDIN_FILENO, &mut original) } != 0 {
-         return Err(TerminalError::InputConfigureFailed);
+         return Err(StdBackendError::InputConfigureFailed);
       }
       self.termios = Some(original);
 
@@ -103,13 +107,13 @@ impl TerminalBackend {
       raw.c_cc[libc::VMIN] = 0;
       raw.c_cc[libc::VTIME] = 0;
       if unsafe { libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &raw) } != 0 {
-         return Err(TerminalError::InputConfigureFailed);
+         return Err(StdBackendError::InputConfigureFailed);
       }
 
       let flags = unsafe { libc::fcntl(libc::STDIN_FILENO, libc::F_GETFL) };
       if flags < 0 {
          self.restore_input();
-         return Err(TerminalError::InputConfigureFailed);
+         return Err(StdBackendError::InputConfigureFailed);
       }
       self.stdin_flags = flags;
       unsafe {
@@ -120,7 +124,7 @@ impl TerminalBackend {
    }
 
    fn restore_input(&mut self) {
-      // Best-effort terminal restore: the destructor cannot report failures, and panicking here (e.g. broken stdout) would escalate to an abort.
+      // Best-effort input restore: the destructor cannot report failures, and panicking here (e.g. broken stdout) would escalate to an abort.
       // 尽力恢复终端：析构函数无法报告失败，而在此处 panic（例如标准输出损坏）会升级为直接中止进程。
       if let Some(termios) = self.termios.take() {
          unsafe {
@@ -157,7 +161,7 @@ impl TerminalBackend {
    }
 }
 
-impl Drop for TerminalBackend {
+impl Drop for StdBackend {
    fn drop(&mut self) {
       self.restore_input();
       // Never panic in a destructor: a broken stdout while unwinding would escalate to an abort.
@@ -167,7 +171,7 @@ impl Drop for TerminalBackend {
    }
 }
 
-impl Platform for TerminalBackend {
+impl Platform for StdBackend {
    fn present(
       &mut self,
       width: u32,
@@ -351,33 +355,33 @@ mod tests {
    }
 
    #[test]
-   fn terminal_smoke_non_tty() {
-      let mut terminal = TerminalBackend::create(BackendConfig {
+   fn stdout_smoke_non_tty() {
+      let mut backend = StdBackend::create(BackendConfig {
          title: "",
          width: 64,
          height: 36,
       })
       .expect("backend");
-      assert!(!terminal.should_close());
+      assert!(!backend.should_close());
 
-      let events = terminal.poll_events();
+      let events = backend.poll_events();
       assert!(events.is_empty());
 
       let w = 64;
       let h = 36;
       let pixels = vec![ColorRgba8::from_rgb(255, 0, 0); (w * h) as usize];
-      terminal.present(w, h, &pixels).expect("present one frame");
+      backend.present(w, h, &pixels).expect("present one frame");
 
-      assert!(terminal.time_seconds() >= 0.0);
-      terminal.sleep_ms(1);
+      assert!(backend.time_seconds() >= 0.0);
+      backend.sleep_ms(1);
 
-      terminal.request_close();
-      assert!(terminal.should_close());
+      backend.request_close();
+      assert!(backend.should_close());
    }
 
    #[test]
    fn present_rejects_bad_framebuffer() {
-      let mut terminal = TerminalBackend::create(BackendConfig {
+      let mut backend = StdBackend::create(BackendConfig {
          title: "",
          width: 64,
          height: 36,
@@ -385,11 +389,11 @@ mod tests {
       .expect("backend");
       let pixels = vec![ColorRgba8::BLACK; 3];
       assert_eq!(
-         terminal.present(2, 2, &pixels),
+         backend.present(2, 2, &pixels),
          Err(PlatformError::InvalidFramebuffer)
       );
       assert_eq!(
-         terminal.present(0, 10, &[]),
+         backend.present(0, 10, &[]),
          Err(PlatformError::InvalidFramebuffer)
       );
    }

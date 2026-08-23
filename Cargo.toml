@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/he3d",
     "crates/he3d-math",
     "crates/he3d-core",
     "crates/he3d-renderer",

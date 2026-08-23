@@ -1,27 +1,20 @@
-use he3d_core::{Camera, ColorRgba8, Material, Mesh, RenderObject, Rgb, Scene, Texture, Transform};
-use he3d_math::{Quat, Vec3};
-use he3d_platform::{BackendConfig, Event, KEY_ESCAPE, PlatformFactory};
-use he3d_renderer::{Renderer, RendererConfig};
+use he3d::{
+   BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, RenderObject, Renderer,
+   RendererConfig, Rgb, Scene, Texture, Transform, Vec3, Quat, create_backend,
+};
 
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 360;
 
 fn main() {
+   let frames = parse_frames(std::env::args());
+
    let config = BackendConfig {
       title: "HE3D TriangleTest",
       width: WINDOW_WIDTH,
       height: WINDOW_HEIGHT,
    };
-   #[cfg(feature = "sdl3")]
-   run::<he3d_platform_sdl3::SdlBackend>(config);
-   #[cfg(feature = "terminal")]
-   run::<he3d_platform_std::TerminalBackend>(config);
-}
-
-fn run<B: PlatformFactory>(config: BackendConfig<'_>) {
-   let frames = parse_frames(std::env::args());
-
-   let mut backend = match B::create(config) {
+   let mut backend = match create_backend(config) {
       Ok(backend) => backend,
       Err(error) => {
          eprintln!("backend init failed: {error}");

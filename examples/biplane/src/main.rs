@@ -1,8 +1,7 @@
-use he3d_assets::{decode_image, parse_obj};
-use he3d_core::{Camera, Material, RenderObject, Rgb, Scene, Transform};
-use he3d_math::{Quat, Vec3};
-use he3d_platform::{BackendConfig, Event, KEY_ESCAPE, PlatformFactory};
-use he3d_renderer::{Renderer, RendererConfig};
+use he3d::{
+   BackendConfig, Camera, Event, KEY_ESCAPE, Material, RenderObject, Renderer, RendererConfig,
+   Rgb, Scene, Transform, Vec3, Quat, create_backend, decode_image, parse_obj,
+};
 
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 360;
@@ -11,19 +10,20 @@ const OBJ_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/biplane.obj"
 const BMP_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/biplane.bmp");
 
 fn main() {
+   let frames = parse_frames(std::env::args());
+
    let config = BackendConfig {
       title: "HE3D Biplane",
       width: WINDOW_WIDTH,
       height: WINDOW_HEIGHT,
    };
-   #[cfg(feature = "sdl3")]
-   run::<he3d_platform_sdl3::SdlBackend>(config);
-   #[cfg(feature = "terminal")]
-   run::<he3d_platform_std::TerminalBackend>(config);
-}
-
-fn run<B: PlatformFactory>(config: BackendConfig<'_>) {
-   let frames = parse_frames(std::env::args());
+   let mut backend = match create_backend(config) {
+      Ok(backend) => backend,
+      Err(error) => {
+         eprintln!("backend init failed: {error}");
+         std::process::exit(1);
+      }
+   };
 
    let obj_bytes = match std::fs::read(OBJ_PATH) {
       Ok(bytes) => bytes,
@@ -54,13 +54,6 @@ fn run<B: PlatformFactory>(config: BackendConfig<'_>) {
       }
    };
 
-   let mut backend = match B::create(config) {
-      Ok(backend) => backend,
-      Err(error) => {
-         eprintln!("backend init failed: {error}");
-         std::process::exit(1);
-      }
-   };
    let mut renderer = match Renderer::new(RendererConfig::new(WINDOW_WIDTH, WINDOW_HEIGHT)) {
       Ok(renderer) => renderer,
       Err(error) => {

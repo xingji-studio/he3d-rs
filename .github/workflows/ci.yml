@@ -25,13 +25,13 @@ jobs:
       - name: Check core crates (host, --no-default-features)
         run: >
           cargo check
-          -p he3d-math -p he3d-core -p he3d-renderer
+          -p he3d -p he3d-math -p he3d-core -p he3d-renderer
           -p he3d-assets -p he3d-physics -p he3d-platform
           --no-default-features
       - name: Check core crates (bare-metal target)
         run: >
           cargo check
-          -p he3d-math -p he3d-core -p he3d-renderer
+          -p he3d -p he3d-math -p he3d-core -p he3d-renderer
           -p he3d-assets -p he3d-physics -p he3d-platform
           --no-default-features --target x86_64-unknown-none
 
@@ -61,11 +61,11 @@ jobs:
       - name: Install SDL3
         run: sudo apt-get update && sudo apt-get install -y libsdl3-dev
       - run: cargo test --workspace
-      - name: Check examples with terminal backend (no SDL)
+      - name: Check examples with std backend (no SDL)
         run: |
           set -euo pipefail
           for pkg in he3d-triangle he3d-biplane he3d-physics-test he3d-flight-simulator; do
-            cargo check -p "$pkg" --no-default-features --features terminal
+            cargo check -p "$pkg" --no-default-features --features std
           done
 
   audit-features:
@@ -79,7 +79,7 @@ jobs:
       - name: Verify no std leaks into core crates
         run: |
           set -euo pipefail
-          for pkg in he3d-renderer he3d-assets he3d-physics; do
+          for pkg in he3d-renderer he3d-assets he3d-physics he3d; do
             tree=$(cargo tree -p "$pkg" --no-default-features -e features)
             if echo "$tree" | grep -Eq '(^|[^a-z])std($|[^a-z])'; then
               echo "std leak detected in $pkg:"

@@ -1,10 +1,8 @@
-use he3d_core::{
-   Camera, ColorRgba8, Material, Mesh, ObjectId, RenderObject, Rgb, Scene, Texture, Transform,
+use he3d::{
+   BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, ObjectId, PhysicsWorld,
+   Platform, RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3, Quat,
+   create_backend,
 };
-use he3d_math::Vec3;
-use he3d_physics::PhysicsWorld;
-use he3d_platform::{BackendConfig, Event, KEY_ESCAPE, PlatformFactory};
-use he3d_renderer::{Renderer, RendererConfig};
 
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 360;
@@ -15,27 +13,24 @@ const CUBE_RESET_POS: Vec3 = Vec3::new(0.0, 3.0, 4.0);
 const CUBE_HALF: f32 = 0.5;
 
 fn main() {
+   let frames = parse_frames(std::env::args());
+
    let config = BackendConfig {
       title: "HE3D PhysicsTest",
       width: WINDOW_WIDTH,
       height: WINDOW_HEIGHT,
    };
-   #[cfg(feature = "sdl3")]
-   run::<he3d_platform_sdl3::SdlBackend>(config);
-   #[cfg(feature = "terminal")]
-   run::<he3d_platform_std::TerminalBackend>(config);
-}
-
-fn run<B: PlatformFactory>(config: BackendConfig<'_>) {
-   let frames = parse_frames(std::env::args());
-
-   let mut backend = match B::create(config) {
+   let backend = match create_backend(config) {
       Ok(backend) => backend,
       Err(error) => {
          eprintln!("backend init failed: {error}");
          std::process::exit(1);
       }
    };
+   run(backend, frames);
+}
+
+fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
    let mut renderer = match Renderer::new(RendererConfig::new(WINDOW_WIDTH, WINDOW_HEIGHT)) {
       Ok(renderer) => renderer,
       Err(error) => {
@@ -78,7 +73,7 @@ fn run<B: PlatformFactory>(config: BackendConfig<'_>) {
       material: Material::new(Rgb::WHITE),
       visible: true,
    });
-   let camera = Camera::new(Vec3::new(0.0, 1.4, -5.0), he3d_math::Quat::IDENTITY, 50.0);
+   let camera = Camera::new(Vec3::new(0.0, 1.4, -5.0), Quat::IDENTITY, 50.0);
 
    let mut physics = PhysicsWorld::new();
    // The reference PhysicsTest uses a `MeshCollider` floor (box-box SAT is unstable).
