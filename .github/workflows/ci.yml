@@ -17,10 +17,8 @@ jobs:
       # he3d-physics depends on the standalone gp3d engine (sibling repo);
       # check it out where the path dependency expects it.
       # he3d-physics 依赖独立引擎 gp3d（同级仓库）；检出到 path 依赖期望的位置。
-      - uses: actions/checkout@v4
-        with:
-          repository: xingji-studio/gp3d-rs
-          path: ../gp3d-rs
+      - name: Checkout gp3d engine (sibling path)
+        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-none
@@ -42,10 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: xingji-studio/gp3d-rs
-          path: ../gp3d-rs
+      - name: Checkout gp3d engine (sibling path)
+        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -59,10 +55,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: xingji-studio/gp3d-rs
-          path: ../gp3d-rs
+      - name: Checkout gp3d engine (sibling path)
+        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
       - name: Install SDL3
         run: sudo apt-get update && sudo apt-get install -y libsdl3-dev
@@ -79,10 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: xingji-studio/gp3d-rs
-          path: ../gp3d-rs
+      - name: Checkout gp3d engine (sibling path)
+        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify no std leaks into core crates
         run: |
