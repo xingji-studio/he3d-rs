@@ -122,6 +122,11 @@ impl From<he3d_platform_sdl3::BackendError> for BackendInitError {
 /// (or when no backend feature is enabled).
 /// 当所有已启用的后端都无法创建（或未启用任何后端特性）时返回 [`BackendInitError`]。
 ///
+/// The returned backend is **not** `Send`: the SDL3 backend wraps a thread-affine
+/// SDL renderer, so the trait object deliberately carries no thread bound.
+/// 返回的后端**不是** `Send`：SDL3 后端包装了线程亲和的 SDL 渲染器，因此该特质对象
+/// 刻意不携带任何线程约束。
+///
 /// # Examples
 /// 示例
 /// ```

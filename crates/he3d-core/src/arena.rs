@@ -217,6 +217,7 @@ impl<T> Arena<T> {
 
    /// Iterate over all live `(id, value)` pairs in slot order.
    /// 按槽位顺序遍历所有存活的 `(id, value)` 对。
+   #[must_use]
    pub fn iter(&self) -> impl Iterator<Item = (Id<T>, &T)> {
       self.slots.iter().enumerate().filter_map(|(index, slot)| {
          let value = slot.value.as_ref()?;
@@ -230,6 +231,27 @@ impl<T> Arena<T> {
             value,
          ))
       })
+   }
+
+   /// Mutably iterate over all live `(id, value)` pairs in slot order.
+   /// 按槽位顺序可变地遍历所有存活的 `(id, value)` 对。
+   pub fn iter_mut(&mut self) -> impl Iterator<Item = (Id<T>, &mut T)> {
+      self
+         .slots
+         .iter_mut()
+         .enumerate()
+         .filter_map(|(index, slot)| {
+            let value = slot.value.as_mut()?;
+            let index = u32::try_from(index).ok()?;
+            Some((
+               Id {
+                  index,
+                  generation: slot.generation,
+                  _marker: PhantomData,
+               },
+               value,
+            ))
+         })
    }
 }
 
