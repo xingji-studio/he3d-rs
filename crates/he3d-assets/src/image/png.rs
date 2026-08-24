@@ -20,29 +20,51 @@ pub fn decode(bytes: &[u8]) -> Result<Texture, Error> {
    let result = decoder.decode().map_err(|_| Error::InvalidData)?;
    let info = decoder.info().ok_or(Error::InvalidData)?;
 
-   let width = info.width as u32;
-   let height = info.height as u32;
-   if width == 0 || height == 0 || width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION {
+   // `info.width`/`info.height` are `usize`; validate before narrowing to `u32`
+   // so a pathological dimension cannot silently truncate past the limit check.
+   // `info.width`/`info.height` 是 `usize`；先校验再收窄为 `u32`，防止病态尺寸
+   // 在通过上限检查前被静默截断。
+   let width_usize = info.width;
+   let height_usize = info.height;
+   let max = MAX_IMAGE_DIMENSION as usize;
+   if width_usize == 0 || height_usize == 0 || width_usize > max || height_usize > max {
       return Err(Error::InvalidSize);
    }
+   // Bounded to `MAX_IMAGE_DIMENSION` (8192) by the check above, so the
+   // `usize`→`u32` narrowing cannot truncate.
+   // 上面的检查将尺寸限制在 `MAX_IMAGE_DIMENSION`（8192）内，因此 `usize`→`u32`
+   // 的收窄不会截断。
+   #[expect(clippy::cast_possible_truncation)]
+   let width = width_usize as u32;
+   #[expect(clippy::cast_possible_truncation)]
+   let height = height_usize as u32;
    let channels = channels_for(decoder.colorspace().ok_or(Error::InvalidData)?)
       .ok_or(Error::UnsupportedFormat)?;
    let total = (width as usize)
       .checked_mul(height as usize)
       .ok_or(Error::Overflow)?;
+   let expected = total.checked_mul(channels).ok_or(Error::Overflow)?;
    let mut pixels = Vec::with_capacity(total);
 
    match decoder.depth().ok_or(Error::InvalidData)? {
       BitDepth::Eight => match result {
-         DecodingResult::U8(raw) => expand(&mut pixels, channels, total, |i| {
-            raw.get(i).copied().unwrap_or(0)
-         })?,
+         DecodingResult::U8(raw) => {
+            // A short decode would otherwise silently pad black pixels.
+            // 解码结果过短时，原先会静默补黑像素。
+            if raw.len() < expected {
+               return Err(Error::InvalidData);
+            }
+            expand(&mut pixels, channels, total, |i| raw[i])?;
+         }
          _ => return Err(Error::UnsupportedFormat),
       },
       BitDepth::Sixteen => match result {
-         DecodingResult::U16(raw) => expand(&mut pixels, channels, total, |i| {
-            (raw.get(i).copied().unwrap_or(0) >> 8) as u8
-         })?,
+         DecodingResult::U16(raw) => {
+            if raw.len() < expected {
+               return Err(Error::InvalidData);
+            }
+            expand(&mut pixels, channels, total, |i| (raw[i] >> 8) as u8)?;
+         }
          _ => return Err(Error::UnsupportedFormat),
       },
       _ => return Err(Error::UnsupportedFormat),
@@ -68,6 +90,9 @@ mod tests {
 
    /// A 2x2 RGBA PNG (8-bit, non-interlaced).
    /// 一个 2x2 RGBA PNG（8 位，非隔行扫描）。
+   // Test fixtures are tiny, so the `usize`→`u32` narrowing below cannot truncate.
+   // 测试夹具都很小，因此下面的 `usize`→`u32` 收窄不会截断。
+   #[expect(clippy::cast_possible_truncation)]
    fn png_2x2_rgba() -> Vec<u8> {
       // Chunks: IHDR, IDAT, IEND. IDAT is a zlib stream of raw deflate data built with a tiny hand-rolled encoder (stored blocks).
       // 数据块：IHDR、IDAT、IEND。IDAT 是原始 deflate 数据的 zlib 流，由手写的小型编码器生成（存储块）。
@@ -117,6 +142,10 @@ mod tests {
 
    /// zlib wrapper around stored (uncompressed) deflate blocks.
    /// zlib 对存储（未压缩）deflate 块的封装。
+   // Block lengths are clamped to 65535 (the stored-block max), so the
+   // `usize`→`u16` narrowing cannot truncate.
+   // 块长度被钳制在 65535（存储块上限）内，因此 `usize`→`u16` 不会截断。
+   #[expect(clippy::cast_possible_truncation)]
    fn zlib_stored(data: &[u8]) -> Vec<u8> {
       let mut out = Vec::new();
       out.push(0x78);

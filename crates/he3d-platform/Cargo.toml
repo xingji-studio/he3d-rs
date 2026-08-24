@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 keywords = ["input", "window", "backend", "platform", "3d"]
 categories = ["game-engines"]
 description = "no_std backend-neutral input/presentation traits"

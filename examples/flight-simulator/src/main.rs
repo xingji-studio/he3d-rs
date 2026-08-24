@@ -15,8 +15,8 @@ use he3d::{
 const WINDOW_WIDTH: u32 = 800;
 const WINDOW_HEIGHT: u32 = 600;
 
-const OBJ_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/biplane.obj");
-const BMP_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/biplane.bmp");
+const OBJ_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/biplane.obj");
+const BMP_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/biplane.bmp");
 
 const TILE_RADIUS: i32 = 1;
 const TERRAIN_STEP: f32 = 12.0;

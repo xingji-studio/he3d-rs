@@ -34,6 +34,16 @@ sdl3 = [
     "he3d-physics/std",
     "he3d-platform/std",
 ]
+# Asset-format features forward to `he3d-assets`. BMP is always enabled
+# (the facade re-enables it explicitly because the workspace dependency sets
+# `default-features = false`); PNG/JPEG/glTF are opt-in so `no_std` builds stay
+# minimal by default.
+# 资源格式特性转发到 `he3d-assets`。BMP 始终启用（工作区依赖设置了
+# `default-features = false`，因此门面需显式重新启用）；PNG/JPEG/glTF 按需开启，
+# 使 `no_std` 构建默认保持最小。
+png = ["he3d-assets/png"]
+jpeg = ["he3d-assets/jpeg"]
+gltf = ["he3d-assets/gltf"]
 
 [dependencies]
 he3d-math = { workspace = true }
@@ -49,4 +59,4 @@ he3d-platform-sdl3 = { workspace = true, optional = true }
 workspace = true
 
 [package.metadata.docs.rs]
-features = ["std"]
+features = ["std", "png", "jpeg", "gltf"]

@@ -11,9 +11,6 @@ pub enum Error {
    /// A dimension or size is zero, negative, or exceeds a configured limit.
    /// 维度或大小为 0、为负，或超过配置的限制。
    InvalidSize,
-   /// An index falls outside the valid range.
-   /// 索引超出有效范围。
-   InvalidIndex,
    /// An arithmetic operation (e.g. buffer sizing) would overflow.
    /// 算术运算（如缓冲区大小计算）会溢出。
    Overflow,
@@ -32,7 +29,6 @@ impl fmt::Display for Error {
    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
       let message = match self {
          Error::InvalidSize => "invalid size or dimension",
-         Error::InvalidIndex => "index out of bounds",
          Error::Overflow => "arithmetic overflow",
          Error::BufferMismatch => "buffer length does not match declared dimensions",
          Error::InvalidData => "malformed or invalid input data",

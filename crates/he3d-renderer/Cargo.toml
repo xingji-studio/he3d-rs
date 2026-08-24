@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 keywords = ["renderer", "rasterizer", "software", "3d", "graphics"]
 categories = ["graphics", "game-engines"]
 description = "no_std + alloc software rasterizer and post-processing"

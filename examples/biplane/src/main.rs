@@ -8,8 +8,8 @@ use he3d::{
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 360;
 
-const OBJ_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/biplane.obj");
-const BMP_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/assets/biplane.bmp");
+const OBJ_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/biplane.obj");
+const BMP_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../assets/biplane.bmp");
 
 fn main() {
    let frames = parse_frames(std::env::args());

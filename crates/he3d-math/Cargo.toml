@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 keywords = ["math", "vector", "matrix", "linear-algebra", "3d"]
 categories = ["mathematics", "game-engines"]
 description = "no_std math layer: coordinate conventions and linear algebra via glam"

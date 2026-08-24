@@ -4,9 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 keywords = ["stdout", "framebuffer", "backend", "input", "headless"]
 categories = ["command-line-interface", "game-engines"]
-description = "std backend: standard-output (stdout) framebuffer presentation, filesystem, clock, and test host"
+description = "std backend: standard-output (stdout) ANSI framebuffer presentation and terminal input"
 
 [features]
 default = ["std"]

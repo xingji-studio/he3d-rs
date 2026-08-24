@@ -137,12 +137,16 @@ fn parse_face(rest: &str) -> Option<Face> {
             if text.starts_with('-') {
                return None;
             }
-            Some(text.parse::<u32>().ok()?)
+            let parsed = text.parse::<u32>().ok()?;
+            if parsed == 0 {
+               return None;
+            }
+            Some(parsed - 1)
          }
       };
       corners.push(Corner {
          vertex: vertex - 1,
-         uv: uv.map(|v| v - 1),
+         uv,
       });
    }
    if corners.len() < 3 {
@@ -223,6 +227,23 @@ v 0 0 0\n\
 v 1 0 0\n\
 v 0 1 0\n\
 f 1 2 -1\n";
+      assert_eq!(parse_obj(obj), Err(Error::InvalidData));
+   }
+
+   #[test]
+   fn rejects_zero_uv_index_without_underflow() {
+      // `f 1/0 ...` must not underflow `u32` (debug panic / release wrap); the
+      // whole face is rejected like any other invalid corner.
+      // `f 1/0 ...` 不得让 `u32` 下溢（debug 下 panic / release 下回绕）；该面会被
+      // 像其它非法角一样整体拒绝。
+      let obj = b"\
+v 0 0 0\n\
+v 1 0 0\n\
+v 0 1 0\n\
+vt 0 0\n\
+vt 1 0\n\
+vt 0 1\n\
+f 1/0 2/1 3/2\n";
       assert_eq!(parse_obj(obj), Err(Error::InvalidData));
    }
 

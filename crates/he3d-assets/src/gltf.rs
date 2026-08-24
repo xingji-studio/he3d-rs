@@ -23,6 +23,12 @@ const MODE_TRIANGLES: u32 = 4;
 /// 受限子集，与参考加载器的范围一致：恰好一个网格含一个三角形图元，`POSITION`（vec3 f32）与可选的 `TEXCOORD_0`（vec2 f32）属性、可选的 u8/u16/u32 索引、紧密打包的缓冲视图（无步长），缓冲以字节切片提供。
 /// Buffers with a `uri` (external files or data URIs) are rejected; use [`parse_glb`] for embedded buffer data.
 /// 带 `uri` 的缓冲（外部文件或 data URI）会被拒绝；请使用 [`parse_glb`] 处理内嵌缓冲数据。
+///
+/// # Errors
+/// 文档不符合受限子集、缓冲缺失或越界、属性/索引声明与缓冲长度不符时返回相应错误。
+/// Returns an error when the document does not match the restricted subset, when a
+/// buffer or accessor is missing or out of range, or when declared counts do not
+/// match the buffer lengths.
 pub fn parse_gltf(json_bytes: &[u8], external_buffers: &[&[u8]]) -> Result<Mesh, Error> {
    let doc: Gltf = serde_json::from_slice(json_bytes).map_err(|_| Error::InvalidData)?;
 
@@ -89,7 +95,16 @@ pub fn parse_gltf(json_bytes: &[u8], external_buffers: &[&[u8]]) -> Result<Mesh,
       };
       let position = positions.get(vertex_index).ok_or(Error::InvalidData)?;
       vertices.push(*position);
-      let uv = uvs.get(vertex_index).copied().unwrap_or(Vec2::ZERO);
+      // A missing TEXCOORD_0 attribute means no UVs (fill zero); a declared
+      // accessor whose index escapes the data is corrupt and must not be
+      // silently degraded to zero.
+      // TEXCOORD_0 属性缺失意味着没有 UV（填零）；声明了访问器但其索引越界属于
+      // 数据损坏，不得静默降级为零。
+      let uv = if uvs.is_empty() {
+         Vec2::ZERO
+      } else {
+         *uvs.get(vertex_index).ok_or(Error::InvalidData)?
+      };
       mesh_uvs.push(uv);
    }
 
@@ -98,6 +113,19 @@ pub fn parse_gltf(json_bytes: &[u8], external_buffers: &[&[u8]]) -> Result<Mesh,
 
 /// Parse a GLB container: the JSON chunk becomes the glTF document and the BIN chunk becomes buffer 0.
 /// 解析 GLB 容器：JSON 块成为 glTF 文档，BIN 块成为缓冲 0。
+///
+/// The container header (magic, version 2, declared length), the JSON-first chunk
+/// ordering, and single-JSON/single-BIN cardinality are validated; a duplicate or
+/// misplaced chunk is rejected rather than silently last-wins.
+/// 会校验容器头（魔数、版本 2、声明长度）、JSON 在首位的块顺序，以及 JSON/BIN
+/// 各至多一个的数量约束；重复或错位的块会被拒绝，而不是静默地后者覆盖前者。
+///
+/// # Errors
+/// 容器头不合法（魔数/版本/声明长度错误）、块顺序或数量错误，或内部 JSON 文档
+/// 无法解析时返回相应错误。
+/// Returns an error when the container header (magic/version/declared length) is
+/// invalid, when chunk ordering or cardinality is wrong, or when the embedded JSON
+/// document does not parse.
 pub fn parse_glb(bytes: &[u8]) -> Result<Mesh, Error> {
    if bytes.len() < 12 {
       return Err(Error::InvalidData);
@@ -105,23 +133,45 @@ pub fn parse_glb(bytes: &[u8]) -> Result<Mesh, Error> {
    if read_u32(bytes, 0) != GLB_MAGIC {
       return Err(Error::InvalidData);
    }
+   if read_u32(bytes, 4) != 2 {
+      return Err(Error::UnsupportedFormat);
+   }
+   let declared = read_u32(bytes, 8) as usize;
+   if declared > bytes.len() {
+      return Err(Error::InvalidData);
+   }
 
    let mut offset = 12usize;
    let mut json: Option<&[u8]> = None;
    let mut bin: Option<&[u8]> = None;
 
-   while offset + 8 <= bytes.len() {
+   while offset + 8 <= declared {
       let chunk_length = read_u32(bytes, offset) as usize;
       let chunk_type = read_u32(bytes, offset + 4);
-      let data = bytes
-         .get(offset + 8..offset + 8 + chunk_length)
-         .ok_or(Error::InvalidData)?;
+      // Saturating arithmetic keeps a hostile length from wrapping `usize` on
+      // 32-bit targets and re-parsing the same bytes.
+      // 饱和运算可防止恶意长度在 32 位目标上回绕 `usize` 并重复解析相同字节。
+      let next = offset.saturating_add(8).saturating_add(chunk_length);
+      if next > declared {
+         return Err(Error::InvalidData);
+      }
+      let data = bytes.get(offset + 8..next).ok_or(Error::InvalidData)?;
       match chunk_type {
-         CHUNK_JSON => json = Some(data),
-         CHUNK_BIN => bin = Some(data),
+         CHUNK_JSON => {
+            if json.is_some() {
+               return Err(Error::InvalidData);
+            }
+            json = Some(data);
+         }
+         CHUNK_BIN => {
+            if json.is_none() || bin.is_some() {
+               return Err(Error::InvalidData);
+            }
+            bin = Some(data);
+         }
          _ => {}
       }
-      offset += 8 + chunk_length;
+      offset = next;
    }
 
    let json = json.ok_or(Error::InvalidData)?;
@@ -156,7 +206,8 @@ struct Buffer {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BufferView {
-   buffer: usize,
+   #[serde(rename = "buffer")]
+   buffer_index: usize,
    #[serde(default)]
    byte_offset: usize,
    byte_length: usize,
@@ -174,7 +225,7 @@ struct Accessor {
    component_type: u32,
    count: usize,
    #[serde(rename = "type")]
-   accessor_type: String,
+   data_type: String,
 }
 
 #[derive(Deserialize)]
@@ -211,11 +262,11 @@ fn accessor_bytes<'a>(
       }
    }
    let buffer = external_buffers
-      .get(view.buffer)
+      .get(view.buffer_index)
       .ok_or(Error::InvalidData)?;
 
    let element_size = component_size(accessor.component_type)
-      .checked_mul(type_components(&accessor.accessor_type)?)
+      .checked_mul(type_components(&accessor.data_type)?)
       .ok_or(Error::Overflow)?;
    let start = view
       .byte_offset
@@ -254,14 +305,14 @@ fn read_vec3(
    doc: &Gltf,
    external_buffers: &[&[u8]],
 ) -> Result<Vec<Vec3>, Error> {
-   if accessor.component_type != COMPONENT_F32 || accessor.accessor_type != "VEC3" {
+   if accessor.component_type != COMPONENT_F32 || accessor.data_type != "VEC3" {
       return Err(Error::UnsupportedFormat);
    }
    let bytes = accessor_bytes(accessor, doc, external_buffers)?;
-   if bytes.len() % 12 != 0 {
+   if bytes.len() != accessor.count * 12 {
       return Err(Error::InvalidData);
    }
-   let mut out = Vec::with_capacity(bytes.len() / 12);
+   let mut out = Vec::with_capacity(accessor.count);
    for chunk in bytes.chunks_exact(12) {
       out.push(Vec3::new(
          f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]),
@@ -277,14 +328,14 @@ fn read_vec2(
    doc: &Gltf,
    external_buffers: &[&[u8]],
 ) -> Result<Vec<Vec2>, Error> {
-   if accessor.component_type != COMPONENT_F32 || accessor.accessor_type != "VEC2" {
+   if accessor.component_type != COMPONENT_F32 || accessor.data_type != "VEC2" {
       return Err(Error::UnsupportedFormat);
    }
    let bytes = accessor_bytes(accessor, doc, external_buffers)?;
-   if bytes.len() % 8 != 0 {
+   if bytes.len() != accessor.count * 8 {
       return Err(Error::InvalidData);
    }
-   let mut out = Vec::with_capacity(bytes.len() / 8);
+   let mut out = Vec::with_capacity(accessor.count);
    for chunk in bytes.chunks_exact(8) {
       let u = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
       let v = f32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
@@ -298,10 +349,27 @@ fn read_indices(
    doc: &Gltf,
    external_buffers: &[&[u8]],
 ) -> Result<Vec<u32>, Error> {
-   if accessor.accessor_type != "SCALAR" {
+   if accessor.data_type != "SCALAR" {
       return Err(Error::UnsupportedFormat);
    }
    let bytes = accessor_bytes(accessor, doc, external_buffers)?;
+   // Validate the component type and the declared count before allocating, so a
+   // malicious `count` cannot trigger a huge allocation for a tiny buffer.
+   // 在分配前校验分量类型与声明的 count，使恶意的 `count` 无法用极小的缓冲
+   // 触发巨大的分配。
+   let element_size = match accessor.component_type {
+      COMPONENT_U8 => 1,
+      COMPONENT_U16 => 2,
+      COMPONENT_U32 => 4,
+      _ => return Err(Error::UnsupportedFormat),
+   };
+   let expected = accessor
+      .count
+      .checked_mul(element_size)
+      .ok_or(Error::Overflow)?;
+   if bytes.len() != expected {
+      return Err(Error::InvalidData);
+   }
    let mut out = Vec::with_capacity(accessor.count);
    match accessor.component_type {
       COMPONENT_U8 => out.extend(bytes.iter().map(|&b| u32::from(b))),
@@ -315,7 +383,7 @@ fn read_indices(
             out.push(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
          }
       }
-      _ => return Err(Error::UnsupportedFormat),
+      _ => unreachable!("component type validated above"),
    }
    Ok(out)
 }
@@ -331,6 +399,8 @@ fn read_u32(bytes: &[u8], offset: usize) -> u32 {
 
 #[cfg(test)]
 mod tests {
+   use alloc::string::ToString;
+
    use super::*;
 
    struct Sample {
@@ -370,7 +440,7 @@ mod tests {
          let offset = bin.len();
          bin.extend_from_slice(bytes);
          views.push(BufferView {
-            buffer: 0,
+            buffer_index: 0,
             byte_offset: offset,
             byte_length: bytes.len(),
             byte_stride: None,
@@ -384,7 +454,7 @@ mod tests {
          byte_offset: 0,
          component_type: COMPONENT_F32,
          count: 3,
-         accessor_type: "VEC3".to_string(),
+         data_type: "VEC3".to_string(),
       });
       let uv_view = push(&f32_bytes(&uvs));
       accessors.push(Accessor {
@@ -392,7 +462,7 @@ mod tests {
          byte_offset: 0,
          component_type: COMPONENT_F32,
          count: 3,
-         accessor_type: "VEC2".to_string(),
+         data_type: "VEC2".to_string(),
       });
       let index_view = push(&u16_bytes(&indices));
       accessors.push(Accessor {
@@ -400,7 +470,7 @@ mod tests {
          byte_offset: 0,
          component_type: COMPONENT_U16,
          count: 3,
-         accessor_type: "SCALAR".to_string(),
+         data_type: "SCALAR".to_string(),
       });
 
       let json = serde_json::json!({
@@ -422,6 +492,9 @@ mod tests {
       Sample { json, bin }
    }
 
+   // Test fixtures are tiny, so the `usize`→`u32` narrowing below cannot truncate.
+   // 测试夹具都很小，因此下面的 `usize`→`u32` 收窄不会截断。
+   #[expect(clippy::cast_possible_truncation)]
    fn glb_from(sample: &Sample) -> Vec<u8> {
       let json_pad = pad4(sample.json.len());
       let bin_pad = pad4(sample.bin.len());
@@ -467,6 +540,33 @@ mod tests {
    fn rejects_non_glb() {
       assert_eq!(parse_glb(b"not a glb at all"), Err(Error::InvalidData));
       assert_eq!(parse_glb(&[]), Err(Error::InvalidData));
+   }
+
+   #[test]
+   fn rejects_non_version_2_glb() {
+      let sample = sample();
+      let mut glb = glb_from(&sample);
+      glb[4..8].copy_from_slice(&1u32.to_le_bytes());
+      assert_eq!(parse_glb(&glb), Err(Error::UnsupportedFormat));
+   }
+
+   #[test]
+   fn rejects_glb_with_duplicate_json_chunk() {
+      let sample = sample();
+      let mut glb = glb_from(&sample);
+      // Overwrite the BIN chunk type with a second JSON chunk.
+      // 将 BIN 块类型改写为第二个 JSON 块。
+      let json_len = 12 + 8 + sample.json.len() + pad4(sample.json.len());
+      glb[json_len + 4..json_len + 8].copy_from_slice(&CHUNK_JSON.to_le_bytes());
+      assert_eq!(parse_glb(&glb), Err(Error::InvalidData));
+   }
+
+   #[test]
+   fn rejects_glb_with_truncated_chunk() {
+      let sample = sample();
+      let glb = glb_from(&sample);
+      let truncated = &glb[..glb.len() - 4];
+      assert_eq!(parse_glb(truncated), Err(Error::InvalidData));
    }
 
    #[test]

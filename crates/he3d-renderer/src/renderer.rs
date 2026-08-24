@@ -130,9 +130,6 @@ impl Renderer {
       if !camera.fov_y_degrees.is_finite() || camera.fov_y_degrees <= 0.0 {
          return Err(Error::InvalidSize);
       }
-      match self.anti_aliasing {
-         AntiAliasing::None => {}
-      }
       self.clear(clear_color);
 
       let light = Light {

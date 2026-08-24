@@ -28,11 +28,15 @@ pub fn decode(bytes: &[u8]) -> Result<Texture, Error> {
    let total = (width as usize)
       .checked_mul(height as usize)
       .ok_or(Error::Overflow)?;
+   let expected = total.checked_mul(channels).ok_or(Error::Overflow)?;
 
    let raw = decoder.decode().map_err(|_| Error::InvalidData)?;
+   // A short decode would otherwise silently pad black pixels.
+   // 解码结果过短时，原先会静默补黑像素。
+   if raw.len() < expected {
+      return Err(Error::InvalidData);
+   }
    let mut pixels = Vec::with_capacity(total);
-   expand(&mut pixels, channels, total, |i| {
-      raw.get(i).copied().unwrap_or(0)
-   })?;
+   expand(&mut pixels, channels, total, |i| raw[i])?;
    Texture::new(width, height, pixels)
 }

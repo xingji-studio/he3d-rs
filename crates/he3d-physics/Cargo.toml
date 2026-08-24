@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 keywords = ["physics", "3d", "collision", "solver"]
 categories = ["game-engines", "mathematics"]
 description = "no_std + alloc physics world (gp3d integration)"

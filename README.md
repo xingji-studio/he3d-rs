@@ -60,6 +60,13 @@ Crates are published in dependency order (gp3d first, then `he3d-math` → `he3d
 → `he3d-renderer` → `he3d-assets` → `he3d-platform` → `he3d-platform-std` →
 `he3d-platform-sdl3` → `he3d-physics`). See `cargo package --list` before each release.
 
+## Attributions
+
+The biplane model and texture used by the examples are taken from
+[Sebastian Lague's Software-Rasterizer](https://github.com/SebLague/Software-Rasterizer)
+(MIT License, Copyright (c) 2025 Sebastian Lague). See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the full license text.
+
 ## License
 
 MIT

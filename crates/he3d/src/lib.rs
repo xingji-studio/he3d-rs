@@ -18,6 +18,11 @@
 //! * `sdl3` — the SDL3 window backend (requires a desktop OS).
 //!   `sdl3` —— SDL3 窗口后端（需要桌面操作系统）。
 //!
+//! Asset-format features forward to [`he3d_assets`]: `png`, `jpeg`, and `gltf`
+//! opt into those decoders (BMP is always enabled).
+//! 资源格式特性转发到 [`he3d_assets`]：`png`、`jpeg`、`gltf` 可启用对应解码器
+//! （BMP 始终启用）。
+//!
 //! [`create_backend`] picks among the enabled backends at runtime (sdl3 first,
 //! then the std backend), so application code never names a backend type.
 //! [`create_backend`] 在运行时从已启用的后端中选择（先 sdl3，后 std 后端），
@@ -32,6 +37,7 @@ extern crate alloc;
 extern crate std;
 
 use alloc::boxed::Box;
+#[cfg(any(feature = "std", feature = "sdl3"))]
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -55,6 +61,9 @@ pub use he3d_platform_std;
 // `#[doc(inline)]` 让每个类型自身的文档显示在此路径下。
 #[doc(inline)]
 pub use he3d_assets::{decode_image, parse_obj};
+#[cfg(feature = "gltf")]
+#[doc(inline)]
+pub use he3d_assets::{parse_glb, parse_gltf};
 #[doc(inline)]
 pub use he3d_core::{
    Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, RenderObject,
@@ -147,6 +156,7 @@ impl From<he3d_platform_sdl3::BackendError> for BackendInitError {
 /// Returns [`BackendInitError`] when no backend feature is enabled or every
 /// enabled backend fails to construct; the message lists each failing backend.
 pub fn create_backend(config: BackendConfig<'_>) -> Result<Box<dyn Platform>, BackendInitError> {
+   #[cfg_attr(not(any(feature = "sdl3", feature = "std")), allow(unused_mut))]
    let mut failures: Vec<String> = Vec::new();
    #[cfg(feature = "sdl3")]
    match he3d_platform_sdl3::SdlBackend::create(config) {

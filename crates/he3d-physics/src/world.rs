@@ -19,6 +19,13 @@ const DEFAULT_GRAVITY: Vec3 = Vec3::new(0.0, -9.8, 0.0);
 /// After stepping, call [`PhysicsWorld::synchronize`] to write body transforms back into the scene so the renderer sees the physics state.
 /// 步进后，调用 [`PhysicsWorld::synchronize`] 将刚体变换写回场景，使渲染器看到物理状态。
 ///
+/// A body is registered for its object's lifetime, not the scene's: removing a
+/// render object from the scene does **not** remove its body. Call
+/// [`PhysicsWorld::remove_body`] to drop the body and free its bookkeeping entry,
+/// otherwise stale entries accumulate in the mapping.
+/// 刚体的生命周期跟随对象，而非场景：从场景移除渲染对象**不会**移除其刚体。
+/// 请调用 [`PhysicsWorld::remove_body`] 丢弃刚体并释放其簿记条目，否则映射中会累积过期条目。
+///
 /// gp3d and `he3d-math` both wrap `glam`, so `Vec3`/`Quat` interoperate directly.
 /// gp3d 与 `he3d-math` 都包装 `glam`，因此 `Vec3`/`Quat` 可直接互操作。
 pub struct PhysicsWorld {
@@ -216,6 +223,10 @@ impl PhysicsWorld {
 
    /// Remove a body. Returns `false` for unknown objects.
    /// 移除一个刚体。对未知对象返回 `false`。
+   ///
+   /// Removing a render object from the scene does not remove its body
+   /// automatically; call this to drop the body and its bookkeeping entry.
+   /// 从场景移除渲染对象不会自动移除其刚体；请调用本方法以丢弃刚体及其簿记条目。
    pub fn remove_body(&mut self, object: ObjectId) -> bool {
       let Some(position) = self.bodies.iter().position(|(id, _)| *id == object) else {
          return false;
@@ -310,6 +321,12 @@ impl PhysicsWorld {
 
    /// Write body transforms back into the scene's render objects.
    /// 将刚体变换写回场景的渲染对象。
+   ///
+   /// Objects whose render objects have been removed from the scene are skipped,
+   /// but their bodies stay registered; call [`PhysicsWorld::remove_body`] to
+   /// drop them so they stop being iterated every step.
+   /// 渲染对象已从场景移除的刚体会被跳过，但其刚体仍处于注册状态；请调用
+   /// [`PhysicsWorld::remove_body`] 丢弃它们，以免每一步都被遍历。
    pub fn synchronize(&mut self, scene: &mut Scene) {
       for &(object, handle) in &self.bodies {
          let Some(render_object) = scene.objects.get_mut(object) else {

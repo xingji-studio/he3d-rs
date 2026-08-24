@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
 keywords = ["3d", "obj", "gltf", "image", "decoder"]
 categories = ["graphics", "multimedia"]
 description = "no_std + alloc byte-based OBJ/glTF/image decoding"
