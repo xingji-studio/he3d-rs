@@ -53,6 +53,7 @@ jobs:
           cmake -S /tmp/SDL -B /tmp/SDL/build -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST_LIBRARY=OFF
           cmake --build /tmp/SDL/build -j2
           sudo cmake --install /tmp/SDL/build
+          sudo ldconfig
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -72,6 +73,7 @@ jobs:
           cmake -S /tmp/SDL -B /tmp/SDL/build -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST_LIBRARY=OFF
           cmake --build /tmp/SDL/build -j2
           sudo cmake --install /tmp/SDL/build
+          sudo ldconfig
       - run: cargo test --workspace
       - name: Facade integration test (std backend)
         run: cargo test -p he3d --features std

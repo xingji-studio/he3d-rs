@@ -217,7 +217,6 @@ impl<T> Arena<T> {
 
    /// Iterate over all live `(id, value)` pairs in slot order.
    /// 按槽位顺序遍历所有存活的 `(id, value)` 对。
-   #[must_use]
    pub fn iter(&self) -> impl Iterator<Item = (Id<T>, &T)> {
       self.slots.iter().enumerate().filter_map(|(index, slot)| {
          let value = slot.value.as_ref()?;
