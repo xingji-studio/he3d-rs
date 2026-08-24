@@ -6,8 +6,8 @@ use he3d::{
    PhysicsWorld, Quat, RenderObject, Rgb, Scene, Texture, Transform, Vec2, Vec3,
 };
 
-/// Default gravity used by the reference flight simulator.
-/// 参考飞行模拟器使用的默认重力。
+/// Default gravity used by the he3d-cpp flight simulator.
+/// he3d-cpp 飞行模拟器使用的默认重力。
 pub const FLIGHT_GRAVITY: Vec3 = Vec3::new(0.0, -100.0, 0.0);
 
 /// Deterministic pseudo-random noise at an integer grid point.
@@ -293,8 +293,8 @@ pub fn axis_angle_quat(axis: Vec3, angle: f32) -> Quat {
    Quat::from_xyzw(axis.x * sin, axis.y * sin, axis.z * sin, cos)
 }
 
-/// Cruise speed maintained while airborne, matching the reference simulator.
-/// 空中保持的巡航速度，与参考模拟器一致。
+/// Cruise speed maintained while airborne, matching the he3d-cpp simulator.
+/// 空中保持的巡航速度，与 he3d-cpp 模拟器一致。
 pub const CRUISE_SPEED: f32 = 15.0;
 
 /// Exponential velocity decay applied while the plane touches the ground.
@@ -310,8 +310,8 @@ pub const CRASH_DAMPING: f32 = 6.0;
 ///
 /// `controlled_orientation` is the player-owned heading. It is used instead of the physics body's own rotation so ground collisions can never roll or pitch the plane away from player control.
 /// `controlled_orientation` 是玩家持有的朝向。使用它而非物理刚体自身的旋转，这样地面碰撞永远不会让飞机滚转或俯仰偏离玩家控制。
-/// This matches the reference simulator, which rebuilds its scene every step and only lets controls change heading.
-/// 这与参考模拟器一致，它每步重建场景，仅允许控制改变朝向。
+/// This matches the he3d-cpp simulator, which rebuilds its scene every step and only lets controls change heading.
+/// 这与 he3d-cpp 模拟器一致，它每步重建场景，仅允许控制改变朝向。
 /// The angular velocity is also cleared each step so impacts cannot make the plane spin.
 /// 每步还会清零角速度，使撞击不会导致飞机旋转。
 ///
@@ -434,8 +434,8 @@ pub fn update_camera(
    // 固定向下俯仰（0.15 弧度），使飞机位于屏幕中心附近。
    // `EulerRot::ZYX` takes angles in (Z, Y, X) axis order, so the pitch goes in the `z` slot.
    // `EulerRot::ZYX` 按 (Z, Y, X) 轴序接收角度，因此俯仰放在 `z` 槽位。
-   // This matches the reference `FromEuler({pitch, yaw, 0})`.
-   // 这与参考实现 `FromEuler({pitch, yaw, 0})` 一致。
+   // This matches he3d-cpp's `FromEuler({pitch, yaw, 0})`.
+   // 这与 he3d-cpp 的 `FromEuler({pitch, yaw, 0})` 一致。
    camera.orientation = Quat::from_euler(EulerRot::ZYX, 0.0, chase.yaw, 0.15);
    let yaw_rotation = Quat::from_rotation_y(chase.yaw);
    let target_position = plane_position + yaw_rotation * chase.offset;
@@ -467,8 +467,8 @@ pub struct TerrainTile {
 
 /// Streams square terrain tiles around the aircraft, refreshing at most one tile per call.
 /// 在飞机周围流式加载方形地形块，每次调用最多刷新一个地形块。
-/// Mirrors the reference implementation's budget: terrain generation is spread across frames instead of blocking one frame.
-/// 与参考实现的预算一致：地形生成分摊到多帧执行，而非阻塞单帧。
+/// Mirrors he3d-cpp's budget: terrain generation is spread across frames instead of blocking one frame.
+/// 与 he3d-cpp 的预算一致：地形生成分摊到多帧执行，而非阻塞单帧。
 pub struct TerrainManager {
    pub tiles: Vec<TerrainTile>,
    pub center_x: i32,

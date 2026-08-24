@@ -416,7 +416,7 @@ mod tests {
    use super::*;
 
    #[test]
-   fn compute_grid_matches_reference() {
+   fn compute_grid_matches_he3d_cpp() {
       assert_eq!(compute_grid(640, 360), (80, 23));
       assert_eq!(compute_grid(160, 90), (80, 23));
       assert_eq!(compute_grid(64, 36), (64, 18));

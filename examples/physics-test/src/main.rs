@@ -38,8 +38,8 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
    };
 
    let mut scene = Scene::new();
-   // The reference default light (0,-1,1) leaves every camera-facing surface backlit (only the 15% ambient), so the demo renders almost pitch black.
-   // 参考默认光源 (0,-1,1) 会让所有面向相机的表面处于背光状态（仅有 15% 环境光），导致演示几乎渲染成漆黑一片。
+   // The he3d-cpp default light (0,-1,1) leaves every camera-facing surface backlit (only the 15% ambient), so the demo renders almost pitch black.
+   // he3d-cpp 默认光源 (0,-1,1) 会让所有面向相机的表面处于背光状态（仅有 15% 环境光），导致演示几乎渲染成漆黑一片。
    // Use a gentle key light from just behind and above the camera so the cube and floor are visible with some depth, without blowing out to white.
    // 从相机正后方稍上方打一束柔和的主光，使立方体与地面可见且富有立体感，又不至于过曝成白色。
    scene.light.direction = Vec3::new(0.0, 0.5, -1.0).normalize();
@@ -74,8 +74,8 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
    let camera = Camera::new(Vec3::new(0.0, 1.4, -5.0), Quat::IDENTITY, 50.0);
 
    let mut physics = PhysicsWorld::new();
-   // The reference PhysicsTest uses a `MeshCollider` floor (box-box SAT is unstable).
-   // 参考 PhysicsTest 使用 `MeshCollider` 地面（盒-盒 SAT 不稳定）。
+   // he3d-cpp's PhysicsTest uses a `MeshCollider` floor (box-box SAT is unstable).
+   // he3d-cpp 的 PhysicsTest 使用 `MeshCollider` 地面（盒-盒 SAT 不稳定）。
    physics.add_static_mesh(
       floor,
       scene.meshes.get(floor_mesh).expect("floor mesh"),
@@ -86,8 +86,8 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
       Vec3::splat(CUBE_HALF),
       Transform::from_position(CUBE_RESET_POS),
    );
-   // Match the reference PhysicsTest's cube material: modest friction, a noticeable bounce, and light damping so the push doesn't run away.
-   // 匹配参考 PhysicsTest 的立方体材质：适中的摩擦力、明显的弹性和轻微阻尼，使推力不会失控。
+   // Match he3d-cpp's PhysicsTest cube material: modest friction, a noticeable bounce, and light damping so the push doesn't run away.
+   // 匹配 he3d-cpp 的 PhysicsTest 立方体材质：适中的摩擦力、明显的弹性和轻微阻尼，使推力不会失控。
    physics.set_material(cube, 0.45, 0.5);
    physics.set_damping(cube, 0.05, 0.05);
    physics.set_velocity(cube, Vec3::new(1.0, 0.0, 0.0));
@@ -190,10 +190,10 @@ fn reset_cube(physics: &mut PhysicsWorld, cube: ObjectId) {
 }
 
 fn is_grounded(physics: &PhysicsWorld, cube: ObjectId) -> bool {
-   // The reference PhysicsTest checks an unrotated AABB overlap against the floor
+   // he3d-cpp's PhysicsTest checks an unrotated AABB overlap against the floor
    // with tolerances, plus a slow vertical velocity. Ported verbatim: it is stable
    // at rest, whereas recomputed contacts require positive penetration each step.
-   // 参考 PhysicsTest 使用未旋转的 AABB 与地面做带容差的重叠判定，并附加较慢的
+   // he3d-cpp 的 PhysicsTest 使用未旋转的 AABB 与地面做带容差的重叠判定，并附加较慢的
    // 垂直速度条件。这里原样移植：它在静止时稳定，而重算的接触要求每步都有正穿透。
    let Some(position) = physics.transform(cube).map(|transform| transform.position) else {
       return false;

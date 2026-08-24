@@ -8,8 +8,8 @@ mod jpeg;
 #[cfg(feature = "png")]
 mod png;
 
-/// Maximum decoded image dimension, matching the reference renderer.
-/// 最大解码图像尺寸，与参考渲染器一致。
+/// Maximum decoded image dimension, matching he3d-cpp.
+/// 最大解码图像尺寸，与 he3d-cpp 一致。
 #[cfg_attr(
    not(any(feature = "bmp", feature = "png", feature = "jpeg")),
    allow(dead_code)

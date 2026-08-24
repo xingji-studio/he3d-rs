@@ -6,8 +6,8 @@ use he3d_math::{Vec2, Vec3, conv};
 
 use crate::{AntiAliasing, RendererConfig};
 
-/// Hard cap on framebuffer pixels, matching the reference renderer's `kMaximumRendererPixels`.
-/// 帧缓冲像素数上限，与参考渲染器的 `kMaximumRendererPixels` 一致。
+/// Hard cap on framebuffer pixels, matching he3d-cpp's `kMaximumRendererPixels`.
+/// 帧缓冲像素数上限，与 he3d-cpp 的 `kMaximumRendererPixels` 一致。
 const MAX_FRAMEBUFFER_PIXELS: u64 = 16_777_216;
 
 /// The software rasterizer.
@@ -262,10 +262,10 @@ impl Renderer {
    }
 
    // The casts below are deliberate rasterizer math: screen coordinates are
-   // bounded by the framebuffer size, fixed-point lighting mirrors the reference
+   // bounded by the framebuffer size, fixed-point lighting mirrors he3d-cpp
    // renderer, and the x/y-paired names are idiomatic here.
    // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照
-   // 与参考渲染器一致，x/y 成对命名在此处是惯用法。
+   // 与 he3d-cpp 一致，x/y 成对命名在此处是惯用法。
    #[expect(
       clippy::cast_possible_truncation,
       clippy::cast_precision_loss,
@@ -318,8 +318,8 @@ impl Renderer {
       let duz_dx = dw0 * uz0.x + dw1 * uz1.x + dw2 * uz2.x;
       let dvz_dx = dw0 * uz0.y + dw1 * uz1.y + dw2 * uz2.y;
 
-      // Fixed-point light intensity, matching the reference renderer.
-      // 定点光照强度，与参考渲染器一致。
+      // Fixed-point light intensity, matching he3d-cpp.
+      // 定点光照强度，与 he3d-cpp 一致。
       let lr = ((light.r * 256.0) as i32).clamp(0, 512);
       let lg = ((light.g * 256.0) as i32).clamp(0, 512);
       let lb = ((light.b * 256.0) as i32).clamp(0, 512);
@@ -482,10 +482,10 @@ mod tests {
    }
 
    #[test]
-   fn triangle_render_matches_reference_shading() {
+   fn triangle_render_matches_he3d_cpp_shading() {
       let renderer = render_triangle(64, 64);
-      // The triangle faces -Z (flat-shaded with the reference vertex order), and the default light (0,-1,1) hits its back, so it receives only ambient 0.15. The solid texture (255,89,38) is lit in fixed point: (255·38, 89·38, 38·38) >> 8 = (37, 13, 5).
-      // 该三角形面朝 -Z（按参考顶点顺序平面着色），默认光源 (0,-1,1) 击中其背面，因此只受环境光 0.15 影响。纯色纹理 (255,89,38) 经定点光照：(255·38, 89·38, 38·38) >> 8 = (37, 13, 5)。
+      // The triangle faces -Z (flat-shaded with he3d-cpp's vertex order), and the default light (0,-1,1) hits its back, so it receives only ambient 0.15. The solid texture (255,89,38) is lit in fixed point: (255·38, 89·38, 38·38) >> 8 = (37, 13, 5).
+      // 该三角形面朝 -Z（按 he3d-cpp 的顶点顺序平面着色），默认光源 (0,-1,1) 击中其背面，因此只受环境光 0.15 影响。纯色纹理 (255,89,38) 经定点光照：(255·38, 89·38, 38·38) >> 8 = (37, 13, 5)。
       let center = pixel(&renderer, 32, 32);
       assert_eq!(center, ColorRgba8::from_rgb(37, 13, 5));
    }
@@ -578,8 +578,8 @@ mod tests {
    #[test]
    fn textured_uv_wraps_into_texture() {
       let mut scene = Scene::new();
-      // Back-facing winding (-Z normal, like the reference triangle), lit along -Z so it renders and receives diffuse light.
-      // 背向绕序（-Z 法线，与参考三角形一致），沿 -Z 方向打光，使其能够渲染并接受漫反射光照。
+      // Back-facing winding (-Z normal, like he3d-cpp's triangle), lit along -Z so it renders and receives diffuse light.
+      // 背向绕序（-Z 法线，与 he3d-cpp 的三角形一致），沿 -Z 方向打光，使其能够渲染并接受漫反射光照。
       scene.light.direction = Vec3::new(0.0, 0.0, -1.0);
       let texture = scene.textures.insert(
          Texture::new(

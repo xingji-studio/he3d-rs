@@ -97,8 +97,8 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
       Vec3::new(0.5, 0.225, 0.7),
       Transform::from_position(SPAWN_POS),
    );
-   // Reference material: modest friction, slight bounce off the terrain.
-   // 参考材质：适中的摩擦力，落地有轻微回弹。
+   // he3d-cpp material: modest friction, slight bounce off the terrain.
+   // he3d-cpp 材质：适中的摩擦力，落地有轻微回弹。
    physics.set_material(plane, 0.5, 0.1);
 
    let mut camera = Camera::new(Vec3::new(0.0, 12.0, 5.0), Quat::IDENTITY, 90.0);
@@ -285,8 +285,8 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
          fps_start = now;
          fps_frames = 0;
       }
-      // No frame-rate lock: render as fast as the software rasterizer can, matching the reference simulator (SetFrameRateLimit(0)).
-      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染，与参考模拟器一致（SetFrameRateLimit(0)）。
+      // No frame-rate lock: render as fast as the software rasterizer can, matching the he3d-cpp simulator (SetFrameRateLimit(0)).
+      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染，与 he3d-cpp 模拟器一致（SetFrameRateLimit(0)）。
    }
 }
 

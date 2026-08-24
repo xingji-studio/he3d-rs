@@ -1,7 +1,7 @@
 use he3d_math::{Quat, Vec3};
 
-/// Default distance to the near clipping plane, matching the reference renderer's `HE3D_NEAR_Z`.
-/// 近裁剪平面的默认距离，与参考渲染器的 `HE3D_NEAR_Z` 一致。
+/// Default distance to the near clipping plane, matching he3d-cpp's `HE3D_NEAR_Z`.
+/// 近裁剪平面的默认距离，与 he3d-cpp 的 `HE3D_NEAR_Z` 一致。
 pub const DEFAULT_NEAR: f32 = 0.1;
 
 /// A pinhole camera. A plain value type; it is never stored inside a renderer.

@@ -19,8 +19,8 @@ const MODE_TRIANGLES: u32 = 4;
 /// Parse a `.gltf` JSON document plus external buffer bytes into a mesh.
 /// 将 `.gltf` JSON 文档及外部缓冲字节解析为网格。
 ///
-/// Restricted subset, matching the reference loader's range: exactly one mesh with one triangle primitive, `POSITION` (vec3 f32) and optional `TEXCOORD_0` (vec2 f32) attributes, optional u8/u16/u32 indices, tightly packed buffer views (no strides), and buffers supplied as byte slices.
-/// 受限子集，与参考加载器的范围一致：恰好一个网格含一个三角形图元，`POSITION`（vec3 f32）与可选的 `TEXCOORD_0`（vec2 f32）属性、可选的 u8/u16/u32 索引、紧密打包的缓冲视图（无步长），缓冲以字节切片提供。
+/// Restricted subset, matching he3d-cpp's loader range: exactly one mesh with one triangle primitive, `POSITION` (vec3 f32) and optional `TEXCOORD_0` (vec2 f32) attributes, optional u8/u16/u32 indices, tightly packed buffer views (no strides), and buffers supplied as byte slices.
+/// 受限子集，与 he3d-cpp 加载器的范围一致：恰好一个网格含一个三角形图元，`POSITION`（vec3 f32）与可选的 `TEXCOORD_0`（vec2 f32）属性、可选的 u8/u16/u32 索引、紧密打包的缓冲视图（无步长），缓冲以字节切片提供。
 /// Buffers with a `uri` (external files or data URIs) are rejected; use [`parse_glb`] for embedded buffer data.
 /// 带 `uri` 的缓冲（外部文件或 data URI）会被拒绝；请使用 [`parse_glb`] 处理内嵌缓冲数据。
 ///

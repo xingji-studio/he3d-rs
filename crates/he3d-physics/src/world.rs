@@ -6,8 +6,8 @@ use he3d_math::Vec3;
 
 use crate::StepResult;
 
-/// Default gravity, matching the reference engine's `(0, -9.8, 0)`.
-/// 默认重力，与参考引擎的 `(0, -9.8, 0)` 一致。
+/// Default gravity, matching he3d-cpp's `(0, -9.8, 0)`.
+/// 默认重力，与 he3d-cpp 的 `(0, -9.8, 0)` 一致。
 const DEFAULT_GRAVITY: Vec3 = Vec3::new(0.0, -9.8, 0.0);
 
 /// A physics world mapping render objects by stable [`ObjectId`] onto the
@@ -34,8 +34,8 @@ pub struct PhysicsWorld {
 }
 
 impl PhysicsWorld {
-   /// Create an empty world with the reference default gravity `(0, -9.8, 0)`.
-   /// 创建一个空世界，重力为参考默认值 `(0, -9.8, 0)`。
+   /// Create an empty world with he3d-cpp's default gravity `(0, -9.8, 0)`.
+   /// 创建一个空世界，重力为 he3d-cpp 的默认值 `(0, -9.8, 0)`。
    ///
    /// # Examples
    /// 示例
@@ -117,9 +117,9 @@ impl PhysicsWorld {
       self.add_box(object, half_extents, transform, Motion::Kinematic)
    }
 
-   /// Register a body, rejecting a duplicate `ObjectId` (the reference `AddBody`
+   /// Register a body, rejecting a duplicate `ObjectId` (he3d-cpp's `AddBody`
    /// also rejects already-registered objects).
-   /// 注册刚体；拒绝重复的 `ObjectId`（参考实现 `AddBody` 同样拒绝已注册对象）。
+   /// 注册刚体；拒绝重复的 `ObjectId`（he3d-cpp 的 `AddBody` 同样拒绝已注册对象）。
    fn add_box(
       &mut self,
       object: ObjectId,
@@ -145,9 +145,9 @@ impl PhysicsWorld {
    }
 
    /// Add a static triangle-mesh collider from a [`Mesh`]. The mesh vertices are
-   /// copied; the reference `MeshCollider` reads live mesh geometry, and gp3d
+   /// copied; he3d-cpp's `MeshCollider` reads live mesh geometry, and gp3d
    /// stores its own copy, so re-adding after the mesh changes is the norm.
-   /// 从 [`Mesh`] 添加静态三角网格碰撞体。网格顶点会被复制；参考 `MeshCollider`
+   /// 从 [`Mesh`] 添加静态三角网格碰撞体。网格顶点会被复制；he3d-cpp 的 `MeshCollider`
    /// 读取实时网格几何，而 gp3d 保存自己的副本，因此网格变化后重新添加是常态。
    pub fn add_static_mesh(&mut self, object: ObjectId, mesh: &Mesh, transform: Transform) -> bool {
       if self.handle(object).is_some() {
@@ -310,10 +310,10 @@ impl PhysicsWorld {
       }
    }
 
-   /// Advance the simulation by one fixed step using the reference default of 4
+   /// Advance the simulation by one fixed step using he3d-cpp's default of 4
    /// solver iterations. Forces and torques applied with [`PhysicsWorld::add_force`]
    /// / [`PhysicsWorld::add_torque`] act for one step only and are then cleared.
-   /// 以参考默认的 4 次求解器迭代推进模拟。由 [`PhysicsWorld::add_force`] /
+   /// 以 he3d-cpp 的默认 4 次求解器迭代推进模拟。由 [`PhysicsWorld::add_force`] /
    /// [`PhysicsWorld::add_torque`] 施加的力与力矩只作用一步并被清除。
    pub fn step(&mut self, delta_time: f32) -> StepResult {
       self.scene.step(delta_time, 4)

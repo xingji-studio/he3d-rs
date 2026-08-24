@@ -5,7 +5,7 @@
 [![CI](https://github.com/xingji-studio/he3d-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/xingji-studio/he3d-rs/actions/workflows/ci.yml)
 
 A `no_std + alloc` software 3D engine: rasterizer, scene graph, assets, physics, and
-platform backends — a Rust port of the [HE3D](https://github.com/xingji-studio/HE3D)
+platform backends — a Rust port of the [he3d-cpp](https://github.com/xingji-studio/he3d-cpp)
 reference renderer (right-handed, +Z forward, inverse-depth buffer).
 
 ## Crates
@@ -62,9 +62,11 @@ Crates are published in dependency order (gp3d first, then `he3d-math` → `he3d
 
 ## Attributions
 
-The biplane model and texture used by the examples are taken from
+The biplane model (`biplane.obj`) used by the examples is taken from
 [Sebastian Lague's Software-Rasterizer](https://github.com/SebLague/Software-Rasterizer)
-(MIT License, Copyright (c) 2025 Sebastian Lague). See
+(MIT License, Copyright (c) 2025 Sebastian Lague). Its texture (`biplane.bmp`)
+is an original asset of the HE3D project, redistributed via the
+[he3d-cpp](https://github.com/xingji-studio/he3d-cpp) reference renderer. See
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the full license text.
 
 ## License

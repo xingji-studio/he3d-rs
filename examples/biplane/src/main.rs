@@ -61,8 +61,8 @@ fn main() {
    };
 
    let mut scene = Scene::new();
-   // The reference FlightSimulator sun: strong warm key light.
-   // 参考 FlightSimulator 的太阳：强烈的暖色主光。
+   // The he3d-cpp FlightSimulator sun: strong warm key light.
+   // he3d-cpp FlightSimulator 的太阳：强烈的暖色主光。
    scene.light.direction = Vec3::new(1.0, 1.0, 0.5).normalize();
    scene.light.color = Rgb::new(1.5, 1.4, 1.2);
    let mesh_id = scene.meshes.insert(mesh);

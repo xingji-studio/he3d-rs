@@ -59,8 +59,8 @@ impl fmt::Display for PlatformError {
    }
 }
 
-/// Normalize an ASCII key to lowercase, matching the reference renderer.
-/// 将 ASCII 键规范化为小写，与参考渲染器保持一致。
+/// Normalize an ASCII key to lowercase, matching he3d-cpp.
+/// 将 ASCII 键规范化为小写，与 he3d-cpp 保持一致。
 #[inline]
 #[must_use]
 pub fn normalize_key(key: KeyCode) -> KeyCode {

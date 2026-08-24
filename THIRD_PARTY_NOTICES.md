@@ -3,7 +3,7 @@
 This repository redistributes the following third-party works under their own
 licenses. 本仓库在各自许可证下再分发以下第三方作品。
 
-## biplane.obj, biplane.bmp
+## biplane.obj
 
 - **Source / 来源:** <https://github.com/SebLague/Software-Rasterizer>
 - **Copyright / 版权:** Copyright (c) 2025 Sebastian Lague
@@ -12,8 +12,16 @@ licenses. 本仓库在各自许可证下再分发以下第三方作品。
   `he3d-biplane` and `he3d-flight-simulator` examples.
   `examples/assets/` —— 由 `he3d-biplane` 与 `he3d-flight-simulator` 示例原样使用。
 
-These files are copied unmodified from the project above and are not part of
-this project's own code. 这些文件原样复制自上述项目，不属于本项目自身的代码。
+This file is copied unmodified from the project above and is not part of this
+project's own code. 该文件原样复制自上述项目，不属于本项目自身的代码。
+
+The accompanying `biplane.bmp` texture is **not** a third-party work: it is an
+original asset of the HE3D project (rendered/baked by the project's maintainer),
+redistributed through the [he3d-cpp](https://github.com/xingji-studio/he3d-cpp)
+reference renderer, and is covered by this project's own MIT license.
+配套的 `biplane.bmp` 纹理**不是**第三方作品：它是 HE3D 项目的原创资产（由项目
+维护者烘焙渲染），经由 [he3d-cpp](https://github.com/xingji-studio/he3d-cpp)
+参考渲染器再分发，并受本项目自身的 MIT 许可证保护。
 
 ### MIT License
 
