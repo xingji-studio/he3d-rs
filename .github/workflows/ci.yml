@@ -14,11 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # he3d-physics depends on the standalone gp3d engine (sibling repo);
-      # check it out where the path dependency expects it.
-      # he3d-physics 依赖独立引擎 gp3d（同级仓库）；检出到 path 依赖期望的位置。
-      - name: Checkout gp3d engine (sibling path)
-        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-none
@@ -40,8 +35,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout gp3d engine (sibling path)
-        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -62,8 +55,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout gp3d engine (sibling path)
-        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
       - name: Install SDL3 (build from source; libsdl3-dev is not in Ubuntu 24.04 repos)
         run: |
@@ -75,22 +66,12 @@ jobs:
           sudo cmake --install /tmp/SDL/build
           sudo ldconfig
       - run: cargo test --workspace
-      - name: Facade integration test (std backend)
-        run: cargo test -p he3d --features std
-      - name: Check examples with std backend (no SDL)
-        run: |
-          set -euo pipefail
-          for pkg in he3d-triangle he3d-biplane he3d-physics-test he3d-flight-simulator; do
-            cargo check -p "$pkg" --no-default-features --features std
-          done
 
   audit-features:
     name: dependency feature audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout gp3d engine (sibling path)
-        run: git clone --depth 1 https://github.com/xingji-studio/gp3d-rs.git ../gp3d-rs
       - uses: dtolnay/rust-toolchain@stable
       - name: Verify no std leaks into core crates
         run: |
@@ -104,3 +85,23 @@ jobs:
             fi
           done
           echo "no std leaks detected"
+      - name: Verify the engine depends on no backend crate
+        run: |
+          set -euo pipefail
+          # `he3d` must not carry a backend even with every feature on: the binary
+          # chooses the backend, so a backend here would decide for it (ADR 0005).
+          tree=$(cargo tree -p he3d --all-features -e normal,build,features)
+          if echo "$tree" | grep -qE 'he3d-platform-(sdl3|std)'; then
+            echo "he3d depends on a backend:"
+            echo "$tree"
+            exit 1
+          fi
+          # A dev-dependency would not reach users, but keeping the facade free of
+          # one is what lets its test suite build anywhere.
+          dev=$(cargo tree -p he3d --all-features -e dev)
+          if echo "$dev" | grep -qE 'he3d-platform-(sdl3|std)'; then
+            echo "he3d has a backend dev-dependency:"
+            echo "$dev"
+            exit 1
+          fi
+          echo "he3d depends on no backend"

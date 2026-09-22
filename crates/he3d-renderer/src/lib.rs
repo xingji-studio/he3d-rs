@@ -12,6 +12,6 @@ extern crate alloc;
 mod config;
 mod renderer;
 
-pub use config::{AntiAliasing, RendererConfig};
+pub use config::{AntiAliasing, MAX_SSAA_SCALE, RendererConfig};
 pub use he3d_core::{Camera, ColorRgba8, Error, Rgb, Scene};
 pub use renderer::Renderer;

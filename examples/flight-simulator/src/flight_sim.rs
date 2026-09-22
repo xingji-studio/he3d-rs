@@ -2,12 +2,26 @@
 //! 飞行模拟核心逻辑：地形噪声、网格生成、飞行控制、相机跟随和流式地形块。
 
 use he3d::{
-   Camera, ColorRgba8, Error, EulerRot, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId,
-   PhysicsWorld, Quat, RenderObject, Rgb, Scene, Texture, Transform, Vec2, Vec3,
+   BodyId, Camera, ColorRgba8, Error, EulerRot, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId,
+   Quat, RenderObject, Rgb, Scene, StaticMeshId, Texture, Transform, Vec2, Vec3, World,
 };
 
-/// Default gravity used by the he3d-cpp flight simulator.
-/// he3d-cpp 飞行模拟器使用的默认重力。
+/// Gravity used by the flight simulator.
+/// 飞行模拟器使用的重力。
+///
+/// Ten times earth, and it is the only thing that moves the aircraft vertically: the
+/// control model rebuilds velocity as a horizontal cruise vector plus whatever
+/// vertical component gravity has already produced, so pitch steers but never
+/// climbs. Gravity therefore *is* the vertical handling, and this value is what makes
+/// a descent from the spawn altitude reach the ground in about half a second.
+///
+/// That is a flight-feel choice, not a physical one. If the model ever gains a lift
+/// or throttle term, this should come back down toward the engine's default.
+/// 十倍地球重力，而且它是唯一让飞机在竖直方向运动的东西：控制模型把速度重建为水平巡航
+/// 向量加上重力已经产生的竖直分量，因此俯仰只转向、永不爬升。重力因此**就是**竖直方向的
+/// 手感，而这个值正是让飞机从出生高度到触地只用约半秒的原因。
+///
+/// 这是飞行手感的选择，不是物理选择。若模型将来引入升力或油门，这个值应当降回引擎默认值。
 pub const FLIGHT_GRAVITY: Vec3 = Vec3::new(0.0, -100.0, 0.0);
 
 /// Deterministic pseudo-random noise at an integer grid point.
@@ -233,6 +247,16 @@ pub struct FlightControls {
    pub roll: f32,
 }
 
+// Key mapping, as wired in `update_flight_controls`: `W`/`S` pitch, `E`/`Q` yaw,
+// `A`/`D` roll, space to jump. Note the pitch direction — `W` is the *positive* axis
+// and a positive rotation about X sends `+Z` to `-Y`, so `W` pushes the nose **down**
+// and `S` pulls it **up**. That is the stick-forward convention, and it is stated
+// here because nothing else in the tree says which way these keys go.
+// 按键映射，如 `update_flight_controls` 中所接：`W`/`S` 俯仰、`E`/`Q` 偏航、`A`/`D`
+// 滚转、空格跳跃。注意俯仰方向——`W` 是**正**轴，而绕 X 的正向旋转把 `+Z` 送到 `-Y`，
+// 因此 `W` 把机头压**向下**、`S` 抬**向上**。这是"推杆向前"的约定；之所以写在这里，
+// 是因为整个仓库没有别的地方说明这些键往哪边去。
+
 /// Ease a digital key pair into a smooth cubic control value.
 /// 将一组数字按键平滑为三次曲线控制值。
 ///
@@ -293,9 +317,46 @@ pub fn axis_angle_quat(axis: Vec3, angle: f32) -> Quat {
    Quat::from_xyzw(axis.x * sin, axis.y * sin, axis.z * sin, cos)
 }
 
-/// Cruise speed maintained while airborne, matching the he3d-cpp simulator.
-/// 空中保持的巡航速度，与 he3d-cpp 模拟器一致。
+/// Cruise speed maintained while airborne.
+/// 空中保持的巡航速度。
+///
+/// It sets the pace of the whole demo and is coupled to terrain streaming: a tile is
+/// `(TERRAIN_GRID_COUNT - 1) * TERRAIN_STEP` metres across, so this is how long the
+/// aircraft spends inside one before the streamer has to have the next ready.
+/// 它决定整个演示的节奏，并与地形流式加载耦合：一块地形宽
+/// `(TERRAIN_GRID_COUNT - 1) * TERRAIN_STEP` 米，因此这个值决定了飞机在单块地形内停留
+/// 多久、流式加载器需要在此之前备好下一块。
 pub const CRUISE_SPEED: f32 = 15.0;
+
+/// How fast a held control key ramps to full deflection, in units per second.
+/// 按住控制键时达到满偏的速率，单位/秒。
+///
+/// Full deflection in about 0.22 s: quick enough that a tap registers, slow enough
+/// that the aircraft does not snap between extremes.
+/// 约 0.22 秒达到满偏：快到一次轻点也能生效，慢到飞机不会在两个极端之间瞬间弹跳。
+pub const INPUT_ACCELERATION: f32 = 4.5;
+
+/// How fast a released control key returns to neutral, in units per second.
+/// 松开控制键后回到中位的速率，单位/秒。
+///
+/// Deliberately slower than [`INPUT_ACCELERATION`] — about 0.40 s against 0.22 s — so
+/// the aircraft holds a turn briefly after the key is released instead of snapping
+/// back, which is what makes it feel like it has momentum.
+/// 刻意慢于 [`INPUT_ACCELERATION`]——约 0.40 秒对 0.22 秒——使飞机在松开按键后仍短暂保持
+/// 转向而非立刻弹回，这正是它感觉有惯性的来源。
+pub const INPUT_RECOVERY: f32 = 2.5;
+
+/// Peak attitude rates, in radians per second at full deflection.
+///
+/// Roll is the fastest and yaw the slowest, which is the ordering that makes a bank
+/// turn read correctly: rolling into the turn is immediate, the heading follows, and
+/// pitching never outruns either.
+/// 满偏时的峰值姿态角速度，单位弧度/秒。
+/// 滚转最快、偏航最慢，这个次序让倾斜转弯看起来正确：压坡度是立刻的，航向随后跟上，而俯仰
+/// 不会超过两者。
+pub const PITCH_RATE: f32 = 1.35;
+pub const YAW_RATE: f32 = 0.95;
+pub const ROLL_RATE: f32 = 1.75;
 
 /// Exponential velocity decay applied while the plane touches the ground.
 /// 飞机接触地面时施加的指数速度衰减。
@@ -308,10 +369,8 @@ pub const CRASH_DAMPING: f32 = 6.0;
 /// Update the aircraft's orientation from controls and write its velocity.
 /// 根据控制输入更新飞机朝向并写入其速度。
 ///
-/// `controlled_orientation` is the player-owned heading. It is used instead of the physics body's own rotation so ground collisions can never roll or pitch the plane away from player control.
-/// `controlled_orientation` 是玩家持有的朝向。使用它而非物理刚体自身的旋转，这样地面碰撞永远不会让飞机滚转或俯仰偏离玩家控制。
-/// This matches the he3d-cpp simulator, which rebuilds its scene every step and only lets controls change heading.
-/// 这与 he3d-cpp 模拟器一致，它每步重建场景，仅允许控制改变朝向。
+/// `controlled_orientation` is the player-owned heading. It is used instead of the Body's own rotation so ground collisions can never roll or pitch the plane away from player control.
+/// `controlled_orientation` 是玩家持有的朝向。使用它而非 Body 自身的旋转，这样地面碰撞永远不会让飞机滚转或俯仰偏离玩家控制。
 /// The angular velocity is also cleared each step so impacts cannot make the plane spin.
 /// 每步还会清零角速度，使撞击不会导致飞机旋转。
 ///
@@ -320,35 +379,30 @@ pub const CRASH_DAMPING: f32 = 6.0;
 /// Returns the current world-space forward direction.
 /// 返回当前世界空间的前向方向。
 pub fn update_flight_controls(
-   physics: &mut PhysicsWorld,
-   plane: ObjectId,
+   world: &mut World,
+   plane: BodyId,
    controlled_orientation: &mut Quat,
    controls: &mut FlightControls,
    keys: &[bool; 256],
    delta_time: f32,
    contacted: bool,
 ) -> Option<Vec3> {
-   let position = physics.transform(plane)?.position;
+   let position = world.position(plane)?;
 
    // Ground impacts must never leave the plane spinning out of control.
    // 地面撞击绝不能使飞机失去控制地旋转。
-   physics.set_angular_velocity(plane, Vec3::ZERO);
+   world.set_angular_velocity(plane, Vec3::ZERO);
    if contacted {
       // Touching down: lose control authority immediately, freeze the heading and decelerate until the crash check stops the plane.
       // 触地：立即失去控制权，冻结朝向并减速，直到坠毁判定停住飞机。
       let forward = *controlled_orientation * Vec3::Z;
-      physics.set_transform(
-         plane,
-         Transform::from_position_orientation(position, *controlled_orientation),
-      );
-      let velocity = physics.velocity(plane);
+      world.set_pose(plane, position, *controlled_orientation);
+      let velocity = world.velocity(plane)?;
       let decay = (-GROUND_CONTACT_DECAY * delta_time).exp();
-      physics.set_velocity(plane, velocity * decay);
+      world.set_velocity(plane, velocity * decay);
       return Some(forward);
    }
 
-   const INPUT_ACCELERATION: f32 = 4.5;
-   const INPUT_RECOVERY: f32 = 2.5;
    let pitch = input_curve(
       &mut controls.pitch,
       keys[b'w' as usize],
@@ -376,25 +430,35 @@ pub fn update_flight_controls(
 
    let orientation = *controlled_orientation;
 
-   let pitch_delta = Quat::from_rotation_x(pitch * 1.35 * delta_time);
+   let pitch_delta = Quat::from_rotation_x(pitch * PITCH_RATE * delta_time);
    let right = orientation * Vec3::X;
    let local_up = orientation * Vec3::Y;
    let world_up = Vec3::Y;
    let bank_influence = right.y.abs().clamp(0.0, 1.0);
    let yaw_axis =
       (world_up * (1.0 - bank_influence) + local_up * bank_influence).normalize_or_zero();
-   let yaw_delta = axis_angle_quat(yaw_axis, yaw * 0.95 * delta_time);
-   let roll_delta = Quat::from_rotation_z(roll * 1.75 * delta_time);
+   let yaw_delta = axis_angle_quat(yaw_axis, yaw * YAW_RATE * delta_time);
+   let roll_delta = Quat::from_rotation_z(roll * ROLL_RATE * delta_time);
 
    let new_orientation = (yaw_delta * orientation * pitch_delta * roll_delta).normalize();
    let forward = new_orientation * Vec3::Z;
    *controlled_orientation = new_orientation;
 
-   physics.set_transform(
-      plane,
-      Transform::from_position_orientation(position, new_orientation),
-   );
-   physics.set_velocity(plane, forward * CRUISE_SPEED);
+   world.set_pose(plane, position, new_orientation);
+   // The nose owns the entire velocity vector, vertical component included. There is no
+   // lift term, so whichever way the aircraft points is where it goes, and holding
+   // pitch-up is what makes it climb.
+   //
+   // Letting gravity keep the vertical component instead — leaving the controls to set
+   // only a horizontal cruise vector — reads as more physical but is not: the vertical
+   // velocity then becomes nothing but integrated gravity, so the aircraft can only ever
+   // descend and pitching has no effect on altitude at all.
+   // 机头拥有整个速度向量，包括竖直分量。没有升力项，因此飞机指向哪就飞向哪，而持续拉杆正是
+   // 它爬升的方式。
+   //
+   // 反过来让重力保留竖直分量——控制只写水平巡航向量——看起来更"物理"，其实不是：竖直速度会
+   // 变成纯粹的重力积分，飞机只能一路下坠，俯仰对高度毫无影响。
+   world.set_velocity(plane, forward * CRUISE_SPEED);
    Some(forward)
 }
 
@@ -434,8 +498,9 @@ pub fn update_camera(
    // 固定向下俯仰（0.15 弧度），使飞机位于屏幕中心附近。
    // `EulerRot::ZYX` takes angles in (Z, Y, X) axis order, so the pitch goes in the `z` slot.
    // `EulerRot::ZYX` 按 (Z, Y, X) 轴序接收角度，因此俯仰放在 `z` 槽位。
-   // This matches he3d-cpp's `FromEuler({pitch, yaw, 0})`.
-   // 这与 he3d-cpp 的 `FromEuler({pitch, yaw, 0})` 一致。
+   // Roll is left at zero: the chase camera owns the roll it shows, so the
+   // aircraft's own orientation stays a pure yaw and pitch.
+   // 滚转保持为零：追尾相机自行表现滚转，因此飞机自身朝向只含偏航与俯仰。
    camera.orientation = Quat::from_euler(EulerRot::ZYX, 0.0, chase.yaw, 0.15);
    let yaw_rotation = Quat::from_rotation_y(chase.yaw);
    let target_position = plane_position + yaw_rotation * chase.offset;
@@ -454,12 +519,20 @@ fn tile_in_range(grid_x: i32, grid_z: i32, center_x: i32, center_z: i32, radius:
       && grid_z <= center_z + radius
 }
 
-/// A terrain tile slot: owns one render object and its static mesh collider.
-/// 一个地形块槽位：拥有一个渲染对象及其静态网格碰撞体。
+/// A terrain tile slot: owns one render object and its Static geometry collider.
+/// 一个地形块槽位：拥有一个渲染对象及其 Static geometry 碰撞体。
+///
+/// The render object and the collider are separate things with separate identities;
+/// the tile is where the application keeps them together. See `docs/adr/0001`.
+/// 渲染对象与碰撞体是两样各有身份的东西；瓦片就是应用把它们维系在一起的地方。见
+/// `docs/adr/0001`。
 #[derive(Clone, Copy, Debug)]
 pub struct TerrainTile {
    pub mesh_id: MeshId,
    pub object_id: ObjectId,
+   /// The collider registered for this tile, if one has been built.
+   /// 为本地形块注册的碰撞体（若已构建）。
+   pub collider: Option<StaticMeshId>,
    pub grid_x: i32,
    pub grid_z: i32,
    pub active: bool,
@@ -467,8 +540,8 @@ pub struct TerrainTile {
 
 /// Streams square terrain tiles around the aircraft, refreshing at most one tile per call.
 /// 在飞机周围流式加载方形地形块，每次调用最多刷新一个地形块。
-/// Mirrors he3d-cpp's budget: terrain generation is spread across frames instead of blocking one frame.
-/// 与 he3d-cpp 的预算一致：地形生成分摊到多帧执行，而非阻塞单帧。
+/// Terrain generation is spread across frames instead of blocking one frame.
+/// 地形生成分摊到多帧执行，而非阻塞单帧。
 pub struct TerrainManager {
    pub tiles: Vec<TerrainTile>,
    pub center_x: i32,
@@ -508,6 +581,7 @@ impl TerrainManager {
          tiles.push(TerrainTile {
             mesh_id: placeholder_mesh,
             object_id,
+            collider: None,
             grid_x: 0,
             grid_z: 0,
             active: false,
@@ -574,7 +648,7 @@ impl TerrainManager {
 
    /// Generate or refresh at most one queued terrain tile.
    /// 生成或刷新最多一个排队中的地形块。
-   pub fn refresh_one(&mut self, scene: &mut Scene, physics: &mut PhysicsWorld) {
+   pub fn refresh_one(&mut self, scene: &mut Scene, world: &mut World) {
       if self.pending_cursor >= self.pending.len() {
          return;
       }
@@ -612,14 +686,20 @@ impl TerrainManager {
          }
          tile.mesh_id = mesh_id;
 
-         // Refresh the static collider for the new tile geometry.
-         // 为新地形块几何刷新静态碰撞体。
-         physics.remove_body(tile.object_id);
-         if let Some(mesh_ref) = scene.meshes.get(mesh_id) {
-            tile.active = physics.add_static_mesh(tile.object_id, mesh_ref, world_transform);
-         } else {
-            tile.active = false;
+         // Refresh the Static geometry for the new tile. The renderer places the
+         // tile with its transform, but a collider has no transform, so the
+         // vertices are lifted into world space here.
+         // 为新地形块刷新 Static geometry。渲染器用变换摆放瓦片，但碰撞体没有变换，
+         // 因此这里把顶点抬升到世界空间。
+         if let Some(previous) = tile.collider.take() {
+            world.remove_static_mesh(previous);
          }
+         let offset = Vec3::new(world_x, 0.0, world_z);
+         if let Some(mesh_ref) = scene.meshes.get(mesh_id) {
+            let positions: Vec<Vec3> = mesh_ref.vertices().iter().map(|v| *v + offset).collect();
+            tile.collider = world.add_static_mesh(&positions);
+         }
+         tile.active = tile.collider.is_some();
          return;
       }
    }
@@ -628,7 +708,7 @@ impl TerrainManager {
 #[cfg(test)]
 mod tests {
    use super::*;
-   use he3d::Vec3;
+   use he3d::{BodyDesc, Shape, Vec3};
 
    #[test]
    fn noise_is_deterministic_and_bounded() {
@@ -671,14 +751,38 @@ mod tests {
    #[test]
    fn input_curve_eases_toward_target() {
       let mut current = 0.0;
-      let value = input_curve(&mut current, true, false, 1.0, 4.5, 2.5);
+      // The constants are referenced rather than restated, so retuning the handling
+      // cannot leave this test passing against stale numbers.
+      // 这里引用常量而非重述其值，因此调整手感不会让本测试对着过期数字仍然通过。
+      let value = input_curve(
+         &mut current,
+         true,
+         false,
+         1.0,
+         INPUT_ACCELERATION,
+         INPUT_RECOVERY,
+      );
       assert_eq!(value, 1.0);
       // Released: current decays slowly enough to remain inside (0,1).
       // 松开后：current 衰减得足够慢，仍保持在 (0,1) 区间内。
-      let value = input_curve(&mut current, false, false, 0.1, 4.5, 2.5);
+      let value = input_curve(
+         &mut current,
+         false,
+         false,
+         0.1,
+         INPUT_ACCELERATION,
+         INPUT_RECOVERY,
+      );
       assert!(value > 0.0 && value < 1.0, "got {value}");
       let mut current = 2.0;
-      let value = input_curve(&mut current, false, true, 1.0, 4.5, 2.5);
+      let value = input_curve(
+         &mut current,
+         false,
+         true,
+         1.0,
+         INPUT_ACCELERATION,
+         INPUT_RECOVERY,
+      );
       assert_eq!(value, -1.0, "clamped to -1");
    }
 
@@ -726,31 +830,137 @@ mod tests {
       assert!(forward.y < 0.0, "camera should look slightly downward");
    }
 
-   fn build_plane_scene(physics: &mut PhysicsWorld, scene: &mut Scene) -> ObjectId {
+   /// Build the plane's render object and its Body, returning both halves of the
+   /// association the application owns.
+   /// 构建飞机的渲染对象与其 Body，返回由应用拥有的关联的两半。
+   fn build_plane_scene(world: &mut World, scene: &mut Scene) -> (ObjectId, BodyId) {
+      const SPAWN: Vec3 = Vec3::new(0.0, 13.0, 0.0);
       let mesh = fallback_aircraft_mesh().expect("plane");
       let mesh_id = scene.meshes.insert(mesh);
       let solid = scene.textures.insert(Texture::solid(ColorRgba8::WHITE));
       let plane = scene.spawn(RenderObject {
          mesh: mesh_id,
          texture: Some(solid),
-         transform: Transform::from_position(Vec3::new(0.0, 13.0, 0.0)),
+         transform: Transform::from_position(SPAWN),
          material: Material::new(Rgb::WHITE),
          visible: true,
       });
-      physics.add_dynamic_box(
-         plane,
-         Vec3::new(0.5, 0.225, 0.7),
-         Transform::from_position(Vec3::new(0.0, 13.0, 0.0)),
+      let body = world.add_body(
+         BodyDesc::dynamic(Shape::cuboid(Vec3::new(0.5, 0.225, 0.7)), 1.0)
+            .at(SPAWN)
+            .with_friction(0.5)
+            .with_restitution(0.1)
+            .with_damping(0.1, 0.1),
       );
-      plane
+      (plane, body)
+   }
+
+   /// Build a World with the demo's gravity plus a large flat slab to land on,
+   /// and return the plane's Body.
+   /// 构建一个带演示重力和一大块平坦地板的 World，并返回飞机的 Body。
+   fn airborne_world() -> (World, BodyId) {
+      let mut world = World::new();
+      world.set_gravity(FLIGHT_GRAVITY);
+      world.add_body(
+         BodyDesc::stationary(Shape::cuboid(Vec3::new(400.0, 0.5, 400.0)))
+            .at(Vec3::new(0.0, -6.0, 0.0)),
+      );
+      let plane = world.add_body(
+         BodyDesc::dynamic(Shape::cuboid(Vec3::new(0.5, 0.225, 0.7)), 1.0)
+            .at(Vec3::new(0.0, 13.0, 0.0))
+            .with_friction(0.5)
+            .with_restitution(0.1)
+            .with_damping(0.1, 0.1)
+            .with_gravity_scale(0.0),
+      );
+      (world, plane)
+   }
+
+   #[test]
+   fn a_levelled_plane_holds_its_altitude() {
+      // The aircraft has no lift term: the only thing that can keep it up is the
+      // velocity the controls write. Levelled flight must therefore hold altitude
+      // rather than integrate gravity, which at this demo's gravity would put it on
+      // the ground in about half a second.
+      // 飞机没有升力项：唯一能托住它的就是控制写入的速度。因此平飞必须保持高度，而不是把
+      // 重力积分下去——在本演示的重力下，那会让它在约半秒内落地。
+      let (mut world, plane) = airborne_world();
+      let mut orientation = Quat::IDENTITY;
+      let mut controls = FlightControls::default();
+      let keys = [false; 256];
+
+      for _ in 0..240 {
+         update_flight_controls(
+            &mut world,
+            plane,
+            &mut orientation,
+            &mut controls,
+            &keys,
+            1.0 / 120.0,
+            false,
+         )
+         .expect("plane exists");
+         world.step(1.0 / 120.0);
+      }
+
+      // Exact, because the aircraft opts out of gravity: the controls write the whole
+      // velocity vector and nothing else touches it, so a level nose means the vertical
+      // velocity is exactly zero.
+      // 这是精确值，因为飞机退出了重力：控制写入整个速度向量，没有别的东西碰它，因此机头水平
+      // 就意味着竖直速度精确为零。
+      let y = world.position(plane).expect("plane exists").y;
+      assert!(
+         (y - 13.0).abs() < 1e-3,
+         "levelled flight must hold altitude exactly, the plane ended at y={y}"
+      );
+   }
+
+   #[test]
+   fn pointing_the_nose_up_makes_the_plane_climb() {
+      // The other half of the same contract: the nose sets the vertical velocity, so
+      // holding pitch-up has to gain altitude. Without that the aircraft is a
+      // brick no matter what the player does.
+      // 同一契约的另一半：机头决定竖直速度，因此持续拉杆必须获得高度。没有这一点，无论
+      // 玩家怎么操作，飞机都只是一块砖。
+      let (mut world, plane) = airborne_world();
+      let mut orientation = Quat::IDENTITY;
+      let mut controls = FlightControls::default();
+      let mut keys = [false; 256];
+      // `S`, not `W`: pulling back is what points the nose up. See the key-mapping
+      // note on `FlightControls`.
+      // 用 `S` 而非 `W`：向后拉杆才是把机头抬起来。见 `FlightControls` 上的按键映射说明。
+      keys[b's' as usize] = true;
+
+      // One second, not two: full deflection is about 77 degrees per second, so two
+      // seconds of held pitch is a complete loop that ends pointing at the ground.
+      // 用一秒而非两秒：满偏约 77 度/秒，因此持续拉杆两秒是一整圈，最后机头朝下。
+      for _ in 0..120 {
+         update_flight_controls(
+            &mut world,
+            plane,
+            &mut orientation,
+            &mut controls,
+            &keys,
+            1.0 / 120.0,
+            false,
+         )
+         .expect("plane exists");
+         world.step(1.0 / 120.0);
+      }
+
+      let y = world.position(plane).expect("plane exists").y;
+      assert!(
+         y > 15.0,
+         "pulling the nose up must gain altitude, the plane only reached y={y}"
+      );
    }
 
    #[test]
    fn flight_controls_set_forward_velocity() {
-      let mut physics = PhysicsWorld::new();
-      physics.set_gravity(FLIGHT_GRAVITY);
+      let mut world = World::new();
+      world.set_gravity(FLIGHT_GRAVITY);
       let mut scene = Scene::new();
-      let plane = build_plane_scene(&mut physics, &mut scene);
+      let (_, plane) = build_plane_scene(&mut world, &mut scene);
       let mut controls = FlightControls::default();
       let mut orientation = Quat::IDENTITY;
       let keys = [false; 256];
@@ -759,7 +969,7 @@ mod tests {
       // 空中飞行：逐帧保持巡航速度。
       for _ in 0..30 {
          let forward = update_flight_controls(
-            &mut physics,
+            &mut world,
             plane,
             &mut orientation,
             &mut controls,
@@ -769,16 +979,57 @@ mod tests {
          )
          .expect("plane exists");
          assert!(forward.length() > 0.99);
-         assert!((physics.velocity(plane).length() - CRUISE_SPEED).abs() < 0.01);
+         assert!(
+            (world.velocity(plane).expect("plane exists").length() - CRUISE_SPEED).abs() < 0.01
+         );
       }
    }
 
    #[test]
-   fn controls_pitch_from_w_key() {
-      let mut physics = PhysicsWorld::new();
-      physics.set_gravity(FLIGHT_GRAVITY);
+   fn flight_controls_give_the_nose_the_vertical_component() {
+      // The exact opposite of what this test once demanded. A stale vertical velocity
+      // has to be *overwritten*, because preserving it is what left gravity as the only
+      // thing setting the vertical component — and so the only thing the aircraft could
+      // ever do was descend, however it was pointed.
+      // 与本测试曾经要求的正好相反。陈旧的竖直速度必须被**覆盖**，因为保留它会让重力成为设置
+      // 竖直分量的唯一来源——于是无论机头朝向如何，飞机唯一能做的事就是下坠。
+      let mut world = World::new();
+      world.set_gravity(FLIGHT_GRAVITY);
       let mut scene = Scene::new();
-      let plane = build_plane_scene(&mut physics, &mut scene);
+      let (_, plane) = build_plane_scene(&mut world, &mut scene);
+      let mut controls = FlightControls::default();
+      let mut orientation = Quat::IDENTITY;
+      let keys = [false; 256];
+
+      assert!(world.set_velocity(plane, Vec3::new(0.0, -7.0, 0.0)));
+      update_flight_controls(
+         &mut world,
+         plane,
+         &mut orientation,
+         &mut controls,
+         &keys,
+         1.0 / 120.0,
+         false,
+      )
+      .expect("plane exists");
+
+      let velocity = world.velocity(plane).expect("plane exists");
+      assert!(
+         velocity.y.abs() < 1e-5,
+         "the nose owns the vertical component, so a level heading means level flight: {velocity:?}"
+      );
+      assert!(
+         (velocity.z - CRUISE_SPEED).abs() < 1e-5,
+         "cruise speed missing: {velocity:?}"
+      );
+   }
+
+   #[test]
+   fn controls_pitch_from_w_key() {
+      let mut world = World::new();
+      world.set_gravity(FLIGHT_GRAVITY);
+      let mut scene = Scene::new();
+      let (_, plane) = build_plane_scene(&mut world, &mut scene);
       let mut controls = FlightControls::default();
       let mut orientation = Quat::IDENTITY;
       let mut keys = [false; 256];
@@ -787,7 +1038,7 @@ mod tests {
       let before = orientation;
       for _ in 0..30 {
          update_flight_controls(
-            &mut physics,
+            &mut world,
             plane,
             &mut orientation,
             &mut controls,
@@ -795,17 +1046,25 @@ mod tests {
             1.0 / 120.0,
             false,
          );
-         physics.step(1.0 / 120.0);
+         world.step(1.0 / 120.0);
       }
       assert_ne!(before, orientation, "holding W should pitch the plane");
+      // And in which direction. Without this the test passes just as happily if the
+      // control is inverted.
+      // 以及朝哪个方向。没有这一句，即便控制反了本测试也照样通过。
+      let forward = orientation * Vec3::Z;
+      assert!(
+         forward.y < 0.0,
+         "W is stick-forward: it must push the nose down, got forward={forward:?}"
+      );
    }
 
    #[test]
    fn grounded_plane_decelerates_to_stop() {
-      let mut physics = PhysicsWorld::new();
-      physics.set_gravity(FLIGHT_GRAVITY);
+      let mut world = World::new();
+      world.set_gravity(FLIGHT_GRAVITY);
       let mut scene = Scene::new();
-      let plane = build_plane_scene(&mut physics, &mut scene);
+      let (_, plane) = build_plane_scene(&mut world, &mut scene);
       let mut controls = FlightControls::default();
       let mut orientation = Quat::IDENTITY;
       let keys = [false; 256];
@@ -813,7 +1072,7 @@ mod tests {
       // Fly at cruise speed first, then touch ground.
       // 先以巡航速度飞行，再触地。
       update_flight_controls(
-         &mut physics,
+         &mut world,
          plane,
          &mut orientation,
          &mut controls,
@@ -822,13 +1081,13 @@ mod tests {
          false,
       );
       assert!(
-         (physics.velocity(plane).length() - CRUISE_SPEED).abs() < 0.01,
+         (world.velocity(plane).expect("plane exists").length() - CRUISE_SPEED).abs() < 0.01,
          "airborne plane should cruise at {CRUISE_SPEED}"
       );
 
       for _ in 0..120 {
          update_flight_controls(
-            &mut physics,
+            &mut world,
             plane,
             &mut orientation,
             &mut controls,
@@ -838,9 +1097,9 @@ mod tests {
          );
       }
       assert!(
-         physics.velocity(plane).length() < 1.0,
+         world.velocity(plane).expect("plane exists").length() < 1.0,
          "grounded plane should slow down, got {:?}",
-         physics.velocity(plane)
+         world.velocity(plane).expect("plane exists")
       );
    }
 
@@ -848,13 +1107,13 @@ mod tests {
    fn terrain_manager_fills_neighborhood() {
       let mut scene = Scene::new();
       let placeholder = scene.meshes.insert(Mesh::triangle(1.0, 1.0).unwrap());
-      let mut physics = PhysicsWorld::new();
+      let mut world = World::new();
       let mut terrain = TerrainManager::new(&mut scene, placeholder, 1, 7, 12.0);
 
       terrain.update(Vec3::ZERO);
       let mut budget = 0;
       while budget < 100 {
-         terrain.refresh_one(&mut scene, &mut physics);
+         terrain.refresh_one(&mut scene, &mut world);
          let active = terrain.tiles.iter().filter(|tile| tile.active).count();
          if active == 9 {
             break;
@@ -870,10 +1129,11 @@ mod tests {
             .iter()
             .any(|tile| tile.active && tile.grid_x == 0 && tile.grid_z == 0)
       );
-      // Physics registered a collider for every active tile.
-      // 物理系统为每个激活的地形块注册了碰撞体。
+      // Every active tile registered its own piece of Static geometry.
+      // 每个激活的地形块都注册了自己的 Static geometry。
       for tile in terrain.tiles.iter().filter(|tile| tile.active) {
-         assert!(physics.has_body(tile.object_id));
+         let collider = tile.collider.expect("an active tile has a collider");
+         assert!(world.contains_static_mesh(collider));
       }
    }
 
@@ -881,12 +1141,12 @@ mod tests {
    fn terrain_manager_recycles_out_of_range_tiles() {
       let mut scene = Scene::new();
       let placeholder = scene.meshes.insert(Mesh::triangle(1.0, 1.0).unwrap());
-      let mut physics = PhysicsWorld::new();
+      let mut world = World::new();
       let mut terrain = TerrainManager::new(&mut scene, placeholder, 1, 7, 12.0);
 
       terrain.update(Vec3::new(0.5, 0.0, 0.5));
       for _ in 0..20 {
-         terrain.refresh_one(&mut scene, &mut physics);
+         terrain.refresh_one(&mut scene, &mut world);
       }
       assert_eq!(terrain.tiles.iter().filter(|tile| tile.active).count(), 9);
 
@@ -894,7 +1154,7 @@ mod tests {
       // 飞远后：旧地形块停用，随后形成新的邻域。
       terrain.update(Vec3::new(300.0, 0.0, 300.0));
       for _ in 0..20 {
-         terrain.refresh_one(&mut scene, &mut physics);
+         terrain.refresh_one(&mut scene, &mut world);
       }
       assert_eq!(terrain.tiles.iter().filter(|tile| tile.active).count(), 9);
       let (center_x, center_z) = (terrain.center_x, terrain.center_z);

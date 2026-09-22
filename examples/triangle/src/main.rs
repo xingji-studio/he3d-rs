@@ -1,9 +1,10 @@
 //! Triangle demo: a rotating textured triangle.
 //! 三角形示例：一个旋转的带纹理三角形。
 use he3d::{
-   BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, Quat, RenderObject,
-   Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3, create_backend,
+   BackendConfig, Camera, ColorRgba8, Event, KEY_ESCAPE, Material, Mesh, Platform, Quat,
+   RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3,
 };
+use he3d_platform_sdl3::SdlBackend;
 
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 360;
@@ -12,7 +13,7 @@ fn main() {
    let frames = parse_frames(std::env::args());
 
    let config = BackendConfig::new("HE3D TriangleTest", WINDOW_WIDTH, WINDOW_HEIGHT);
-   let mut backend = match create_backend(config) {
+   let mut backend = match SdlBackend::new(config) {
       Ok(backend) => backend,
       Err(error) => {
          eprintln!("backend init failed: {error}");
@@ -21,6 +22,7 @@ fn main() {
    };
 
    let mut scene = Scene::new();
+   scene.light.direction = Vec3::new(1.0, 1.0, -1.0).normalize();
    let triangle_mesh = Mesh::triangle(1.6, 1.4).expect("triangle mesh");
    let mesh = scene.meshes.insert(triangle_mesh);
    let solid = scene

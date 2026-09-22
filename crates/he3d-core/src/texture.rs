@@ -3,8 +3,12 @@ use he3d_math::scalar::floor;
 
 use crate::{ColorRgba8, Error, Rgb};
 
-/// Maximum width or height of a texture, matching he3d-cpp.
-/// 纹理的最大宽度或高度，与 he3d-cpp 一致。
+/// Maximum width or height of a texture.
+///
+/// It bounds the memory a single texture can claim, so a malformed file header
+/// cannot ask the decoder for an allocation the device cannot serve.
+/// 纹理的最大宽度或高度。它约束单张纹理所占内存，使畸形文件头无法向解码器索要设备提供不了
+/// 的分配。
 pub const MAX_TEXTURE_DIMENSION: u32 = 8192;
 
 /// A 2D texture owning an RGBA8 pixel buffer, with nearest-neighbor wrap sampling.
@@ -126,8 +130,9 @@ fn sample_axis(coord: f32, size: u32) -> usize {
    index.clamp(0, i64::from(size) - 1) as usize
 }
 
-/// Return the fractional part of `x` in `[0, 1)`, matching he3d-cpp's `fracf` wrap semantics.
-/// 返回 `x` 在 `[0, 1)` 范围内的小数部分，与 he3d-cpp 的 `fracf` 环绕语义一致。
+/// Return the fractional part of `x` in `[0, 1)`, wrapping upward for negative
+/// input so a texture tiles on both sides of the origin.
+/// 返回 `x` 在 `[0, 1)` 范围内的小数部分；负输入向正方向环绕，因此纹理在原点两侧都能平铺。
 fn wrap_uv(x: f32) -> f32 {
    let frac = x - floor(x);
    if frac < 0.0 { frac + 1.0 } else { frac }

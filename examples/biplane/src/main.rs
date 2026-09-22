@@ -1,9 +1,10 @@
 //! Biplane demo: an OBJ-loaded textured biplane over the scene grid.
 //! 双翼机示例：场景网格上加载 OBJ 的带纹理双翼机。
 use he3d::{
-   BackendConfig, Camera, Event, KEY_ESCAPE, Material, Quat, RenderObject, Renderer,
-   RendererConfig, Rgb, Scene, Transform, Vec3, create_backend, decode_image, parse_obj,
+   BackendConfig, Camera, Event, KEY_ESCAPE, Material, Platform, Quat, RenderObject, Renderer,
+   RendererConfig, Rgb, Scene, Transform, Vec3, decode_image, parse_obj,
 };
+use he3d_platform_sdl3::SdlBackend;
 
 const WINDOW_WIDTH: u32 = 640;
 const WINDOW_HEIGHT: u32 = 360;
@@ -15,7 +16,7 @@ fn main() {
    let frames = parse_frames(std::env::args());
 
    let config = BackendConfig::new("HE3D Biplane", WINDOW_WIDTH, WINDOW_HEIGHT);
-   let mut backend = match create_backend(config) {
+   let mut backend = match SdlBackend::new(config) {
       Ok(backend) => backend,
       Err(error) => {
          eprintln!("backend init failed: {error}");
@@ -61,8 +62,9 @@ fn main() {
    };
 
    let mut scene = Scene::new();
-   // The he3d-cpp FlightSimulator sun: strong warm key light.
-   // he3d-cpp FlightSimulator 的太阳：强烈的暖色主光。
+   // A strong warm key light from up and to the right, so the model reads with
+   // clear form and a warm cast rather than flat white.
+   // 自右上方打来的强烈暖色主光，使模型形体清晰、带暖色调而非惨白。
    scene.light.direction = Vec3::new(1.0, 1.0, 0.5).normalize();
    scene.light.color = Rgb::new(1.5, 1.4, 1.2);
    let mesh_id = scene.meshes.insert(mesh);

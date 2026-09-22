@@ -19,8 +19,8 @@ const MODE_TRIANGLES: u32 = 4;
 /// Parse a `.gltf` JSON document plus external buffer bytes into a mesh.
 /// 将 `.gltf` JSON 文档及外部缓冲字节解析为网格。
 ///
-/// Restricted subset, matching he3d-cpp's loader range: exactly one mesh with one triangle primitive, `POSITION` (vec3 f32) and optional `TEXCOORD_0` (vec2 f32) attributes, optional u8/u16/u32 indices, tightly packed buffer views (no strides), and buffers supplied as byte slices.
-/// 受限子集，与 he3d-cpp 加载器的范围一致：恰好一个网格含一个三角形图元，`POSITION`（vec3 f32）与可选的 `TEXCOORD_0`（vec2 f32）属性、可选的 u8/u16/u32 索引、紧密打包的缓冲视图（无步长），缓冲以字节切片提供。
+/// Restricted subset: exactly one mesh with one triangle primitive, `POSITION` (vec3 f32) and optional `TEXCOORD_0` (vec2 f32) attributes, optional u8/u16/u32 indices, tightly packed buffer views (no strides), and buffers supplied as byte slices.
+/// 受限子集：恰好一个网格含一个三角形图元，`POSITION`（vec3 f32）与可选的 `TEXCOORD_0`（vec2 f32）属性、可选的 u8/u16/u32 索引、紧密打包的缓冲视图（无步长），缓冲以字节切片提供。
 /// Buffers with a `uri` (external files or data URIs) are rejected; use [`parse_glb`] for embedded buffer data.
 /// 带 `uri` 的缓冲（外部文件或 data URI）会被拒绝；请使用 [`parse_glb`] 处理内嵌缓冲数据。
 ///
@@ -339,7 +339,15 @@ fn read_vec2(
    for chunk in bytes.chunks_exact(8) {
       let u = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
       let v = f32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
-      out.push(Vec2::new(u, 1.0 - v));
+      // No V flip here, unlike OBJ. glTF 2.0 defines the texture origin as the
+      // upper-left corner: "the texture coordinate value of (0.0, 0.0) points to
+      // the beginning of the first (upper-left) image pixel". This renderer samples
+      // row 0 first and every decoder it has emits the top row first, so the
+      // conventions already agree and flipping would mirror every texture.
+      // 这里不做 V 翻转，与 OBJ 不同。glTF 2.0 将纹理原点定义为左上角："纹理坐标值
+      // (0.0, 0.0) 指向第一个（左上）图像像素的起点"。本渲染器先采样第 0 行，而它拥有的
+      // 每个解码器都先输出顶部行，因此两者约定本就一致，翻转只会让每张纹理上下镜像。
+      out.push(Vec2::new(u, v));
    }
    Ok(out)
 }
@@ -522,10 +530,11 @@ mod tests {
       assert_eq!(mesh.vertex_count(), 3);
       assert_eq!(mesh.vertices()[0], Vec3::ZERO);
       assert_eq!(mesh.vertices()[2], Vec3::new(0.0, 1.0, 0.0));
-      // Raw vt v=1.0 flips to 0.0; raw v=0.0 flips to 1.0.
-      // 原始 vt v=1.0 翻转为 0.0；原始 v=0.0 翻转为 1.0。
-      assert_eq!(mesh.uvs()[0], Vec2::new(0.0, 0.0));
-      assert_eq!(mesh.uvs()[1], Vec2::new(1.0, 1.0));
+      // The raw vt values pass through untouched: glTF and this renderer already
+      // share the upper-left texture origin.
+      // 原始 vt 值原样通过：glTF 与本渲染器已经共享左上角纹理原点。
+      assert_eq!(mesh.uvs()[0], Vec2::new(0.0, 1.0));
+      assert_eq!(mesh.uvs()[1], Vec2::new(1.0, 0.0));
    }
 
    #[test]

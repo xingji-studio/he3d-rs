@@ -6,15 +6,14 @@ use sdl3::render::{Texture, WindowCanvas};
 use sdl3::{EventPump, Sdl, VideoSubsystem};
 
 use he3d_platform::{
-   BackendConfig, ColorRgba8, Event, KEY_ESCAPE, Platform, PlatformError, PlatformFactory,
-   normalize_key,
+   BackendConfig, ColorRgba8, Event, KEY_ESCAPE, Platform, PlatformError, normalize_key,
 };
 
 /// Errors from SDL3 backend construction.
 /// SDL3 后端构造错误。
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-pub enum BackendError {
+pub enum SdlBackendError {
    /// SDL initialization failed.
    /// SDL 初始化失败。
    Init(String),
@@ -29,18 +28,18 @@ pub enum BackendError {
    Texture(String),
 }
 
-impl core::fmt::Display for BackendError {
+impl core::fmt::Display for SdlBackendError {
    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
       match self {
-         BackendError::Init(message) => write!(f, "SDL init failed: {message}"),
-         BackendError::Sdl(message) => write!(f, "SDL subsystem failed: {message}"),
-         BackendError::Window(message) => write!(f, "window creation failed: {message}"),
-         BackendError::Texture(message) => write!(f, "texture creation failed: {message}"),
+         SdlBackendError::Init(message) => write!(f, "SDL init failed: {message}"),
+         SdlBackendError::Sdl(message) => write!(f, "SDL subsystem failed: {message}"),
+         SdlBackendError::Window(message) => write!(f, "window creation failed: {message}"),
+         SdlBackendError::Texture(message) => write!(f, "texture creation failed: {message}"),
       }
    }
 }
 
-impl std::error::Error for BackendError {}
+impl std::error::Error for SdlBackendError {}
 
 /// The SDL3 window backend.
 /// SDL3 窗口后端。
@@ -75,23 +74,33 @@ impl core::fmt::Debug for SdlBackend {
    }
 }
 
-impl PlatformFactory for SdlBackend {
-   type CreateError = BackendError;
-
+impl SdlBackend {
    /// Create a windowed backend at the given logical size.
    /// 在给定的逻辑尺寸下创建窗口后端。
-   fn create(config: BackendConfig<'_>) -> Result<Self, BackendError> {
-      let sdl = sdl3::init().map_err(|e| BackendError::Init(e.to_string()))?;
-      let video = sdl.video().map_err(|e| BackendError::Sdl(e.to_string()))?;
+   ///
+   /// No other part of the engine constructs a backend, so a build that never
+   /// mentions this type never needs SDL3.
+   /// 引擎的其他部分都不会构造后端，因此从不提及本类型的构建也就不需要 SDL3。
+   ///
+   /// # Errors
+   /// SDL 初始化、子系统启动、窗口创建或流式纹理创建失败时返回
+   /// [`SdlBackendError`]。
+   /// Returns [`SdlBackendError`] when SDL initialization, a subsystem, window
+   /// creation, or the streaming texture fails.
+   pub fn new(config: BackendConfig<'_>) -> Result<Self, SdlBackendError> {
+      let sdl = sdl3::init().map_err(|e| SdlBackendError::Init(e.to_string()))?;
+      let video = sdl
+         .video()
+         .map_err(|e| SdlBackendError::Sdl(e.to_string()))?;
       let window = video
          .window(config.title, config.width, config.height)
          .position_centered()
          .build()
-         .map_err(|e| BackendError::Window(e.to_string()))?;
+         .map_err(|e| SdlBackendError::Window(e.to_string()))?;
       let canvas = window.into_canvas();
       let event_pump = sdl
          .event_pump()
-         .map_err(|e| BackendError::Sdl(e.to_string()))?;
+         .map_err(|e| SdlBackendError::Sdl(e.to_string()))?;
       Ok(Self {
          canvas,
          event_pump,
@@ -103,10 +112,8 @@ impl PlatformFactory for SdlBackend {
          _sdl: sdl,
       })
    }
-}
 
-impl SdlBackend {
-   fn ensure_texture(&mut self, width: u32, height: u32) -> Result<(), BackendError> {
+   fn ensure_texture(&mut self, width: u32, height: u32) -> Result<(), SdlBackendError> {
       if self.texture.is_some() && self.texture_size == (width, height) {
          return Ok(());
       }
@@ -116,7 +123,7 @@ impl SdlBackend {
       let creator = self.canvas.texture_creator();
       let texture = creator
          .create_texture_streaming(PixelFormat::RGBA32, width, height)
-         .map_err(|e| BackendError::Texture(e.to_string()))?;
+         .map_err(|e| SdlBackendError::Texture(e.to_string()))?;
       self.texture = Some(texture);
       self.texture_size = (width, height);
       Ok(())

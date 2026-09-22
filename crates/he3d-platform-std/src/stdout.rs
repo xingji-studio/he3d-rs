@@ -3,8 +3,7 @@ use std::io::{self, Write as _};
 use std::time::{Duration, Instant};
 
 use he3d_platform::{
-   BackendConfig, ColorRgba8, Event, KeyCode, Platform, PlatformError, PlatformFactory,
-   normalize_key,
+   BackendConfig, ColorRgba8, Event, KeyCode, Platform, PlatformError, normalize_key,
 };
 
 /// Errors from standard-output (stdout) backend construction.
@@ -77,21 +76,28 @@ impl core::fmt::Debug for StdBackend {
    }
 }
 
-impl PlatformFactory for StdBackend {
-   type CreateError = StdBackendError;
-
+impl StdBackend {
    /// Configure the standard library's input/output for `width` × `height` source pixels.
    /// 配置标准库的输入输出以呈现 `width` × `height` 源像素。
-   fn create(config: BackendConfig<'_>) -> Result<Self, StdBackendError> {
+   ///
+   /// Clears the terminal and hides the cursor, so the first frame replaces the
+   /// shell prompt instead of scrolling under it.
+   /// 清屏并隐藏光标，因此第一帧替换掉 shell 提示符，而不是在其下方滚动。
+   ///
+   /// # Errors
+   /// 尺寸为零时返回 [`StdBackendError::InvalidSize`]；标准输入无法进入原始模式时返回
+   /// [`StdBackendError::InputConfigureFailed`]。
+   /// Returns [`StdBackendError::InvalidSize`] for a zero size, or
+   /// [`StdBackendError::InputConfigureFailed`] when standard input cannot enter
+   /// raw mode.
+   pub fn new(config: BackendConfig<'_>) -> Result<Self, StdBackendError> {
       let mut backend = Self::create_raw(config.width, config.height)?;
       backend.configure_input()?;
       print!("\x1b[2J\x1b[H\x1b[?25l");
       let _ = io::stdout().flush();
       Ok(backend)
    }
-}
 
-impl StdBackend {
    fn create_raw(width: u32, height: u32) -> Result<Self, StdBackendError> {
       if width == 0 || height == 0 {
          return Err(StdBackendError::InvalidSize);
@@ -395,6 +401,17 @@ fn is_escape_final(key: KeyCode) -> bool {
    (0x40..=0x7e).contains(&key)
 }
 
+/// Choose the character-cell grid this backend renders into.
+/// 选择此后端渲染所用的字符单元网格。
+///
+/// The caps are presentation policy rather than a derived bound: 80 columns is the
+/// conventional terminal width and 30 rows is about one screenful, so a larger
+/// window is downsampled instead of spending more ANSI bytes per frame than a
+/// terminal can usefully show. Both stay in step with the two-pixels-per-cell
+/// packing described on `StdBackend`.
+/// 这两个上限是呈现策略而非推导出的界：80 列是常规终端宽度，30 行约为一屏，因此更大的
+/// 窗口会被降采样，而不是每帧输出终端根本无法有效显示的更多 ANSI 字节。两者与
+/// `StdBackend` 上描述的每单元两像素打包保持一致。
 fn compute_grid(width: u32, height: u32) -> (u32, u32) {
    let w = u64::from(width);
    let h = u64::from(height);
@@ -416,7 +433,7 @@ mod tests {
    use super::*;
 
    #[test]
-   fn compute_grid_matches_he3d_cpp() {
+   fn compute_grid_caps_to_a_screenful() {
       assert_eq!(compute_grid(640, 360), (80, 23));
       assert_eq!(compute_grid(160, 90), (80, 23));
       assert_eq!(compute_grid(64, 36), (64, 18));
@@ -425,7 +442,7 @@ mod tests {
 
    #[test]
    fn stdout_smoke_non_tty() {
-      let mut backend = StdBackend::create(BackendConfig::new("", 64, 36)).expect("backend");
+      let mut backend = StdBackend::new(BackendConfig::new("", 64, 36)).expect("backend");
       assert!(!backend.should_close());
 
       let events = backend.poll_events();
@@ -445,7 +462,7 @@ mod tests {
 
    #[test]
    fn present_rejects_bad_framebuffer() {
-      let mut backend = StdBackend::create(BackendConfig::new("", 64, 36)).expect("backend");
+      let mut backend = StdBackend::new(BackendConfig::new("", 64, 36)).expect("backend");
       let pixels = vec![ColorRgba8::BLACK; 3];
       assert_eq!(
          backend.present(2, 2, &pixels),

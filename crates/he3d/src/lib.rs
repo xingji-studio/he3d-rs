@@ -7,41 +7,56 @@
 //! 本 crate 是整套引擎的唯一入口：它在同一个名字下重导出数学、核心场景图、
 //! 软件渲染器、资源、物理与平台 crate，因此 `cargo add he3d` 即可获得全部。
 //!
-//! Presentation backends are opt-in and interchangeable:
-//! 呈现后端按需选择且可互换：
+//! # The binary chooses the backend
+//! # 后端由二进制选择
 //!
-//! * `std` — the Rust standard-library backend, presenting to the standard
-//!   library's standard output (stdout). The name reflects that it targets the
-//!   standard library, not any particular display.
-//!   `std` —— Rust 标准库后端，呈现到标准库标准输出（stdout）。命名反映它面向
-//!   标准库，而非任何特定显示设备。
-//! * `sdl3` — the SDL3 window backend (requires a desktop OS).
-//!   `sdl3` —— SDL3 窗口后端（需要桌面操作系统）。
+//! `he3d` depends on no backend crate, not even optionally. A backend is a type
+//! that implements the [`Platform`] trait from [`he3d_platform`] — `SdlBackend` in
+//! `he3d-platform-sdl3`, `StdBackend` in `he3d-platform-std`, or one written
+//! outside this repository — and the program that owns `main` names that type,
+//! depends on its crate, and constructs it. Nothing here chooses on the
+//! application's behalf, and no Cargo feature selects a backend: features are
+//! additive across a dependency graph, so such a feature would be decided by
+//! whichever crate happened to enable it. See `docs/adr/0005`.
+//! `he3d` 不依赖任何后端 crate，连可选依赖也不是。后端就是实现了 [`he3d_platform`] 中
+//! [`Platform`] 的类型——`he3d-platform-sdl3` 的 `SdlBackend`、`he3d-platform-std` 的
+//! `StdBackend`，或本仓库之外写的实现——由拥有 `main` 的程序点名该类型、依赖它的 crate
+//! 并构造它。这里没有任何东西替应用选择，也没有哪个 Cargo feature 负责选后端：feature 在
+//! 依赖图中是叠加的，那样的 feature 会由碰巧启用它的 crate 决定。见 `docs/adr/0005`。
 //!
-//! Asset-format features forward to [`he3d_assets`]: `png`, `jpeg`, and `gltf`
-//! opt into those decoders (BMP is always enabled).
-//! 资源格式特性转发到 [`he3d_assets`]：`png`、`jpeg`、`gltf` 可启用对应解码器
-//! （BMP 始终启用）。
+//! Depending on the SDL3 backend makes SDL3 a build requirement, because `sdl3-sys`
+//! declares `links = "SDL3"`; the stdout backend needs nothing from the system.
+//! 依赖 SDL3 后端会让 SDL3 成为构建前提，因为 `sdl3-sys` 声明了 `links = "SDL3"`；
+//! stdout 后端不需要系统中的任何东西。
 //!
-//! [`create_backend`] picks among the enabled backends at runtime (sdl3 first,
-//! then the std backend), so application code never names a backend type.
-//! [`create_backend`] 在运行时从已启用的后端中选择（先 sdl3，后 std 后端），
-//! 因此应用代码从不提及任何后端类型。
+//! The `std` feature of this crate means one thing only: compile the library crates
+//! with `std`. It never selects a backend. Asset-format features forward to
+//! [`he3d_assets`]: `png`, `jpeg`, and `gltf` opt into those decoders (BMP is always
+//! enabled).
+//! 本 crate 的 `std` 特性只有一个含义：给各库 crate 开 `std`。它从不选后端。资源格式
+//! 特性转发到 [`he3d_assets`]：`png`、`jpeg`、`gltf` 可启用对应解码器（BMP 始终启用）。
+//!
+//! # Where the code is
+//! # 代码在哪里
+//!
+//! The complete programs live in `examples/`, and CI compiles them:
+//! `examples/triangle` is the minimal one, and the rest add physics, asset loading,
+//! and streamed terrain, in that order. `docs/getting-started.zh.md` walks through
+//! the same material in Chinese, from the first frame to a body falling onto a floor.
+//! 完整程序在 `examples/`，CI 会编译它们：`examples/triangle` 是最小的一个，其余依次加上
+//! 物理、资源加载与流式地形。`docs/getting-started.zh.md` 用中文讲同一套内容，从第一帧画面
+//! 一直到落到地面上的物体。
+//!
+//! Between a Body and the thing that draws it, the engine provides no binding layer
+//! and will not: the application keeps the association and copies the pose each
+//! frame. That is what lets a Body exist without being rendered, and one render
+//! object carry several Bodies. See `docs/adr/0001`.
+//! 引擎不为 Body 与"画它的东西"之间提供绑定层，也不打算提供：关联由应用保存，位姿每帧由
+//! 应用复制。正因如此，Body 可以存在而不被渲染，一个渲染对象也可以承载多个 Body。见
+//! `docs/adr/0001`。
 
 #![no_std]
 #![forbid(unsafe_code)]
-
-extern crate alloc;
-
-#[cfg(feature = "std")]
-extern crate std;
-
-use alloc::boxed::Box;
-#[cfg(any(feature = "std", feature = "sdl3"))]
-use alloc::format;
-use alloc::string::String;
-use alloc::vec::Vec;
-use core::fmt;
 
 pub use he3d_assets;
 pub use he3d_core;
@@ -49,11 +64,6 @@ pub use he3d_math;
 pub use he3d_physics;
 pub use he3d_platform;
 pub use he3d_renderer;
-
-#[cfg(feature = "sdl3")]
-pub use he3d_platform_sdl3;
-#[cfg(feature = "std")]
-pub use he3d_platform_std;
 
 // Commonly used types, flattened for `use he3d::*;`.
 // 常用类型扁平化，方便 `use he3d::*;`。
@@ -72,109 +82,11 @@ pub use he3d_core::{
 #[doc(inline)]
 pub use he3d_math::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};
 #[doc(inline)]
-pub use he3d_physics::PhysicsWorld;
-#[doc(inline)]
-pub use he3d_platform::{
-   BackendConfig, Event, KEY_ESCAPE, KeyCode, Platform, PlatformError, PlatformFactory,
+pub use he3d_physics::{
+   Aabb, BodyDesc, BodyId, Contact, ContactPartner, ContactPhase, MassProperties, MotionType,
+   Shape, StaticMeshId, World,
 };
 #[doc(inline)]
-pub use he3d_renderer::{AntiAliasing, Renderer, RendererConfig};
-
-/// Error produced when no enabled backend could be constructed.
-/// 没有启用的后端可被构造时产生的错误。
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct BackendInitError {
-   message: String,
-}
-
-impl BackendInitError {
-   fn new(message: String) -> Self {
-      Self { message }
-   }
-}
-
-impl fmt::Display for BackendInitError {
-   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-      f.write_str(&self.message)
-   }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for BackendInitError {}
-
-/// Convert a `std`-backend construction error into a [`BackendInitError`].
-/// 将标准库后端的构造错误转换为 [`BackendInitError`]。
-#[cfg(feature = "std")]
-impl From<he3d_platform_std::StdBackendError> for BackendInitError {
-   fn from(error: he3d_platform_std::StdBackendError) -> Self {
-      Self::new(format!("std backend: {error}"))
-   }
-}
-
-/// Convert an SDL3-backend construction error into a [`BackendInitError`].
-/// 将 SDL3 后端的构造错误转换为 [`BackendInitError`]。
-#[cfg(feature = "sdl3")]
-impl From<he3d_platform_sdl3::BackendError> for BackendInitError {
-   fn from(error: he3d_platform_sdl3::BackendError) -> Self {
-      Self::new(format!("sdl3 backend: {error}"))
-   }
-}
-
-/// Construct the platform backend selected by the enabled features.
-/// 构造由已启用特性选中的平台后端。
-///
-/// `sdl3` is tried first, then the standard-library (stdout) backend, so a window
-/// is preferred when available and the program still works headless.
-/// 优先尝试 `sdl3`，再尝试标准库（stdout）后端：有窗口时用窗口，无头环境仍可用。
-/// Returns [`BackendInitError`] when none of the enabled backends could be created
-/// (or when no backend feature is enabled).
-/// 当所有已启用的后端都无法创建（或未启用任何后端特性）时返回 [`BackendInitError`]。
-///
-/// The returned backend is **not** `Send`: the SDL3 backend wraps a thread-affine
-/// SDL renderer, so the trait object deliberately carries no thread bound.
-/// 返回的后端**不是** `Send`：SDL3 后端包装了线程亲和的 SDL 渲染器，因此该特质对象
-/// 刻意不携带任何线程约束。
-///
-/// # Examples
-/// 示例
-/// ```
-/// use he3d::{create_backend, BackendConfig};
-///
-/// let config = BackendConfig::new("demo", 64, 36);
-/// match create_backend(config) {
-///    Ok(mut backend) => {
-///       backend.request_close();
-///    }
-///    Err(error) => println!("no backend available: {error}"),
-/// }
-/// ```
-///
-/// # Errors
-/// 未启用任何后端特性，或所有已启用后端都无法构造时返回 [`BackendInitError`]；
-/// 错误信息包含每个失败后端的名称与原因。
-/// Returns [`BackendInitError`] when no backend feature is enabled or every
-/// enabled backend fails to construct; the message lists each failing backend.
-pub fn create_backend(config: BackendConfig<'_>) -> Result<Box<dyn Platform>, BackendInitError> {
-   #[cfg_attr(not(any(feature = "sdl3", feature = "std")), allow(unused_mut))]
-   let mut failures: Vec<String> = Vec::new();
-   #[cfg(feature = "sdl3")]
-   match he3d_platform_sdl3::SdlBackend::create(config) {
-      Ok(backend) => return Ok(Box::new(backend)),
-      Err(error) => failures.push(format!("sdl3: {error}")),
-   }
-   #[cfg(feature = "std")]
-   match he3d_platform_std::StdBackend::create(config) {
-      Ok(backend) => return Ok(Box::new(backend)),
-      Err(error) => failures.push(format!("std: {error}")),
-   }
-   // `config` is unused in builds where no backend feature is enabled.
-   // 在未启用任何后端特性的构建中，`config` 不会被使用。
-   let _ = config;
-   let message = if failures.is_empty() {
-      "no backend enabled: enable the `std` or `sdl3` feature of `he3d`".into()
-   } else {
-      failures.join("; ")
-   };
-   Err(BackendInitError::new(message))
-}
+pub use he3d_platform::{BackendConfig, Event, KEY_ESCAPE, KeyCode, Platform, PlatformError};
+#[doc(inline)]
+pub use he3d_renderer::{AntiAliasing, MAX_SSAA_SCALE, Renderer, RendererConfig};

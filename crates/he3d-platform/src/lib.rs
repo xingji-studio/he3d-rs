@@ -4,8 +4,14 @@
 //! HE3D platform.
 //! HE3D 平台。
 //!
-//! Backend-neutral traits for input, presentation, and timing. Backends (`he3d-platform-std`, `he3d-platform-sdl3`) implement [`Platform`]; engines and examples only ever talk to this trait.
-//! 与后端无关的输入、呈现和计时特质。后端（`he3d-platform-std`、`he3d-platform-sdl3`）实现 [`Platform`]；引擎和示例只与本特质打交道。
+//! The [`Platform`] trait and the types that go with it: input events, presentation
+//! parameters, and the errors a backend may return. A backend is a type that
+//! implements [`Platform`] — `SdlBackend`, `StdBackend`, or one written elsewhere —
+//! and the binary chooses which one to construct. This crate states the contract;
+//! it holds no registry and no constructor of its own.
+//! [`Platform`] 特质以及随之而来的类型：输入事件、呈现参数，以及后端可能返回的错误。
+//! 后端就是实现了 [`Platform`] 的类型——`SdlBackend`、`StdBackend`，或别处写的实现——
+//! 由二进制决定构造哪一个。本 crate 只声明契约：它不含登记表，也没有自己的构造函数。
 
 extern crate alloc;
 
@@ -59,8 +65,8 @@ impl fmt::Display for PlatformError {
    }
 }
 
-/// Normalize an ASCII key to lowercase, matching he3d-cpp.
-/// 将 ASCII 键规范化为小写，与 he3d-cpp 保持一致。
+/// Normalize an ASCII key to lowercase, so key codes compare case-insensitively.
+/// 将 ASCII 键规范化为小写，使键码比较不区分大小写。
 #[inline]
 #[must_use]
 pub fn normalize_key(key: KeyCode) -> KeyCode {
@@ -103,44 +109,23 @@ impl<'a> BackendConfig<'a> {
    }
 }
 
-/// A platform backend that can construct itself from a [`BackendConfig`].
-/// 一个可以根据 [`BackendConfig`] 自行构造的平台后端。
-///
-/// This is the portable construction entry point: application code picks a concrete backend at compile time (via Cargo features) and calls [`PlatformFactory::create`], then drives it purely through [`Platform`].
-/// 这是可移植的构造入口：应用程序代码在编译期（通过 Cargo feature）挑选具体后端并调用 [`PlatformFactory::create`]，之后完全通过 [`Platform`] 驱动它。
-pub trait PlatformFactory: Platform {
-   /// Backend-specific construction error (e.g. an SDL init failure).
-   /// 后端特有的构造错误（例如 SDL 初始化失败）。
-   type CreateError: core::fmt::Display;
-
-   /// Construct the backend, or return a backend-specific error.
-   /// 构造后端，或返回后端特有的错误。
-   ///
-   /// # Errors
-   /// 返回后端特有的 [`PlatformFactory::CreateError`]，例如初始化失败或尺寸无效。
-   /// Returns a backend-specific [`PlatformFactory::CreateError`], such as an
-   /// initialization failure or an invalid size.
-   fn create(config: BackendConfig<'_>) -> Result<Self, Self::CreateError>
-   where
-      Self: Sized;
-}
-
 /// Backend-neutral platform services.
 /// 与后端无关的平台服务。
+///
+/// The trait is deliberately object-safe and carries no thread bound: `SdlBackend`
+/// wraps a thread-affine SDL renderer, so a `Box<dyn Platform>` would not be `Send`
+/// either. An application that commits to one backend can hold the concrete type
+/// and skip the allocation; one that wants to switch at runtime can box it.
+/// 本特质刻意保持 object-safe，且不携带线程约束：`SdlBackend` 包装了线程亲和的 SDL
+/// 渲染器，因此 `Box<dyn Platform>` 同样不是 `Send`。只用一个后端的应用可以直接持有具体
+/// 类型，省掉这次分配；想在运行期切换的应用可以自己装箱。
 ///
 /// # Examples
 /// 示例：实现一个最小 mock 后端。
 /// ```
-/// use he3d_platform::{BackendConfig, ColorRgba8, Event, Platform, PlatformError, PlatformFactory};
+/// use he3d_platform::{ColorRgba8, Event, Platform, PlatformError};
 ///
 /// struct Mock;
-///
-/// impl PlatformFactory for Mock {
-///    type CreateError = std::convert::Infallible;
-///    fn create(_config: BackendConfig<'_>) -> Result<Self, Self::CreateError> {
-///       Ok(Mock)
-///    }
-/// }
 ///
 /// impl Platform for Mock {
 ///    fn present(

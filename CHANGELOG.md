@@ -2,6 +2,34 @@
 
 All notable changes to the HE3D workspace crates are documented here.
 
+## [Unreleased]
+
+### Breaking
+- **The binary chooses the backend; no Cargo feature does.** `he3d` depends on no
+  backend crate, optional or otherwise, and its `std` feature now means only
+  "compile the library crates with `std`". Depend on `he3d-platform-sdl3` or
+  `he3d-platform-std` and construct `SdlBackend::new` / `StdBackend::new` in
+  `main`. See `docs/adr/0005`.
+- `he3d::create_backend`, `he3d::BackendInitError`, and
+  `he3d_platform::PlatformFactory` are gone: each backend has an inherent `new`
+  with its own error type, so a construction failure stays specific to the backend
+  that produced it.
+- `he3d_platform_sdl3::BackendError` is now `SdlBackendError`.
+
+### Added
+- `he3d-docs`, a `publish = false` crate with a `build.rs` that lifts every `rust`
+  block out of `docs/getting-started.zh.md` and compiles it, so a guide that drifts
+  from the API fails the build. The guide stays plain Markdown: no hidden lines, no
+  fence attributes, no `no_run`. Setup a fragment needs is keyed to the fragment's
+  first line in `build.rs`.
+
+### Changed
+- The `he3d` crate documentation no longer contains code blocks; the complete
+  programs live in `examples/`, and `docs/getting-started.zh.md` walks through
+  them in Chinese.
+- The facade's headless smoke test moved to `he3d-platform-std`, where the backend
+  it drives lives.
+
 ## [0.2.0] - 2026-08-23
 
 ### Breaking

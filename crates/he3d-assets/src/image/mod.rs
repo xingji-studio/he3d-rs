@@ -8,8 +8,12 @@ mod jpeg;
 #[cfg(feature = "png")]
 mod png;
 
-/// Maximum decoded image dimension, matching he3d-cpp.
-/// 最大解码图像尺寸，与 he3d-cpp 一致。
+/// Maximum decoded image width or height.
+///
+/// A header can claim any size it likes, so decoding is refused beyond this rather
+/// than letting a small file ask for an enormous allocation.
+/// 解码后图像的最大宽或高。文件头可以声称任意尺寸，因此超过此值即拒绝解码，而不是让一个小
+/// 文件索要一笔巨大的分配。
 #[cfg_attr(
    not(any(feature = "bmp", feature = "png", feature = "jpeg")),
    allow(dead_code)

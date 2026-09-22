@@ -18,13 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gp3d"
-version = "0.2.0"
-dependencies = [
- "glam",
-]
-
-[[package]]
 name = "he3d"
 version = "0.2.0"
 dependencies = [
@@ -33,8 +26,6 @@ dependencies = [
  "he3d-math",
  "he3d-physics",
  "he3d-platform",
- "he3d-platform-sdl3",
- "he3d-platform-std",
  "he3d-renderer",
 ]
 
@@ -55,6 +46,7 @@ name = "he3d-biplane"
 version = "0.2.0"
 dependencies = [
  "he3d",
+ "he3d-platform-sdl3",
 ]
 
 [[package]]
@@ -69,6 +61,7 @@ name = "he3d-flight-simulator"
 version = "0.2.0"
 dependencies = [
  "he3d",
+ "he3d-platform-sdl3",
 ]
 
 [[package]]
@@ -83,8 +76,6 @@ dependencies = [
 name = "he3d-physics"
 version = "0.2.0"
 dependencies = [
- "gp3d",
- "he3d-core",
  "he3d-math",
 ]
 
@@ -93,6 +84,7 @@ name = "he3d-physics-test"
 version = "0.2.0"
 dependencies = [
  "he3d",
+ "he3d-platform-sdl3",
 ]
 
 [[package]]
@@ -135,6 +127,7 @@ name = "he3d-triangle"
 version = "0.2.0"
 dependencies = [
  "he3d",
+ "he3d-platform-sdl3",
 ]
 
 [[package]]

@@ -110,13 +110,16 @@ impl Rgb {
    ///
    /// The `as u8` cast saturates: values below 0 clamp to 0, values above 1 clamp to 255, and NaN clamps to 0.
    /// `as u8` 转换是饱和的：小于 0 的值截断为 0，大于 1 的值截断为 255，NaN 截断为 0。
-   /// This matches he3d-cpp's `(uint8_t)(color * 255.0f)` behavior.
-   /// 这与 he3d-cpp 的 `(uint8_t)(color * 255.0f)` 行为一致。
+   /// Truncation rather than rounding is deliberate: it keeps the mapping from
+   /// `[0, 1]` onto `0..=255` monotonic and idempotent, so quantizing an already
+   /// quantized colour changes nothing.
+   /// 采用截断而非四舍五入是刻意的：它使 `[0, 1]` 到 `0..=255` 的映射保持单调且幂等，
+   /// 因此对已量化的颜色再次量化不会改变任何东西。
    #[inline]
    #[must_use]
-   // The float→u8 truncation and sign loss are the documented, he3d-cpp-matching
-   // quantization behavior of this function; do not "fix" the casts.
-   // float→u8 的截断与符号丢失正是本函数文档化、且与 he3d-cpp 一致的量化行为，请勿“修正”这些转换。
+   // The float→u8 truncation and sign loss are the documented quantization behavior
+   // of this function; do not "fix" the casts.
+   // float→u8 的截断与符号丢失正是本函数文档化的量化行为，请勿“修正”这些转换。
    #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
    pub fn to_rgba8(self) -> ColorRgba8 {
       ColorRgba8 {

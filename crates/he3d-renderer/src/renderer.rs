@@ -4,23 +4,79 @@ use he3d_core::{Camera, ColorRgba8, Error, Mesh, RenderObject, Rgb, Scene, Textu
 use he3d_math::scalar::tan;
 use he3d_math::{Vec2, Vec3, conv};
 
-use crate::{AntiAliasing, RendererConfig};
+use crate::{AntiAliasing, MAX_SSAA_SCALE, RendererConfig};
 
-/// Hard cap on framebuffer pixels, matching he3d-cpp's `kMaximumRendererPixels`.
-/// 帧缓冲像素数上限，与 he3d-cpp 的 `kMaximumRendererPixels` 一致。
+/// Hard cap on framebuffer pixels: 4096 x 4096.
+///
+/// The operative limit is memory, not representation: colour and `f32` depth are
+/// four bytes per pixel each, so this is 64 MiB + 64 MiB — and 512 MiB once 4x MSAA
+/// multiplies the colour side. Beyond that it stops being a software rasterizer
+/// anyone can reasonably run. Staying far inside a `u32` for byte offsets is a
+/// consequence, not the reason.
+/// 真正的约束是内存而非表示范围：颜色与 `f32` 深度各占每像素四字节，因此这里是
+/// 64 MiB + 64 MiB——而在 4x MSAA 把颜色侧放大之后是 512 MiB。超过这个量级，它就不再是
+/// 任何人能合理运行的软件光栅化器了。字节偏移远在 `u32` 之内是结果，不是理由。
 const MAX_FRAMEBUFFER_PIXELS: u64 = 16_777_216;
+
+/// 4x MSAA sample offsets inside a pixel: the centres of the four sub-pixels of a
+/// 2x2 grid, which is the cheapest arrangement that still samples every quadrant.
+/// 像素内的 4x MSAA 样本偏移：2x2 网格中四个子像素的中心，这是仍能覆盖每个象限的最省排布。
+const MSAA_SAMPLE_OFFSETS: [[f32; 2]; 4] = [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
+
+/// Which buffer currently holds the finished frame for [`Renderer::pixels`].
+/// 当前由 [`Renderer::pixels`] 提交的帧所在的缓冲。
+#[derive(Clone, Copy)]
+enum PresentSource {
+   Color,
+   Fxaa,
+   Taa,
+   Ssaa,
+}
 
 /// The software rasterizer.
 /// 软件光栅化器。
 ///
 /// Owns the color buffer and the inverse-depth buffer. Renders the whole scene on every [`Renderer::render`] call and hands the result back through [`Renderer::pixels`].
 /// 拥有颜色缓冲与逆深度缓冲。每次调用 [`Renderer::render`] 都会渲染整个场景，并通过 [`Renderer::pixels`] 交回结果。
+///
+/// Anti-aliasing runs at the end of each frame, and the order is forced by what
+/// each stage consumes: MSAA resolves per-sample colour first, the screen-space
+/// passes (FXAA, then TAA) work on whole pixels, and SSAA's resolution change has
+/// to come last or the passes after it would run at the wrong scale.
+/// 抗锯齿在每帧末尾执行，其顺序由各阶段消费什么决定：MSAA 先解析逐样本颜色；屏幕空间
+/// 阶段（FXAA，随后 TAA）以整像素为输入；SSAA 的分辨率变化必须放在最后，否则其后的阶段
+/// 会在错误的尺度上运行。
 pub struct Renderer {
+   /// Internal render width in pixels; equals the output width unless SSAA scales it up.
+   /// 内部渲染宽度（像素）；除非 SSAA 放大，否则等于输出宽度。
    width: u32,
+   /// Internal render height in pixels; equals the output height unless SSAA scales it up.
+   /// 内部渲染高度（像素）；除非 SSAA 放大，否则等于输出高度。
    height: u32,
+   /// Output width presented to the caller (the unscaled config width).
+   /// 提交给调用方的输出宽度（未缩放的配置宽度）。
+   output_width: u32,
+   /// Output height presented to the caller (the unscaled config height).
+   /// 提交给调用方的输出高度（未缩放的配置高度）。
+   output_height: u32,
    anti_aliasing: AntiAliasing,
+   /// Supersampling scale, clamped to `1..=MAX_SSAA_SCALE`.
+   /// 超采样倍率，钳制在 `1..=MAX_SSAA_SCALE`。
+   ssaa_scale: u32,
    color_buf: Vec<ColorRgba8>,
    depth_buf: Vec<f32>,
+   fxaa_buf: Vec<ColorRgba8>,
+   taa_buf: Vec<ColorRgba8>,
+   taa_history: Vec<ColorRgba8>,
+   taa_depth: Vec<f32>,
+   ssaa_buf: Vec<ColorRgba8>,
+   msaa_color_buf: Vec<ColorRgba8>,
+   msaa_depth_buf: Vec<f32>,
+   taa_valid: bool,
+   taa_frame_index: u32,
+   presented: PresentSource,
+   presented_width: u32,
+   presented_height: u32,
    /// Built-in 2×2 magenta/black checkerboard shown for objects without a texture.
    /// 内建的 2×2 紫黑格子，用于没有纹理的对象。
    missing_texture: Texture,
@@ -33,6 +89,8 @@ impl core::fmt::Debug for Renderer {
       f.debug_struct("Renderer")
          .field("width", &self.width)
          .field("height", &self.height)
+         .field("output_width", &self.output_width)
+         .field("output_height", &self.output_height)
          .field("anti_aliasing", &self.anti_aliasing)
          .finish_non_exhaustive()
    }
@@ -41,6 +99,11 @@ impl core::fmt::Debug for Renderer {
 impl Renderer {
    /// Allocate a framebuffer, validating size and budget.
    /// 分配帧缓冲，校验尺寸与预算。
+   ///
+   /// With SSAA the internal render buffer is `scale`× the output resolution,
+   /// still capped by `MAX_FRAMEBUFFER_PIXELS`.
+   /// 使用 SSAA 时，内部渲染缓冲是输出分辨率的 `scale` 倍，仍受
+   /// `MAX_FRAMEBUFFER_PIXELS` 上限约束。
    ///
    /// # Examples
    /// 示例
@@ -67,13 +130,12 @@ impl Renderer {
       if config.width == 0 || config.height == 0 {
          return Err(Error::InvalidSize);
       }
-      let pixel_count = u64::from(config.width)
-         .checked_mul(u64::from(config.height))
-         .ok_or(Error::Overflow)?;
-      if pixel_count > MAX_FRAMEBUFFER_PIXELS {
-         return Err(Error::InvalidSize);
-      }
-      let count = usize::try_from(pixel_count).expect("framebuffer budget fits host usize");
+      let ssaa_scale = match config.anti_aliasing {
+         AntiAliasing::Ssaa(scale) => scale.clamp(1, MAX_SSAA_SCALE),
+         _ => 1,
+      };
+      let (render_width, render_height, count) =
+         renderer_buffer_size(config.width, config.height, ssaa_scale).ok_or(Error::InvalidSize)?;
       let missing_texture = Texture::new(
          2,
          2,
@@ -86,34 +148,58 @@ impl Renderer {
       )
       .expect("built-in 2x2 checkerboard is always valid");
       Ok(Self {
-         width: config.width,
-         height: config.height,
+         width: render_width,
+         height: render_height,
+         output_width: config.width,
+         output_height: config.height,
          anti_aliasing: config.anti_aliasing,
+         ssaa_scale,
          color_buf: vec![ColorRgba8::BLACK; count],
          depth_buf: vec![0.0; count],
+         fxaa_buf: Vec::new(),
+         taa_buf: Vec::new(),
+         taa_history: Vec::new(),
+         taa_depth: Vec::new(),
+         ssaa_buf: Vec::new(),
+         msaa_color_buf: Vec::new(),
+         msaa_depth_buf: Vec::new(),
+         taa_valid: false,
+         taa_frame_index: 0,
+         presented: PresentSource::Color,
+         presented_width: config.width,
+         presented_height: config.height,
          missing_texture,
       })
    }
 
-   /// Framebuffer width in pixels.
-   /// 帧缓冲宽度（像素）。
+   /// Presented framebuffer width in pixels (the output size, down from the
+   /// internal render size when SSAA is active).
+   /// 已提交帧缓冲宽度（像素）——SSAA 生效时由内部渲染尺寸降为输出尺寸。
    #[must_use]
+   #[expect(clippy::misnamed_getters)]
    pub fn width(&self) -> u32 {
-      self.width
+      self.presented_width
    }
 
-   /// Framebuffer height in pixels.
-   /// 帧缓冲高度（像素）。
+   /// Presented framebuffer height in pixels (the output size, down from the
+   /// internal render size when SSAA is active).
+   /// 已提交帧缓冲高度（像素）——SSAA 生效时由内部渲染尺寸降为输出尺寸。
    #[must_use]
+   #[expect(clippy::misnamed_getters)]
    pub fn height(&self) -> u32 {
-      self.height
+      self.presented_height
    }
 
    /// The rendered frame, top-to-bottom, left-to-right.
    /// 渲染完成的帧，从上到下、从左到右。
    #[must_use]
    pub fn pixels(&self) -> &[ColorRgba8] {
-      &self.color_buf
+      match self.presented {
+         PresentSource::Color => &self.color_buf,
+         PresentSource::Fxaa => &self.fxaa_buf,
+         PresentSource::Taa => &self.taa_buf,
+         PresentSource::Ssaa => &self.ssaa_buf,
+      }
    }
 
    /// Draw the scene into the framebuffer.
@@ -138,6 +224,8 @@ impl Renderer {
          ambient: scene.light.ambient,
       };
 
+      let jitter = self.current_taa_jitter();
+
       // Clone the tiny 2×2 fallback once per frame (not per object) so objects
       // without a texture can borrow it without aliasing `self`.
       // 每帧只克隆一次 2×2 回退贴图（而非每个对象一次），使无纹理对象能借用它而不与 `self` 冲突。
@@ -153,14 +241,146 @@ impl Renderer {
             Some(texture) => texture,
             None => &missing,
          };
-         self.draw_mesh(mesh, object, texture, camera, light);
+         self.draw_mesh(mesh, object, texture, camera, light, jitter);
       }
+      self.present();
       Ok(())
+   }
+
+   /// Run the post-processing chain and record which buffer holds the frame.
+   /// 执行后处理链，并记录承载帧的缓冲。
+   fn present(&mut self) {
+      let width = self.width as usize;
+      let height = self.height as usize;
+
+      if self.anti_aliasing == AntiAliasing::Msaa {
+         self.resolve_msaa();
+      }
+
+      let mut present = PresentSource::Color;
+      if self.anti_aliasing == AntiAliasing::Fxaa
+         && apply_fxaa(&self.color_buf, &mut self.fxaa_buf, width, height)
+      {
+         present = PresentSource::Fxaa;
+      }
+
+      if self.anti_aliasing == AntiAliasing::Taa {
+         let source = match present {
+            PresentSource::Color => &self.color_buf,
+            PresentSource::Fxaa => &self.fxaa_buf,
+            PresentSource::Taa | PresentSource::Ssaa => {
+               unreachable!("TAA runs before SSAA and never reads its own output")
+            }
+         };
+         if apply_taa(
+            source,
+            &self.depth_buf,
+            &mut self.taa_buf,
+            &mut self.taa_history,
+            &mut self.taa_depth,
+            width,
+            height,
+            &mut self.taa_valid,
+            &mut self.taa_frame_index,
+         ) {
+            present = PresentSource::Taa;
+         }
+      } else {
+         self.taa_valid = false;
+         self.taa_frame_index = 0;
+      }
+
+      if self.ssaa_scale > 1 {
+         let source = match present {
+            PresentSource::Color => &self.color_buf,
+            PresentSource::Fxaa => &self.fxaa_buf,
+            PresentSource::Taa => &self.taa_buf,
+            PresentSource::Ssaa => {
+               unreachable!("SSAA downsample runs last and never reads its own output")
+            }
+         };
+         if apply_ssaa(
+            source,
+            &mut self.ssaa_buf,
+            self.width,
+            self.height,
+            self.ssaa_scale,
+            self.output_width,
+            self.output_height,
+         ) {
+            present = PresentSource::Ssaa;
+         }
+      }
+
+      self.presented = present;
+      self.presented_width = if self.ssaa_scale > 1 {
+         self.output_width
+      } else {
+         self.width
+      };
+      self.presented_height = if self.ssaa_scale > 1 {
+         self.output_height
+      } else {
+         self.height
+      };
    }
 
    fn clear(&mut self, clear_color: Rgb) {
       self.color_buf.fill(clear_color.to_rgba8());
       self.depth_buf.fill(0.0);
+      if self.anti_aliasing == AntiAliasing::Msaa && self.ensure_msaa_buffers() {
+         self.msaa_color_buf.fill(clear_color.to_rgba8());
+         self.msaa_depth_buf.fill(0.0);
+      }
+   }
+
+   /// Lazily allocate the 4× per-sample buffers, seeded from the color/depth
+   /// buffers so a frame never shows garbage when MSAA turns on mid-scene.
+   /// 懒分配 4× 逐样本缓冲，并以颜色/深度缓冲播种，使 MSAA 中途开启时也不会出现垃圾。
+   fn ensure_msaa_buffers(&mut self) -> bool {
+      if self.width == 0 || self.height == 0 {
+         return false;
+      }
+      if !self.msaa_color_buf.is_empty() && !self.msaa_depth_buf.is_empty() {
+         return true;
+      }
+      let render_total = self.color_buf.len();
+      let sample_total = match u64::try_from(render_total) {
+         Ok(total) => total.checked_mul(4),
+         Err(_) => None,
+      };
+      let Some(sample_total) = sample_total else {
+         return false;
+      };
+      if sample_total > MAX_FRAMEBUFFER_PIXELS * 4 {
+         return false;
+      }
+      let sample_total = usize::try_from(sample_total).expect("sample budget fits host usize");
+      self.msaa_color_buf = vec![ColorRgba8::BLACK; sample_total];
+      self.msaa_depth_buf = vec![0.0; sample_total];
+      for (i, (&color, &depth)) in self.color_buf.iter().zip(self.depth_buf.iter()).enumerate() {
+         let base = i * 4;
+         for sample in 0..4 {
+            self.msaa_color_buf[base + sample] = color;
+            self.msaa_depth_buf[base + sample] = depth;
+         }
+      }
+      true
+   }
+
+   /// Average the four per-sample colors into `color_buf` and keep the deepest
+   /// sample per pixel in `depth_buf`.
+   /// 将四个逐样本颜色平均写入 `color_buf`，并在 `depth_buf` 中保留每像素最深的样本。
+   fn resolve_msaa(&mut self) {
+      if self.msaa_color_buf.is_empty() || self.msaa_depth_buf.is_empty() {
+         return;
+      }
+      resolve_msaa(
+         &mut self.color_buf,
+         &mut self.depth_buf,
+         &self.msaa_color_buf,
+         &self.msaa_depth_buf,
+      );
    }
 
    // Framebuffer dimensions are bounded by MAX_FRAMEBUFFER_PIXELS, so the
@@ -175,6 +395,7 @@ impl Renderer {
       texture: &Texture,
       camera: &Camera,
       light: Light,
+      jitter: Vec2,
    ) {
       let cam_inv_rot = camera.orientation.inverse();
       let cam_pos = camera.position;
@@ -247,7 +468,7 @@ impl Renderer {
 
          for k in 1..clipped.len() - 1 {
             let tri_view = [clipped[0].view, clipped[k].view, clipped[k + 1].view];
-            let screen = project_triangle(&tri_view, half_w, half_h, scale_x, scale_y);
+            let screen = project_triangle(&tri_view, half_w, half_h, scale_x, scale_y, jitter);
             if triangle_outside_viewport(&screen, self.width, self.height) {
                continue;
             }
@@ -262,10 +483,10 @@ impl Renderer {
    }
 
    // The casts below are deliberate rasterizer math: screen coordinates are
-   // bounded by the framebuffer size, fixed-point lighting mirrors he3d-cpp
-   // renderer, and the x/y-paired names are idiomatic here.
-   // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照
-   // 与 he3d-cpp 一致，x/y 成对命名在此处是惯用法。
+   // bounded by the framebuffer size, fixed-point lighting works in integers, and
+   // the x/y-paired names are idiomatic here.
+   // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照在整数上
+   // 运算，x/y 成对命名在此处是惯用法。
    #[expect(
       clippy::cast_possible_truncation,
       clippy::cast_precision_loss,
@@ -318,12 +539,14 @@ impl Renderer {
       let duz_dx = dw0 * uz0.x + dw1 * uz1.x + dw2 * uz2.x;
       let dvz_dx = dw0 * uz0.y + dw1 * uz1.y + dw2 * uz2.y;
 
-      // Fixed-point light intensity, matching he3d-cpp.
-      // 定点光照强度，与 he3d-cpp 一致。
+      // Fixed-point light intensity: 8 fractional bits, so the per-texel shade is
+      // one integer multiply and shift instead of three float multiplies.
+      // 定点光照强度：8 位小数，因此逐纹素着色只需一次整数乘法与移位，而不是三次浮点乘法。
       let lr = ((light.r * 256.0) as i32).clamp(0, 512);
       let lg = ((light.g * 256.0) as i32).clamp(0, 512);
       let lb = ((light.b * 256.0) as i32).clamp(0, 512);
 
+      let msaa = self.anti_aliasing == AntiAliasing::Msaa && self.ensure_msaa_buffers();
       let stride = self.width as usize;
       for y in y_start..=y_end {
          let py = y as f32 + 0.5;
@@ -338,17 +561,35 @@ impl Renderer {
          let row = (y as usize) * stride;
          for x in x_start..=x_end {
             let idx = row + x as usize;
-            if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 && ciz > self.depth_buf[idx] {
+            if msaa {
+               let mask = triangle_sample_mask4(x, y, x0, y0, x1, y1, x2, y2, inv_a);
+               let mut pixel_max_depth = self.depth_buf[idx];
+               for sample in 0..4u32 {
+                  if mask & ((1 << sample) as u8) == 0 {
+                     continue;
+                  }
+                  let spx = x as f32 + MSAA_SAMPLE_OFFSETS[sample as usize][0];
+                  let spy = y as f32 + MSAA_SAMPLE_OFFSETS[sample as usize][1];
+                  let sw0 = ((x1 - spx) * (y2 - spy) - (y1 - spy) * (x2 - spx)) * inv_a;
+                  let sw1 = ((x2 - spx) * (y0 - spy) - (y2 - spy) * (x0 - spx)) * inv_a;
+                  let sw2 = 1.0 - sw0 - sw1;
+                  let sample_depth = sw0 * iz0 + sw1 * iz1 + sw2 * iz2;
+                  let sample_idx = idx * 4 + sample as usize;
+                  if sample_depth > self.msaa_depth_buf[sample_idx] {
+                     let inv_sample = 1.0 / sample_depth;
+                     let u = (sw0 * uz0.x + sw1 * uz1.x + sw2 * uz2.x) * inv_sample;
+                     let v = (sw0 * uz0.y + sw1 * uz1.y + sw2 * uz2.y) * inv_sample;
+                     self.msaa_depth_buf[sample_idx] = sample_depth;
+                     self.msaa_color_buf[sample_idx] = shade(tex.sample(u, v), lr, lg, lb);
+                     pixel_max_depth = pixel_max_depth.max(sample_depth);
+                  }
+               }
+               self.depth_buf[idx] = pixel_max_depth;
+            } else if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 && ciz > self.depth_buf[idx] {
                self.depth_buf[idx] = ciz;
                let inv = 1.0 / ciz;
                let texel = tex.sample(cuz * inv, cvz * inv);
-               let shaded = ColorRgba8::from_rgba(
-                  (((i32::from(texel.r) * lr) >> 8).clamp(0, 255)) as u8,
-                  (((i32::from(texel.g) * lg) >> 8).clamp(0, 255)) as u8,
-                  (((i32::from(texel.b) * lb) >> 8).clamp(0, 255)) as u8,
-                  255,
-               );
-               self.color_buf[idx] = shaded;
+               self.color_buf[idx] = shade(texel, lr, lg, lb);
             }
             w0 += dw0;
             w1 += dw1;
@@ -358,6 +599,19 @@ impl Renderer {
             cvz += dvz_dx;
          }
       }
+   }
+
+   /// Current TAA sub-pixel jitter in pixels, from the 8-sample Halton(2,3) sequence.
+   /// 当前 TAA 亚像素抖动（像素单位），来自 8 样本 Halton(2,3) 序列。
+   #[must_use]
+   fn current_taa_jitter(&self) -> Vec2 {
+      if self.anti_aliasing != AntiAliasing::Taa || self.width == 0 || self.height == 0 {
+         return Vec2::ZERO;
+      }
+      let sample = (self.taa_frame_index & 7) + 1;
+      let x = halton(sample, 2) - 0.5;
+      let y = halton(sample, 3) - 0.5;
+      Vec2::new(x * 0.5, y * 0.5)
    }
 }
 
@@ -376,6 +630,369 @@ struct Light {
    direction: Vec3,
    color: Rgb,
    ambient: f32,
+}
+
+/// Compute the internal render buffer for an output size and SSAA scale, capped by
+/// `MAX_FRAMEBUFFER_PIXELS`, or `None` when the request exceeds the budget.
+/// 为输出尺寸与 SSAA 倍率计算内部渲染缓冲尺寸，受 `MAX_FRAMEBUFFER_PIXELS` 约束；请求
+/// 超出预算时返回 `None`。
+#[must_use]
+fn renderer_buffer_size(width: u32, height: u32, scale: u32) -> Option<(u32, u32, usize)> {
+   if width == 0 || height == 0 || !(1..=MAX_SSAA_SCALE).contains(&scale) {
+      return None;
+   }
+   let scaled_w = u64::from(width).checked_mul(u64::from(scale))?;
+   let scaled_h = u64::from(height).checked_mul(u64::from(scale))?;
+   let total = scaled_w.checked_mul(scaled_h)?;
+   if total > MAX_FRAMEBUFFER_PIXELS {
+      return None;
+   }
+   let count = usize::try_from(total).ok()?;
+   // `total` is capped by MAX_FRAMEBUFFER_PIXELS, so both dimensions fit u32.
+   // `total` 受 MAX_FRAMEBUFFER_PIXELS 约束，因此两个维度都能放进 u32。
+   #[expect(clippy::cast_possible_truncation)]
+   Some((scaled_w as u32, scaled_h as u32, count))
+}
+
+/// Halton sequence value for `index` in a given base.
+/// 给定基下 `index` 的 Halton 序列值。
+#[expect(clippy::cast_precision_loss)]
+fn halton(mut index: u32, base: u32) -> f32 {
+   let mut f = 1.0_f32;
+   let mut r = 0.0_f32;
+   while index > 0 {
+      f /= base as f32;
+      r += f * (index % base) as f32;
+      index /= base;
+   }
+   r
+}
+
+/// Average the 4× MSAA samples into `color` and merge the deepest per pixel into
+/// `depth`. No-op when the MSAA buffers are empty.
+/// 将 4× MSAA 样本平均写入 `color`，并把每像素最深值合并进 `depth`。MSAA 缓冲为空时不做任何事。
+#[expect(clippy::cast_possible_truncation)]
+fn resolve_msaa(
+   color: &mut [ColorRgba8],
+   depth: &mut [f32],
+   msaa_color: &[ColorRgba8],
+   msaa_depth: &[f32],
+) {
+   if msaa_color.is_empty() || msaa_depth.is_empty() {
+      return;
+   }
+   for i in 0..color.len() {
+      let base = i * 4;
+      let mut out = [0u32; 3];
+      let mut max_depth = f32::NEG_INFINITY;
+      for sample in 0..4 {
+         let c = msaa_color[base + sample];
+         out[0] += u32::from(c.r);
+         out[1] += u32::from(c.g);
+         out[2] += u32::from(c.b);
+         max_depth = max_depth.max(msaa_depth[base + sample]);
+      }
+      color[i] = ColorRgba8::from_rgba(
+         (out[0] >> 2) as u8,
+         (out[1] >> 2) as u8,
+         (out[2] >> 2) as u8,
+         255,
+      );
+      depth[i] = max_depth;
+   }
+}
+
+/// Luma of an 8-bit colour, weighted 77/150/29 for red, green and blue: the
+/// Rec.601 coefficients (0.299/0.587/0.114) scaled by 256 and rounded — 76.5,
+/// 150.3 and 29.2 — so the whole thing is integer.
+/// 8 位颜色的亮度，红绿蓝权重为 77/150/29：Rec.601 系数（0.299/0.587/0.114）乘以 256
+/// 并取整——即 76.5、150.3、29.2——因此全程为整数。
+fn luma(c: ColorRgba8) -> i32 {
+   (i32::from(c.r) * 77 + i32::from(c.g) * 150 + i32::from(c.b) * 29) >> 8
+}
+
+/// Blend two channels, weighting the first by 141/256 and the second by 115/256.
+///
+/// Both weights are positive and sum to exactly 256, so the shift cannot overflow
+/// and a smoothed edge keeps the majority of its own colour.
+/// 混合两个通道：第一个权重 141/256，第二个 115/256。两个权重都为正且恰好合计 256，因此
+/// 移位不会溢出，被平滑的边缘也保留自身颜色的大部分。
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn blend_u8(a: u8, b: u8) -> u8 {
+   ((i32::from(a) * 141 + i32::from(b) * 115) >> 8) as u8
+}
+
+/// FXAA: smooth high-contrast edges by blending the center pixel with the average
+/// of its two neighbors along the dominant gradient.
+/// FXAA：沿主导梯度，将中心像素与两个相邻像素的平均值混合以平滑高对比度边缘。
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+fn apply_fxaa(
+   color: &[ColorRgba8],
+   out: &mut Vec<ColorRgba8>,
+   width: usize,
+   height: usize,
+) -> bool {
+   const EDGE_THRESHOLD: i32 = 20;
+   const EDGE_THRESHOLD_MIN: i32 = 8;
+
+   if width <= 2 || height <= 2 || color.len() < width * height {
+      return false;
+   }
+   let total = width * height;
+   if out.len() != total {
+      out.resize(total, ColorRgba8::BLACK);
+   }
+   for x in 0..width {
+      out[x] = color[x];
+      out[(height - 1) * width + x] = color[(height - 1) * width + x];
+   }
+   for y in 1..height - 1 {
+      out[y * width] = color[y * width];
+      out[y * width + width - 1] = color[y * width + width - 1];
+   }
+
+   for y in 1..height - 1 {
+      let row = y * width;
+      for x in 1..width - 1 {
+         let idx = row + x;
+         let center = color[idx];
+         let l_m = luma(center);
+         let l_n = luma(color[idx - width]);
+         let l_s = luma(color[idx + width]);
+         let l_w = luma(color[idx - 1]);
+         let l_e = luma(color[idx + 1]);
+
+         let l_min = l_m.min(l_n).min(l_s).min(l_w).min(l_e);
+         let l_max = l_m.max(l_n).max(l_s).max(l_w).max(l_e);
+         let contrast = l_max - l_min;
+         let dynamic_threshold = EDGE_THRESHOLD_MIN.max((l_max * 20) >> 8);
+         if contrast < dynamic_threshold || contrast < EDGE_THRESHOLD {
+            out[idx] = center;
+            continue;
+         }
+
+         let horizontal = (l_n + l_s - 2 * l_m).abs();
+         let vertical = (l_w + l_e - 2 * l_m).abs();
+         let (a, b) = if horizontal >= vertical {
+            (color[idx - 1], color[idx + 1])
+         } else {
+            (color[idx - width], color[idx + width])
+         };
+         out[idx] = ColorRgba8::from_rgba(
+            blend_u8(center.r, ((i32::from(a.r) + i32::from(b.r)) >> 1) as u8),
+            blend_u8(center.g, ((i32::from(a.g) + i32::from(b.g)) >> 1) as u8),
+            blend_u8(center.b, ((i32::from(a.b) + i32::from(b.b)) >> 1) as u8),
+            center.a,
+         );
+      }
+   }
+   true
+}
+
+/// TAA: clamp the previous frame's color against the current 3×3 neighborhood and
+/// blend it in unless the depth/color delta rejects it as disocclusion.
+/// TAA：将上一帧颜色钳制到当前 3×3 邻域内并混合，除非深度/颜色差将其判为遮挡变化而拒绝。
+#[expect(
+   clippy::cast_possible_truncation,
+   clippy::cast_possible_wrap,
+   clippy::cast_sign_loss,
+   clippy::too_many_arguments
+)]
+fn apply_taa(
+   source: &[ColorRgba8],
+   depth: &[f32],
+   out: &mut Vec<ColorRgba8>,
+   history: &mut Vec<ColorRgba8>,
+   history_depth: &mut Vec<f32>,
+   width: usize,
+   height: usize,
+   valid: &mut bool,
+   frame_index: &mut u32,
+) -> bool {
+   if width == 0 || height == 0 {
+      return false;
+   }
+   let total = width * height;
+   if source.len() < total || depth.len() < total {
+      return false;
+   }
+   if out.len() != total {
+      out.resize(total, ColorRgba8::BLACK);
+   }
+   if history.len() != total {
+      history.resize(total, ColorRgba8::BLACK);
+   }
+   if history_depth.len() != total {
+      history_depth.resize(total, 0.0);
+   }
+
+   if !*valid {
+      out.copy_from_slice(&source[..total]);
+      history.copy_from_slice(&source[..total]);
+      history_depth.copy_from_slice(&depth[..total]);
+      *valid = true;
+      *frame_index = frame_index.wrapping_add(1);
+      return true;
+   }
+
+   for y in 0..height {
+      let row = y * width;
+      for x in 0..width {
+         let idx = row + x;
+         let cur = source[idx];
+         let hist = history[idx];
+
+         let mut min_r = 255_i32;
+         let mut min_g = 255_i32;
+         let mut min_b = 255_i32;
+         let mut max_r = 0_i32;
+         let mut max_g = 0_i32;
+         let mut max_b = 0_i32;
+         for oy in -1_i32..=1 {
+            let sy = (y as i32 + oy).clamp(0, height as i32 - 1) as usize;
+            for ox in -1_i32..=1 {
+               let sx = (x as i32 + ox).clamp(0, width as i32 - 1) as usize;
+               let c = source[sy * width + sx];
+               min_r = min_r.min(i32::from(c.r));
+               min_g = min_g.min(i32::from(c.g));
+               min_b = min_b.min(i32::from(c.b));
+               max_r = max_r.max(i32::from(c.r));
+               max_g = max_g.max(i32::from(c.g));
+               max_b = max_b.max(i32::from(c.b));
+            }
+         }
+
+         let hist_r = (i32::from(hist.r)).clamp(min_r, max_r);
+         let hist_g = (i32::from(hist.g)).clamp(min_g, max_g);
+         let hist_b = (i32::from(hist.b)).clamp(min_b, max_b);
+
+         let raw_delta = (i32::from(cur.r) - i32::from(hist.r)).abs()
+            + (i32::from(cur.g) - i32::from(hist.g)).abs()
+            + (i32::from(cur.b) - i32::from(hist.b)).abs();
+         let clamped_delta = (i32::from(cur.r) - hist_r).abs()
+            + (i32::from(cur.g) - hist_g).abs()
+            + (i32::from(cur.b) - hist_b).abs();
+         let depth_delta = (depth[idx] - history_depth[idx]).abs();
+         let reject = (depth[idx] > 0.0 && depth_delta > 0.0025_f32.max(depth[idx] * 0.05))
+            || raw_delta > 120
+            || clamped_delta > 80;
+
+         out[idx] = if reject {
+            cur
+         } else {
+            ColorRgba8::from_rgba(
+               ((i32::from(cur.r) * 192 + hist_r * 64) >> 8) as u8,
+               ((i32::from(cur.g) * 192 + hist_g * 64) >> 8) as u8,
+               ((i32::from(cur.b) * 192 + hist_b * 64) >> 8) as u8,
+               cur.a,
+            )
+         };
+      }
+   }
+
+   history.copy_from_slice(&out[..total]);
+   history_depth.copy_from_slice(&depth[..total]);
+   *frame_index = frame_index.wrapping_add(1);
+   true
+}
+
+/// SSAA: box-downsample a `scale`× render buffer into the output resolution.
+/// SSAA：将 `scale` 倍渲染缓冲盒式降采样到输出分辨率。
+#[expect(clippy::cast_possible_truncation)]
+fn apply_ssaa(
+   source: &[ColorRgba8],
+   out: &mut Vec<ColorRgba8>,
+   src_width: u32,
+   src_height: u32,
+   scale: u32,
+   out_width: u32,
+   out_height: u32,
+) -> bool {
+   if scale <= 1
+      || out_width == 0
+      || out_height == 0
+      || u64::from(src_width) != u64::from(out_width) * u64::from(scale)
+      || u64::from(src_height) != u64::from(out_height) * u64::from(scale)
+   {
+      return false;
+   }
+   let sample_count = scale * scale;
+   let out_total = (out_width as usize) * (out_height as usize);
+   let src_width = src_width as usize;
+   let scale = scale as usize;
+   let out_width = out_width as usize;
+   if source.len() < src_width * (src_height as usize) {
+      return false;
+   }
+   if out.len() != out_total {
+      out.resize(out_total, ColorRgba8::BLACK);
+   }
+   for y in 0..(out_height as usize) {
+      let base_y = y * scale;
+      for x in 0..out_width {
+         let base_x = x * scale;
+         let mut sum = [0u32; 4];
+         for sy in 0..scale {
+            let row = (base_y + sy) * src_width;
+            for sx in 0..scale {
+               let c = source[row + base_x + sx];
+               sum[0] += u32::from(c.r);
+               sum[1] += u32::from(c.g);
+               sum[2] += u32::from(c.b);
+               sum[3] += u32::from(c.a);
+            }
+         }
+         out[y * out_width + x] = ColorRgba8::from_rgba(
+            (sum[0] / sample_count) as u8,
+            (sum[1] / sample_count) as u8,
+            (sum[2] / sample_count) as u8,
+            (sum[3] / sample_count) as u8,
+         );
+      }
+   }
+   true
+}
+
+/// Shade a texel with fixed-point light: `(texel * light) >> 8` undoes the 8
+/// fractional bits, so a light of 256 leaves the texel untouched.
+/// 用定点光照给纹素着色：`(texel * light) >> 8` 抵消那 8 位小数，因此光照为 256 时纹素
+/// 原样保留。
+#[expect(clippy::cast_sign_loss)]
+fn shade(texel: ColorRgba8, lr: i32, lg: i32, lb: i32) -> ColorRgba8 {
+   ColorRgba8::from_rgba(
+      (((i32::from(texel.r) * lr) >> 8).clamp(0, 255)) as u8,
+      (((i32::from(texel.g) * lg) >> 8).clamp(0, 255)) as u8,
+      (((i32::from(texel.b) * lb) >> 8).clamp(0, 255)) as u8,
+      255,
+   )
+}
+
+/// Which of the four MSAA sample positions fall inside the triangle.
+/// 四个 MSAA 样本位置中哪些落在三角形内。
+#[expect(clippy::cast_precision_loss, clippy::too_many_arguments)]
+fn triangle_sample_mask4(
+   x: i64,
+   y: i64,
+   x0: f32,
+   y0: f32,
+   x1: f32,
+   y1: f32,
+   x2: f32,
+   y2: f32,
+   inv_a: f32,
+) -> u8 {
+   let mut mask = 0_u8;
+   for (i, [ox, oy]) in MSAA_SAMPLE_OFFSETS.iter().enumerate() {
+      let px = x as f32 + ox;
+      let py = y as f32 + oy;
+      let w0 = ((x1 - px) * (y2 - py) - (y1 - py) * (x2 - px)) * inv_a;
+      let w1 = ((x2 - px) * (y0 - py) - (y2 - py) * (x0 - px)) * inv_a;
+      let w2 = 1.0 - w0 - w1;
+      if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+         mask |= 1 << i;
+      }
+   }
+   mask
 }
 
 fn lerp_clip(a: ClipVertex, b: ClipVertex, t: f32) -> ClipVertex {
@@ -411,13 +1028,14 @@ fn project_triangle(
    half_h: f32,
    scale_x: f32,
    scale_y: f32,
+   jitter: Vec2,
 ) -> [Vec2; 3] {
    let mut screen = [Vec2::ZERO; 3];
    for (i, v) in view.iter().enumerate() {
       let inv_z = 1.0 / v.z;
       screen[i] = Vec2::new(
-         half_w + v.x * inv_z * scale_x,
-         half_h - v.y * inv_z * scale_y,
+         half_w + v.x * inv_z * scale_x + jitter.x,
+         half_h - v.y * inv_z * scale_y + jitter.y,
       );
    }
    screen
@@ -470,11 +1088,20 @@ mod tests {
       (scene, camera, Rgb::new(0.08, 0.10, 0.14))
    }
 
-   fn render_triangle(width: u32, height: u32) -> Renderer {
+   fn render_triangle_with(aa: AntiAliasing, width: u32, height: u32) -> Renderer {
       let (scene, camera, clear) = triangle_scene();
-      let mut renderer = Renderer::new(RendererConfig::new(width, height)).unwrap();
+      let mut renderer = Renderer::new(RendererConfig {
+         width,
+         height,
+         anti_aliasing: aa,
+      })
+      .unwrap();
       renderer.render(&scene, &camera, clear).unwrap();
       renderer
+   }
+
+   fn render_triangle(width: u32, height: u32) -> Renderer {
+      render_triangle_with(AntiAliasing::None, width, height)
    }
 
    fn pixel(renderer: &Renderer, x: u32, y: u32) -> ColorRgba8 {
@@ -482,10 +1109,13 @@ mod tests {
    }
 
    #[test]
-   fn triangle_render_matches_he3d_cpp_shading() {
+   fn triangle_render_shades_with_fixed_point_light() {
       let renderer = render_triangle(64, 64);
-      // The triangle faces -Z (flat-shaded with he3d-cpp's vertex order), and the default light (0,-1,1) hits its back, so it receives only ambient 0.15. The solid texture (255,89,38) is lit in fixed point: (255·38, 89·38, 38·38) >> 8 = (37, 13, 5).
-      // 该三角形面朝 -Z（按 he3d-cpp 的顶点顺序平面着色），默认光源 (0,-1,1) 击中其背面，因此只受环境光 0.15 影响。纯色纹理 (255,89,38) 经定点光照：(255·38, 89·38, 38·38) >> 8 = (37, 13, 5)。
+      // The triangle's winding leaves it facing -Z, and the default light (0,-1,1)
+      // hits its back, so it receives only the 0.15 ambient term. The solid texture
+      // (255,89,38) is then lit in fixed point: (255*38, 89*38, 38*38) >> 8 = (37, 13, 5).
+      // 三角形的绕序使它面朝 -Z，而默认光源 (0,-1,1) 击中其背面，因此只受 0.15 的环境光
+      // 影响。纯色纹理 (255,89,38) 随后经定点光照：(255*38, 89*38, 38*38) >> 8 = (37, 13, 5)。
       let center = pixel(&renderer, 32, 32);
       assert_eq!(center, ColorRgba8::from_rgb(37, 13, 5));
    }
@@ -578,8 +1208,9 @@ mod tests {
    #[test]
    fn textured_uv_wraps_into_texture() {
       let mut scene = Scene::new();
-      // Back-facing winding (-Z normal, like he3d-cpp's triangle), lit along -Z so it renders and receives diffuse light.
-      // 背向绕序（-Z 法线，与 he3d-cpp 的三角形一致），沿 -Z 方向打光，使其能够渲染并接受漫反射光照。
+      // Back-facing winding, so the normal points at -Z; the light is aimed along
+      // -Z to match, which lets the quad render and take diffuse light.
+      // 背向绕序，因此法线指向 -Z；光源沿 -Z 对齐，使该四边形能够渲染并接受漫反射光照。
       scene.light.direction = Vec3::new(0.0, 0.0, -1.0);
       let texture = scene.textures.insert(
          Texture::new(
@@ -720,6 +1351,26 @@ mod tests {
          anti_aliasing: AntiAliasing::None,
       };
       assert!(Renderer::new(overflow).is_err());
+   }
+
+   #[test]
+   fn ssaa_rejects_oversized_render_buffer() {
+      // Output fits the budget, but 4× supersampling pushes past it.
+      // 输出尺寸在预算内，但 4× 超采样会超出预算。
+      let config = RendererConfig {
+         width: 4096,
+         height: 4096,
+         anti_aliasing: AntiAliasing::Ssaa(4),
+      };
+      assert!(Renderer::new(config).is_err());
+      // 1× Ssaa behaves like None and stays valid.
+      // 1× Ssaa 与 None 行为一致且仍有效。
+      let config = RendererConfig {
+         width: 4096,
+         height: 4096,
+         anti_aliasing: AntiAliasing::Ssaa(1),
+      };
+      assert!(Renderer::new(config).is_ok());
    }
 
    #[test]
@@ -868,5 +1519,275 @@ mod tests {
          );
          let _ = renderer.render(&scene, &camera, clear);
       }
+   }
+
+   #[test]
+   fn fuzz_style_random_scenes_never_panic_msaa() {
+      let mut renderer = Renderer::new(RendererConfig {
+         width: 32,
+         height: 32,
+         anti_aliasing: AntiAliasing::Msaa,
+      })
+      .unwrap();
+      for _ in 0..100 {
+         let mut scene = Scene::new();
+         let mesh = scene.meshes.insert(Mesh::triangle(1.0, 1.0).unwrap());
+         scene.spawn(RenderObject {
+            mesh,
+            texture: None,
+            transform: Transform::from_position(Vec3::new(0.0, 0.0, 3.0)),
+            material: Material::default(),
+            visible: true,
+         });
+         let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+         let _ = renderer.render(&scene, &camera, Rgb::new(0.0, 0.0, 0.0));
+      }
+   }
+
+   #[test]
+   fn msaa_averages_edge_samples() {
+      // A bright triangle on a dark clear: the edge pixels blend toward the
+      // background instead of snapping, so MSAA differs from the raw raster.
+      // 深色清屏上的亮色三角形：边缘像素向背景色过渡而非硬切，因此 MSAA 与原始光栅不同。
+      let plain = render_triangle(64, 64);
+      let msaa = render_triangle_with(AntiAliasing::Msaa, 64, 64);
+      assert_ne!(fnv1a_pixels(plain.pixels()), fnv1a_pixels(msaa.pixels()));
+      assert_eq!(msaa.width(), 64);
+      assert_eq!(msaa.height(), 64);
+   }
+
+   #[test]
+   fn msaa_resolve_averages_four_samples() {
+      let mut color = vec![ColorRgba8::BLACK; 1];
+      let mut depth = vec![0.0_f32; 1];
+      let msaa_color = vec![
+         ColorRgba8::from_rgb(100, 0, 0),
+         ColorRgba8::from_rgb(200, 0, 0),
+         ColorRgba8::from_rgb(0, 0, 0),
+         ColorRgba8::from_rgb(0, 0, 0),
+      ];
+      let msaa_depth = vec![0.1, 0.5, 0.0, 0.0];
+      resolve_msaa(&mut color, &mut depth, &msaa_color, &msaa_depth);
+      // (100 + 200 + 0 + 0) >> 2 = 75.
+      // (100 + 200 + 0 + 0) >> 2 = 75。
+      assert_eq!(color[0], ColorRgba8::from_rgb(75, 0, 0));
+      // `resolve_msaa` forwards the deepest sample verbatim; compare with a
+      // tolerance because `clippy::float_cmp` is denied workspace-wide.
+      // `resolve_msaa` 原样转发最深的样本值；因工作区全局拒绝 `clippy::float_cmp`，
+      // 这里用容差比较。
+      assert!((depth[0] - 0.5).abs() < f32::EPSILON);
+   }
+
+   #[test]
+   fn fxaa_blends_high_contrast_edges() {
+      // A white pixel flanked by black neighbors has high contrast and gets blended.
+      // 被黑色邻居夹在中间的白像素对比度很高，会被混合。
+      let mut color = vec![ColorRgba8::BLACK; 9];
+      color[4] = ColorRgba8::WHITE;
+      let mut out = vec![ColorRgba8::BLACK; 9];
+      assert!(apply_fxaa(&color, &mut out, 3, 3));
+      // blend_u8(255, 0) = (255·141 + 0·115) >> 8 = 140.
+      // blend_u8(255, 0) = (255·141 + 0·115) >> 8 = 140。
+      assert_eq!(out[4], ColorRgba8::from_rgb(140, 140, 140));
+   }
+
+   #[test]
+   fn fxaa_leaves_low_contrast_untouched() {
+      let color = vec![ColorRgba8::from_rgb(128, 128, 128); 9];
+      let mut out = vec![ColorRgba8::BLACK; 9];
+      assert!(apply_fxaa(&color, &mut out, 3, 3));
+      assert_eq!(out[4], ColorRgba8::from_rgb(128, 128, 128));
+   }
+
+   #[test]
+   fn taa_first_frame_seeds_history() {
+      let source = vec![ColorRgba8::from_rgb(10, 20, 30); 4];
+      let depth = vec![0.5; 4];
+      let mut out = vec![ColorRgba8::BLACK; 4];
+      let mut history = vec![ColorRgba8::BLACK; 4];
+      let mut history_depth = vec![0.0; 4];
+      let mut valid = false;
+      let mut frame_index = 0;
+      assert!(apply_taa(
+         &source,
+         &depth,
+         &mut out,
+         &mut history,
+         &mut history_depth,
+         2,
+         2,
+         &mut valid,
+         &mut frame_index,
+      ));
+      assert!(valid);
+      assert_eq!(frame_index, 1);
+      assert_eq!(out, source);
+      assert_eq!(history, source);
+   }
+
+   #[test]
+   fn taa_blends_stable_pixels() {
+      // A 2×2 mix keeps the neighborhood range [100, 200] wide enough that the
+      // history (150) survives the clamp and the color deltas stay under the
+      // rejection thresholds.
+      // 2×2 的混合使邻域范围 [100, 200] 足够宽，历史值 150 能通过钳制，
+      // 颜色差也保持在拒绝阈值之下。
+      let source = vec![
+         ColorRgba8::from_rgb(200, 0, 0),
+         ColorRgba8::from_rgb(100, 0, 0),
+         ColorRgba8::from_rgb(200, 0, 0),
+         ColorRgba8::from_rgb(100, 0, 0),
+      ];
+      let depth = vec![0.5; 4];
+      let mut out = vec![ColorRgba8::BLACK; 4];
+      let mut history = vec![ColorRgba8::from_rgb(150, 0, 0); 4];
+      let mut history_depth = vec![0.5; 4];
+      let mut valid = true;
+      let mut frame_index = 0;
+      assert!(apply_taa(
+         &source,
+         &depth,
+         &mut out,
+         &mut history,
+         &mut history_depth,
+         2,
+         2,
+         &mut valid,
+         &mut frame_index,
+      ));
+      // Blend ratio 192:64 → (200·192 + 150·64) >> 8 = 187.
+      // 混合比 192:64 → (200·192 + 150·64) >> 8 = 187。
+      assert_eq!(out[0], ColorRgba8::from_rgb(187, 0, 0));
+      assert_eq!(frame_index, 1);
+   }
+
+   #[test]
+   fn taa_rejects_moving_depth() {
+      let source = vec![ColorRgba8::from_rgb(200, 0, 0); 4];
+      let depth = vec![0.5; 4];
+      let mut out = vec![ColorRgba8::BLACK; 4];
+      // History color is far away; a large depth delta forces a full reject.
+      // 历史颜色相差很远；大深度差会强制完全拒绝。
+      let mut history = vec![ColorRgba8::from_rgb(10, 0, 0); 4];
+      let mut history_depth = vec![0.1; 4];
+      let mut valid = true;
+      let mut frame_index = 0;
+      assert!(apply_taa(
+         &source,
+         &depth,
+         &mut out,
+         &mut history,
+         &mut history_depth,
+         2,
+         2,
+         &mut valid,
+         &mut frame_index,
+      ));
+      // Depth delta 0.4 > max(0.0025, 0.5·0.05=0.025) and > 0.0, so history is rejected.
+      // 深度差 0.4 > max(0.0025, 0.5·0.05=0.025) 且 > 0.0，因此历史被拒绝。
+      assert_eq!(out[0], ColorRgba8::from_rgb(200, 0, 0));
+   }
+
+   #[test]
+   fn halton_sequence_values() {
+      // Halton base-2: 1/2, 1/4, 3/4, 1/8, 5/8, ...
+      // Halton 基 2：1/2, 1/4, 3/4, 1/8, 5/8, ...
+      assert!((halton(1, 2) - 0.5).abs() < 1e-6);
+      assert!((halton(2, 2) - 0.25).abs() < 1e-6);
+      assert!((halton(3, 2) - 0.75).abs() < 1e-6);
+      assert!((halton(1, 3) - 1.0 / 3.0).abs() < 1e-6);
+   }
+
+   #[test]
+   fn ssaa_downsamples_integer_scale() {
+      // 2× scale: every 2×2 block averages to one output pixel.
+      // 2× 倍率：每个 2×2 块平均成一个输出像素。
+      let source = vec![
+         ColorRgba8::from_rgb(0, 0, 0),
+         ColorRgba8::from_rgb(255, 0, 0),
+         ColorRgba8::from_rgb(0, 0, 0),
+         ColorRgba8::from_rgb(255, 0, 0),
+      ];
+      let mut out = vec![ColorRgba8::BLACK; 1];
+      assert!(apply_ssaa(&source, &mut out, 2, 2, 2, 1, 1));
+      // (0 + 255 + 0 + 255) / 4 = 127.
+      // (0 + 255 + 0 + 255) / 4 = 127。
+      assert_eq!(out[0], ColorRgba8::from_rgb(127, 0, 0));
+   }
+
+   #[test]
+   fn ssaa_presented_size_is_output_size() {
+      // Render at 2× internally, present at the requested 64×64.
+      // 内部按 2× 渲染，按请求的 64×64 提交。
+      let renderer = render_triangle_with(AntiAliasing::Ssaa(2), 64, 64);
+      assert_eq!(renderer.width(), 64);
+      assert_eq!(renderer.height(), 64);
+      assert_eq!(renderer.pixels().len(), 64 * 64);
+   }
+
+   #[test]
+   fn ssaa_scale_is_clamped() {
+      // Out-of-range scales clamp to 1 and 4, still constructing valid renderers.
+      // 越界倍率被钳制到 1 和 4，仍能构造有效渲染器。
+      assert!(
+         Renderer::new(RendererConfig {
+            width: 64,
+            height: 64,
+            anti_aliasing: AntiAliasing::Ssaa(0),
+         })
+         .is_ok()
+      );
+      assert!(
+         Renderer::new(RendererConfig {
+            width: 64,
+            height: 64,
+            anti_aliasing: AntiAliasing::Ssaa(99),
+         })
+         .is_ok()
+      );
+   }
+
+   #[test]
+   fn taa_jitter_steps_through_sequence() {
+      fn jitter_equals(jitter: Vec2, x: f32, y: f32) -> bool {
+         (jitter.x - x).abs() < 1e-6 && (jitter.y - y).abs() < 1e-6
+      }
+
+      let (scene, camera, clear) = triangle_scene();
+      let mut renderer = Renderer::new(RendererConfig {
+         width: 32,
+         height: 32,
+         anti_aliasing: AntiAliasing::Taa,
+      })
+      .unwrap();
+      // Frame 0: Halton sample 1 → x = (1/2 − 1/2)/2 = 0, y = (1/3 − 1/2)/2 = −1/12.
+      // 第 0 帧：Halton 样本 1 → x = (1/2 − 1/2)/2 = 0，y = (1/3 − 1/2)/2 = −1/12。
+      assert!(jitter_equals(
+         renderer.current_taa_jitter(),
+         0.0,
+         -1.0 / 12.0
+      ));
+      renderer.render(&scene, &camera, clear).unwrap();
+      assert_eq!(renderer.width(), 32);
+      assert_eq!(renderer.height(), 32);
+      assert_eq!(renderer.pixels().len(), 32 * 32);
+      // Frame 1: Halton sample 2 → x = (1/4 − 1/2)/2 = −1/8, y = (2/3 − 1/2)/2 = 1/12.
+      // 第 1 帧：Halton 样本 2 → x = (1/4 − 1/2)/2 = −1/8，y = (2/3 − 1/2)/2 = 1/12。
+      assert!(jitter_equals(
+         renderer.current_taa_jitter(),
+         -1.0 / 8.0,
+         1.0 / 12.0
+      ));
+      renderer.render(&scene, &camera, clear).unwrap();
+      // After 8 frames the Halton samples wrap around.
+      // 8 帧后 Halton 样本循环。
+      for _ in 0..6 {
+         renderer.render(&scene, &camera, clear).unwrap();
+      }
+      assert!(jitter_equals(
+         renderer.current_taa_jitter(),
+         0.0,
+         -1.0 / 12.0
+      ));
    }
 }

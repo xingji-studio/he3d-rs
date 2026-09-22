@@ -7,19 +7,17 @@ license.workspace = true
 repository.workspace = true
 keywords = ["physics", "3d", "collision", "solver"]
 categories = ["game-engines", "mathematics"]
-description = "no_std + alloc physics world (gp3d integration)"
+description = "no_std + alloc rigid-body physics: broadphase, contact generation, sequential-impulse solver"
 
 [features]
 default = []
-std = ["he3d-core/std"]
+std = ["he3d-math/std"]
 
 [dependencies]
-he3d-core = { workspace = true, default-features = false }
+# Physics deliberately depends only on the math layer. It knows nothing about
+# `he3d-core`, `Scene`, or rendering; see `docs/adr/0001`.
+# 物理刻意只依赖数学层。它对 `he3d-core`、`Scene` 与渲染一无所知；见 `docs/adr/0001`。
 he3d-math = { workspace = true, default-features = false }
-# gp3d is a separate package (../gp3d-rs); it must be published to crates.io
-# (version 0.1.0) before he3d-physics, and the `version` here mirrors it.
-# gp3d 是独立包（../gp3d-rs）；he3d-physics 发布前必须先发布 gp3d 0.1.0，此处的 `version` 与之对应。
-gp3d = { path = "../../../gp3d-rs", version = "0.2.0" }
 
 [lints]
 workspace = true

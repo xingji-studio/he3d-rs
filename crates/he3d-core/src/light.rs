@@ -2,12 +2,15 @@ use he3d_math::Vec3;
 
 use crate::Rgb;
 
-/// A directional light: a parallel light ray direction plus color/strength.
-/// 方向光：一条平行光线方向加上颜色/强度。
+/// A directional light: one direction plus color and strength.
+/// 方向光：一个光照方向加上颜色与强度。
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct DirectionalLight {
-   /// Ray direction (not a position); will be normalized by the renderer.
-   /// 光线方向（不是位置）；渲染器会将其归一化。
+   /// Direction from a surface toward the light; not a position. The shading term
+   /// is `normal · direction`, so the renderer normalizes this and ignores its
+   /// length.
+   /// 从表面指向光源的方向，不是位置。着色项为 `normal · direction`，因此渲染器会将其
+   /// 归一化，长度被忽略。
    pub direction: Vec3,
    /// Light color and strength.
    /// 光的颜色和强度。

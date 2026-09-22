@@ -5,8 +5,11 @@ use he3d_math::{Vec2, Vec3};
 /// Parse a Wavefront OBJ mesh from memory.
 /// 从内存解析 Wavefront OBJ 网格。
 ///
-/// Supported: `v`, `vt` (with V flipped to match he3d-cpp), and `f` faces with `v`, `v/vt`, `v/vt/vn`, or `v//vn` corner syntax.
-/// 支持 `v`、`vt`（V 坐标翻转以匹配 he3d-cpp）以及 `f` 面，角语法为 `v`、`v/vt`、`v/vt/vn` 或 `v//vn`。
+/// Supported: `v`, `vt`, and `f` faces with `v`, `v/vt`, `v/vt/vn`, or `v//vn`
+/// corner syntax. OBJ puts the texture origin at the bottom left, so V is flipped
+/// into this renderer's top-left convention on the way in.
+/// 支持 `v`、`vt` 以及 `f` 面，角语法为 `v`、`v/vt`、`v/vt/vn` 或 `v//vn`。OBJ 的纹理原点
+/// 在左下角，因此导入时 V 被翻转到本渲染器左上角的约定。
 /// Faces with three or more vertices are triangulated as a fan.
 /// 具有三个及以上顶点的面按扇形三角化。
 /// `vn` and other lines (`o`, `s`, `mtllib`, `usemtl`, comments) are ignored.

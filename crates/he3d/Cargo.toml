@@ -5,28 +5,18 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "HE3D: a no_std software 3D renderer, scene graph, assets, physics, and platform backends"
+description = "HE3D: a no_std software 3D renderer, scene graph, assets, and physics (backends are separate crates)"
 keywords = ["renderer", "3d", "engine", "software", "rasterizer"]
 categories = ["game-engines", "graphics"]
 
 [features]
-# Presentation backends are opt-in and interchangeable. `create_backend` picks
-# among the enabled backends at runtime (sdl3 first, then std), so application
-# code never names a backend type.
-# 呈现后端按需选择且可互换。`create_backend` 在运行时从已启用的后端中选择
-# （先 sdl3，后 std），应用代码从不提及后端类型。
+# `std` means one thing only: compile the library crates with `std`. It never
+# selects a backend. A backend is a crate the binary depends on and names in
+# `main`; see `docs/adr/0005`.
+# `std` 只有一个含义：给各库 crate 开 `std`。它从不选后端。后端是二进制自己依赖、
+# 并在 `main` 里点名的 crate；见 `docs/adr/0005`。
 default = []
 std = [
-    "dep:he3d-platform-std",
-    "he3d-math/std",
-    "he3d-core/std",
-    "he3d-renderer/std",
-    "he3d-assets/std",
-    "he3d-physics/std",
-    "he3d-platform/std",
-]
-sdl3 = [
-    "dep:he3d-platform-sdl3",
     "he3d-math/std",
     "he3d-core/std",
     "he3d-renderer/std",
@@ -52,8 +42,10 @@ he3d-renderer = { workspace = true }
 he3d-assets = { workspace = true, features = ["bmp"] }
 he3d-physics = { workspace = true }
 he3d-platform = { workspace = true }
-he3d-platform-std = { workspace = true, optional = true }
-he3d-platform-sdl3 = { workspace = true, optional = true }
+# No backend crate appears here, optionally or otherwise. Depending on the SDL3
+# backend would make SDL3 a build requirement for everyone who depends on `he3d`.
+# 此处不出现任何后端 crate，可选依赖也不出现。依赖 SDL3 后端会让每个依赖 `he3d` 的人
+# 都必须先有 SDL3。
 
 [lints]
 workspace = true

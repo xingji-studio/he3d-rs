@@ -7,10 +7,11 @@ use flight_sim::{
    update_flight_controls,
 };
 use he3d::{
-   BackendConfig, Camera, Event, KEY_ESCAPE, Material, Mesh, ObjectId, PhysicsWorld, Platform,
-   Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene, Texture, Transform, Vec3,
-   create_backend, decode_image, parse_obj,
+   BackendConfig, BodyDesc, BodyId, Camera, ContactPhase, Event, KEY_ESCAPE, Material, Mesh,
+   Platform, Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene, Shape, Texture, Transform,
+   Vec3, World, decode_image, parse_obj,
 };
+use he3d_platform_sdl3::SdlBackend;
 
 const WINDOW_WIDTH: u32 = 800;
 const WINDOW_HEIGHT: u32 = 600;
@@ -34,17 +35,14 @@ fn main() {
    let frames = parse_frames(std::env::args());
 
    let config = BackendConfig::new("HE3D Flight Simulator", WINDOW_WIDTH, WINDOW_HEIGHT);
-   let backend = match create_backend(config) {
+   let mut backend = match SdlBackend::new(config) {
       Ok(backend) => backend,
       Err(error) => {
          eprintln!("backend init failed: {error}");
          std::process::exit(1);
       }
    };
-   run(backend, frames);
-}
 
-fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
    let mut renderer = match Renderer::new(RendererConfig::new(WINDOW_WIDTH, WINDOW_HEIGHT)) {
       Ok(renderer) => renderer,
       Err(error) => {
@@ -90,16 +88,29 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
       TERRAIN_STEP,
    );
 
-   let mut physics = PhysicsWorld::new();
-   physics.set_gravity(flight_sim::FLIGHT_GRAVITY);
-   physics.add_dynamic_box(
-      plane,
-      Vec3::new(0.5, 0.225, 0.7),
-      Transform::from_position(SPAWN_POS),
+   // The Body is the engine's; `plane` names the render object that draws it, and
+   // the two are related only here. See `docs/adr/0001`.
+   // Body 归引擎所有；`plane` 是绘制它的渲染对象的名字，两者只在这里发生联系。见
+   // `docs/adr/0001`。
+   let mut world = World::new();
+   world.set_gravity(flight_sim::FLIGHT_GRAVITY);
+   // The plane is one Body against immovable terrain, so a handful of iterations
+   // is plenty and keeps the frame budget for the rasterizer.
+   // 飞机是单个 Body 与不可移动地形作用，少数几次迭代就足够，把帧预算留给光栅化器。
+   world.set_velocity_iterations(4);
+   let plane_body = world.add_body(
+      BodyDesc::dynamic(Shape::cuboid(Vec3::new(0.5, 0.225, 0.7)), 1.0)
+         .at(SPAWN_POS)
+         .with_friction(0.5)
+         .with_restitution(0.1)
+         .with_damping(0.1, 0.1)
+         // The flight model owns this Body's velocity: it writes the whole vector
+         // every step, so gravity reaching it could only ever leak into the position
+         // as a steady sink. The wreck gets gravity back below.
+         // 飞行模型拥有此 Body 的速度：它每步重写整个向量，因此重力作用于它只会以恒定下沉的
+         // 形式漏进位置。残骸会在下面把重力要回去。
+         .with_gravity_scale(0.0),
    );
-   // he3d-cpp material: modest friction, slight bounce off the terrain.
-   // he3d-cpp 材质：适中的摩擦力，落地有轻微回弹。
-   physics.set_material(plane, 0.5, 0.1);
 
    let mut camera = Camera::new(Vec3::new(0.0, 12.0, 5.0), Quat::IDENTITY, 90.0);
    let mut chase = FlightCamera::default();
@@ -146,7 +157,7 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
       }
 
       if keys[b'r' as usize] {
-         reset_plane(&mut physics, plane);
+         reset_plane(&mut world, plane_body);
          controlled_orientation = Quat::IDENTITY;
          controls = FlightControls::default();
          crashed = false;
@@ -173,12 +184,12 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
       accumulator += frame_delta;
       let mut iterations = 0;
       while accumulator >= PHYSICS_STEP && iterations < 8 {
-         previous_position = physics.transform(plane).unwrap().position;
-         previous_orientation = physics.transform(plane).unwrap().orientation;
+         previous_position = world.position(plane_body).unwrap();
+         previous_orientation = world.orientation(plane_body).unwrap();
 
-         if let Some(position) = physics.transform(plane) {
-            terrain.update(position.position);
-            terrain.refresh_one(&mut scene, &mut physics);
+         if let Some(position) = world.position(plane_body) {
+            terrain.update(position);
+            terrain.refresh_one(&mut scene, &mut world);
             if crashed {
                // The wreck is no longer controlled: hand the plane back to the physics step so it settles against the terrain.
                // 残骸不再受控：将飞机交还给物理步进，使其贴合地形静止下来。
@@ -187,12 +198,17 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
                // Strong exponential damping bleeds off the remaining velocity and angular velocity so it comes to rest where it hit instead of sliding forever.
                // 强指数阻尼会逐渐消耗残余的线速度与角速度，使其在撞击处静止而非永久滑行。
                let damp = (-flight_sim::CRASH_DAMPING * PHYSICS_STEP as f32).exp();
-               let velocity = physics.velocity(plane) * damp;
-               physics.set_velocity(plane, velocity);
-               let spin = physics.angular_velocity(plane) * damp;
-               physics.set_angular_velocity(plane, spin);
+               let velocity = world.velocity(plane_body).unwrap_or(Vec3::ZERO) * damp;
+               world.set_velocity(plane_body, velocity);
+               let spin = world.angular_velocity(plane_body).unwrap_or(Vec3::ZERO) * damp;
+               world.set_angular_velocity(plane_body, spin);
             } else {
-               let contacted = physics.has_contacts(plane);
+               // "Am I touching anything" is answered by the Contact list the last
+               // step produced; no geometry is recomputed here.
+               // "我碰到东西了吗"由上一步产出的 Contact 列表回答；这里不重算任何几何。
+               let contacted = world.contacts().iter().any(|contact| {
+                  contact.involves(plane_body) && contact.phase != ContactPhase::End
+               });
                if contacted {
                   grounded = true;
                   lift_off_frames = 0;
@@ -204,22 +220,28 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
                   }
                }
                update_flight_controls(
-                  &mut physics,
-                  plane,
+                  &mut world,
+                  plane_body,
                   &mut controlled_orientation,
                   &mut controls,
                   &keys,
                   PHYSICS_STEP as f32,
                   grounded,
                );
-               if grounded && physics.velocity(plane).length() < CRASH_SPEED {
+               if grounded
+                  && world.velocity(plane_body).unwrap_or(Vec3::ZERO).length() < CRASH_SPEED
+               {
                   crashed = true;
-                  physics.set_velocity(plane, Vec3::ZERO);
-                  physics.set_angular_velocity(plane, Vec3::ZERO);
+                  // Hand the wreck back to gravity so it falls and settles against
+                  // the terrain instead of hanging where it stopped.
+                  // 把残骸交还给重力，使其下坠并贴合地形，而不是停在原地悬着。
+                  world.set_gravity_scale(plane_body, 1.0);
+                  world.set_velocity(plane_body, Vec3::ZERO);
+                  world.set_angular_velocity(plane_body, Vec3::ZERO);
                }
             }
          }
-         physics.step(PHYSICS_STEP as f32);
+         world.step(PHYSICS_STEP as f32);
 
          accumulator -= PHYSICS_STEP;
          iterations += 1;
@@ -228,10 +250,13 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
          accumulator = 0.0;
       }
       let alpha = (accumulator / PHYSICS_STEP) as f32;
-      let live = physics.transform(plane).unwrap();
-      let presentation_position = previous_position.lerp(live.position, alpha);
+      let live_position = world.position(plane_body).unwrap_or(previous_position);
+      let live_orientation = world
+         .orientation(plane_body)
+         .unwrap_or(previous_orientation);
+      let presentation_position = previous_position.lerp(live_position, alpha);
       let presentation_orientation = previous_orientation
-         .slerp(live.orientation, alpha)
+         .slerp(live_orientation, alpha)
          .normalize();
       let forward = presentation_orientation * Vec3::Z;
 
@@ -285,8 +310,10 @@ fn run(mut backend: Box<dyn Platform>, frames: Option<u32>) {
          fps_start = now;
          fps_frames = 0;
       }
-      // No frame-rate lock: render as fast as the software rasterizer can, matching the he3d-cpp simulator (SetFrameRateLimit(0)).
-      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染，与 he3d-cpp 模拟器一致（SetFrameRateLimit(0)）。
+      // No frame-rate lock: render as fast as the software rasterizer can;
+      // simulation time is kept independent by the fixed-step accumulator.
+      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染；模拟时间由固定步长累加器独立
+      // 维持。
    }
 }
 
@@ -301,10 +328,13 @@ fn read_obj() -> Option<Mesh> {
    }
 }
 
-fn reset_plane(physics: &mut PhysicsWorld, plane: ObjectId) {
-   physics.set_transform(plane, Transform::from_position(SPAWN_POS));
-   physics.set_velocity(plane, Vec3::ZERO);
-   physics.set_angular_velocity(plane, Vec3::ZERO);
+fn reset_plane(world: &mut World, plane: BodyId) {
+   world.set_pose(plane, SPAWN_POS, Quat::IDENTITY);
+   world.set_velocity(plane, Vec3::ZERO);
+   world.set_angular_velocity(plane, Vec3::ZERO);
+   // Back to the state a fresh aircraft is in: flying, so the flight model owns it.
+   // 回到一架全新飞机的状态：在飞，因此由飞行模型拥有。
+   world.set_gravity_scale(plane, 0.0);
 }
 
 fn read_texture() -> Option<Texture> {
