@@ -79,7 +79,7 @@ error points at dependency source rather than at this workspace.
 
 Crates are published in dependency order (`he3d-math` → `he3d-core` →
 `he3d-renderer` → `he3d-assets` → `he3d-platform` → `he3d-platform-std` →
-`he3d-platform-sdl3` → `he3d-physics`). `he3d-docs` is the one crate with
+`he3d-platform-sdl3` → `he3d-physics` → `he3d`). `he3d-docs` is the one crate with
 `publish = false`: it exists only so that `cargo test` compiles the code blocks in
 `docs/`. See `cargo package --list` before each release.
 

@@ -66,6 +66,8 @@ jobs:
           sudo cmake --install /tmp/SDL/build
           sudo ldconfig
       - run: cargo test --workspace
+      - name: Guide code blocks (he3d-docs compiles them)
+        run: cargo check -p he3d-docs
 
   audit-features:
     name: dependency feature audit

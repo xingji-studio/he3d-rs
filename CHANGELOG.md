@@ -2,9 +2,15 @@
 
 All notable changes to the HE3D workspace crates are documented here.
 
-## [Unreleased]
+## [0.3.0] - 2026-09-22
 
 ### Breaking
+- **The physics crate was rewritten and no longer depends on `gp3d`.**
+  `he3d-physics` depends only on `he3d-math`; a Body is identified by its own
+  `BodyId`, and the application owns both the Body-to-render-object association
+  and the per-frame copy of the pose. It never sees a `Scene`, an `ObjectId`,
+  or a `Transform`. Contact phases, warm starting, and per-Island sleep are part
+  of the rewrite (see `docs/adr/0001`-`docs/adr/0004`).
 - **The binary chooses the backend; no Cargo feature does.** `he3d` depends on no
   backend crate, optional or otherwise, and its `std` feature now means only
   "compile the library crates with `std`". Depend on `he3d-platform-sdl3` or
@@ -30,7 +36,9 @@ All notable changes to the HE3D workspace crates are documented here.
 - The facade's headless smoke test moved to `he3d-platform-std`, where the backend
   it drives lives.
 
-## [0.2.0] - 2026-08-23
+## [0.2.0] - 2026-08-24
+
+> Note: `he3d-physics` 0.2.0 transitively depends on the yanked `gp3d` 0.2.0, so fresh resolves of that version fail. Existing `Cargo.lock`s are unaffected; point new projects at 0.3.0.
 
 ### Breaking
 - `#[non_exhaustive]` added to all public enums and config structs:

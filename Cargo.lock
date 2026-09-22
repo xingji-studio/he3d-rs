@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "he3d"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-assets",
  "he3d-core",
@@ -31,7 +31,7 @@ dependencies = [
 
 [[package]]
 name = "he3d-assets"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-core",
  "he3d-math",
@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "he3d-biplane"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d",
  "he3d-platform-sdl3",
@@ -51,14 +51,23 @@ dependencies = [
 
 [[package]]
 name = "he3d-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-math",
 ]
 
 [[package]]
+name = "he3d-docs"
+version = "0.3.0"
+dependencies = [
+ "he3d",
+ "he3d-platform-sdl3",
+ "he3d-platform-std",
+]
+
+[[package]]
 name = "he3d-flight-simulator"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d",
  "he3d-platform-sdl3",
@@ -66,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "he3d-math"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "glam",
  "libm",
@@ -74,14 +83,14 @@ dependencies = [
 
 [[package]]
 name = "he3d-physics"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-math",
 ]
 
 [[package]]
 name = "he3d-physics-test"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d",
  "he3d-platform-sdl3",
@@ -89,14 +98,14 @@ dependencies = [
 
 [[package]]
 name = "he3d-platform"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-core",
 ]
 
 [[package]]
 name = "he3d-platform-sdl3"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-assets",
  "he3d-platform",
@@ -106,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "he3d-platform-std"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-assets",
  "he3d-platform",
@@ -116,7 +125,7 @@ dependencies = [
 
 [[package]]
 name = "he3d-renderer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d-core",
  "he3d-math",
@@ -124,7 +133,7 @@ dependencies = [
 
 [[package]]
 name = "he3d-triangle"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "he3d",
  "he3d-platform-sdl3",

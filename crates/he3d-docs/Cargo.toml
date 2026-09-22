@@ -1,0 +1,21 @@
+[package]
+name = "he3d-docs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Compiles the Markdown guides; carries no library code"
+publish = false
+
+[dependencies]
+# The guides are written against the facade and the backends they name, and the
+# generated code blocks — including the counterexample crates — are part of this
+# crate, so these are ordinary dependencies rather than dev-dependencies.
+# 指南是针对门面与它点名的后端写的，而生成的代码块（含反例 crate）属于本 crate，因此
+# 这些是普通依赖，不是 dev-dependency。
+he3d = { path = "../he3d", features = ["std"] }
+he3d-platform-std = { path = "../he3d-platform-std" }
+he3d-platform-sdl3 = { path = "../he3d-platform-sdl3" }
+
+[lints]
+workspace = true

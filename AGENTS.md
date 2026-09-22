@@ -109,6 +109,13 @@ What must not regress:
   compiled program gets that program's imports automatically; setup beyond that
   (values, or names the program never imports) is keyed to the fragment's first line
   in `build.rs`.
+- **Counterexamples are compiled too, and must fail.** A fragment registered in the
+  `FAILING` table of the same `build.rs` is written out as a crate of its own instead of
+  being compiled into the guide, and `crates/he3d-docs/tests/compile_fail.rs` builds it
+  expecting the error code the table names. That is what keeps the compiler output
+  pasted into a guide from rotting. Since these crates and the guide's own program use
+  `SdlBackend`, `he3d-docs` depends on `he3d-platform-sdl3`, so building it needs SDL3
+  like the examples do.
 - **Guides without an English pair.** `docs/writing-style.zh.md` and
   `docs/getting-started.zh.md` have no `docs/writing-style.md` /
   `docs/getting-started.md`, and `docs/physics-spec.md` is still one interleaved
