@@ -299,27 +299,74 @@ out of reach without threading, and there is no threading substrate in a
 这是 §6（真正的宽阶段）与 §8（岛屿睡眠）被强制引入的原因。不上万——没有线程化就
 到不了，而 `no_std + alloc` 的 crate 里没有线程基础设施。
 
-### Measured, on a Ryzen 7 5800X
+### Measured
 
-The rewrite was measured against the engine it replaces. Both numbers are per
-`step()` call at a 1/120 s step, single-threaded.
+Per `step()` call at a 1/120 s step, single-threaded, measured by
+`crates/he3d-bench` on an AMD Ryzen 7 5800X with rustc 1.99.0. The scenes are
+defined in that crate, and `cargo bench -p he3d-bench --bench physics` reproduces
+these numbers; `cargo run -p he3d-bench --bin memreport` covers the heap figures.
 
-重写已与其所取代的引擎做了对比测量。两组数字都是 1/120 秒步长下、单线程的每次
-`step()` 调用。
+单次 `step()` 调用的耗时，1/120 秒步长，单线程，由 `crates/he3d-bench` 在
+AMD Ryzen 7 5800X、rustc 1.99.0 上测得。场景定义在该 crate 中，
+`cargo bench -p he3d-bench --bench physics` 可复现；堆数据见
+`cargo run -p he3d-bench --bin memreport`。
 
-| Scenario | Bodies | Before | After |
-|---|---|---|---|
-| Lattice dropped onto a slab, fully awake | 200 | 5.29 ms | **0.35 ms** |
-| Lattice dropped onto a slab, fully awake | 500 | 33.12 ms | **0.86 ms** |
-| Lattice dropped onto a slab, fully awake | 2000 | ~530 ms (extrapolated from a quadratic curve) | **3.50 ms** |
-| Resting on a slab, settled and asleep | 2000 | not reachable — the old engine could not settle that many | **0.21 ms**, all 2000 asleep |
+| Scenario | Bodies | Contacts | Per `step()` | Share of a 60 Hz frame |
+|---|---|---|---|---|
+| Freefall grid, nothing ever touches | 2000 | 0 | 0.23 ms | 1.4% |
+| Resting on a slab, settled and asleep | 2000 | 0 | 0.41 ms | 2.4% |
+| Lattice on a slab, fully awake | 200 | 1 511 | 2.5 ms | 15% |
+| Lattice on a slab, fully awake | 500 | 3 903 | 6.6 ms | 39% |
+| Lattice on a slab, fully awake | 2000 | 20 161 | 32 ms | 190% |
 
-The cost is now linear in Body count rather than quadratic, so two thousand active
-Bodies fit inside a 60 Hz frame at about 20% of the budget, and two thousand
-resting Bodies cost almost nothing.
+**Cost tracks contacts, not Bodies.** Two thousand Bodies that step without ever
+touching cost 0.23 ms; the same two thousand packed so every one is in contact cost
+32 ms — about 140× more, at an identical Body count. Within a regime the cost *is*
+linear in Body count, exactly as §6 and §8 intend: the awake lattice runs at
+12–16 µs per Body, and sleep removes a Body's cost entirely — a settled scene holds
+no Contact data and steps almost as cheaply as freefall.
 
-开销现在与 Body 数量成线性关系而非平方关系：两千个活跃 Body 约占 60 Hz 一帧预算的
-20%，而两千个静止 Body 的开销几乎为零。
+**开销跟的是接触，不是 Body。** 两千个互不接触的 Body 每步 0.23 ms；同样两千个被塞成
+彼此相触的格架则要 32 ms——Body 数完全相同，代价高约 140 倍。同一状态内，开销对 Body
+数量**确实是线性的**，正是 §6 与 §8 想要的结果：清醒格架约 12–16 µs/Body；而睡眠会完全
+抹掉一个 Body 的开销——已稳定的场景不持有任何 Contact 数据，步进代价与自由落体相当。
+
+**The frame budget.** Two thousand resting Bodies cost 0.41 ms and leave the frame
+untouched. Two thousand *fully awake, fully packed* Bodies at 32 ms do **not** fit a
+60 Hz frame (16.7 ms); they fit a 30 Hz frame using about 40% of it. A scene of two
+thousand Bodies that are moving but largely out of contact — freefall, spreading
+debris — costs 0.23 ms and is comfortably real-time. Contact density, not Body
+count, decides which regime a scene is in.
+
+**帧预算。** 两千个静止 Body 只花 0.41 ms，几乎不占一帧。两千个**完全清醒且彼此相触**的
+Body 要 32 ms，**塞不进** 60 Hz 的一帧（16.7 ms）；用 30 Hz 的帧（33 ms）则约占其 40%。
+而两千个虽有运动但基本不接触的场景（自由落体、散开的碎块）只要 0.23 ms，实时绰绰有余。
+决定场景落在哪个区间的，是接触密度而非 Body 数量。
+
+**Broadphase cell size** at 2000 awake Bodies: 0.5 → 38 ms, 2.0 → 32 ms, 8.0 →
+32 ms. The default 2.0 is near-optimal; halving the cell is the only setting that
+hurts.
+
+**宽阶段网格尺寸**（2000 个清醒 Body）：0.5 → 38 ms，2.0 → 32 ms，8.0 → 32 ms。默认的
+2.0 接近最优；把格子减半是唯一会拖慢的取值。
+
+**Static geometry** under 16 resting Bodies: 100 triangles → 31 µs, 1000 →
+57 µs, 10 000 → 238 µs. It is not free, but 10 000 triangles are 1.4% of a 60 Hz
+frame, and the mesh welds into one shared topology (§7) rather than being paid for
+per Body.
+
+**静态几何**（16 个静止 Body 之下）：100 个三角形 → 31 µs，1000 个 → 57 µs，
+10000 个 → 238 µs。它不是免费的，但 10000 个三角形也只占 60 Hz 一帧的 1.4%；而且网格
+焊接进同一套共享拓扑（§7），而不是按 Body 逐个付费。
+
+**Heap.** Steady-state `World::step` allocates nothing: the World reuses its
+buffers, so a step makes zero allocation calls whether there are 200 Bodies or 2000.
+A Body costs about 196 requested bytes of storage, and a settled scene holds no
+Contact data at all.
+
+**堆。** 稳态的 `World::step` 不分配任何内存：World 复用其缓冲，因此无论有 200 个还是
+2000 个 Body，一步的分配调用都是零。每个 Body 约占 196 请求字节；已稳定的场景不持有任何
+Contact 数据。
 
 ## 13. Explicitly out of scope
 
@@ -364,9 +411,12 @@ Each entry records what would bring it back.
 3. **Six shapes across a hybrid narrowphase** is the widest surface area. The
    curved shapes (cylinder, cone) are the hardest contact-manifold cases and
    should be scheduled last within §5.
-4. **The two-thousand-Body budget is an assumption, not a measurement.** Physics
-   shares CPU with a software rasterizer. Nothing has been profiled. Measure
-   before trusting the number, and be prepared for it to be lower.
+4. **The two-thousand-Body budget is now a measurement, with one gap left.** §12
+   records it: 0.41 ms asleep, 32 ms fully awake and packed. The gap is the
+   *combination* — physics and the software rasterizer share one CPU and have been
+   profiled only separately, never in the same frame. A scene that both simulates
+   and draws two thousand Bodies needs the two costs added before any frame rate is
+   promised.
 5. **No CCD means tunnelling.** The flight simulator is the concrete case: direct
    `set_velocity`, heavy gravity, and terrain cells twelve metres apart. Either
    add CCD, thicken the terrain, or cap speed — decide with a measurement.
@@ -388,8 +438,9 @@ Each entry records what would bring it back.
    邻接关系、按世界位置建立索引，并在静态网格增删时维护它。
 3. **六种形状 × 混合窄相位**是最宽的工作面。曲面形状（圆柱、圆锥）是最难的接触流形
    情形，应排在 §5 的最后。
-4. **两千个 Body 是假设，不是实测。** 物理与软件光栅化器抢同一批 CPU。目前没有任何
-   profile。先量再信这个数字，并做好它更低的准备。
+4. **两千个 Body 的预算现在是实测，但还差一块。** §12 已记录：睡眠 0.41 ms，完全清醒且
+   相触 32 ms。缺的是**两者叠加**——物理与软件光栅化器抢同一批 CPU，目前只分别测过，
+   从未在同一帧里一起量。既模拟又绘制两千个 Body 的场景，需要先把两份开销相加，再谈帧率。
 5. **没有 CCD 意味着隧穿。** flight simulator 就是具体案例：直接 `set_velocity`、
    大重力、地形格子间距十二米。要么加 CCD，要么加厚地形，要么限制速度——用实测决定。
 6. **没有碰撞过滤。** 对当前功能集是正确的，但一旦触发器或自碰撞出现就变成刚需。
@@ -412,9 +463,9 @@ Each entry records what would bring it back.
   triangle's internal edge nor on a boundary between two static meshes.
 - Answering "is this Body resting on something" requires only the Contact list.
   No hand-rolled geometry tests with tuned tolerances.
-- Two thousand sleeping Bodies cost approximately nothing; the cost of two
-  thousand active Bodies is measured and recorded, with the frame budget stated
-  as a number.
+- Two thousand sleeping Bodies cost approximately nothing (0.41 ms, §12), and the
+  cost of two thousand active Bodies is measured and recorded with the frame budget
+  stated as a number (0.23 ms out of contact; 32 ms fully packed).
 - Determinism is **not** tested, because it is not a goal.
 
 - 保持 `no_std + alloc`：裸机 target 检查与 `--no-default-features` 检查均通过。
@@ -425,6 +476,6 @@ Each entry records what would bring it back.
   的边界上。
 - 回答"这个 Body 是不是搁在什么东西上"只需要 Contact 列表，不需要任何带调参容差的
   手写几何判定。
-- 两千个睡眠 Body 的开销约等于零；两千个活跃 Body 的开销经过实测并记录，帧预算以一个
-  具体数字写明。
+- 两千个睡眠 Body 的开销约等于零（0.41 ms，§12）；两千个活跃 Body 的开销经过实测并记录，
+  帧预算以一个具体数字写明（不接触 0.23 ms；完全相触 32 ms）。
 - **不**测试确定性，因为它不是目标。

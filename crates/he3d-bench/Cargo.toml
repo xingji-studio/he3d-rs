@@ -1,0 +1,42 @@
+[package]
+name = "he3d-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Performance benchmarks and heap accounting for HE3D; not published"
+publish = false
+# Bench targets are declared explicitly below with `harness = false` (criterion
+# supplies `main`), which conflicts with default discovery.
+autobenches = false
+
+[dependencies]
+he3d-math = { workspace = true, features = ["std"] }
+he3d-core = { workspace = true, features = ["std"] }
+he3d-physics = { workspace = true, features = ["std"] }
+he3d-renderer = { workspace = true, features = ["std"] }
+he3d-assets = { workspace = true, default-features = false, features = ["std", "bmp"] }
+
+[dev-dependencies]
+# Trimmed criterion: no plotters, no rayon, no HTML reports. The HTML report is
+# opt-in via `--features criterion/html_reports` when charts are wanted.
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "physics"
+harness = false
+
+[[bench]]
+name = "renderer"
+harness = false
+
+[[bench]]
+name = "assets"
+harness = false
+
+[[bench]]
+name = "core_math"
+harness = false
+
+[lints]
+workspace = true

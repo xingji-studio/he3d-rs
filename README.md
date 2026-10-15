@@ -22,6 +22,7 @@ physics, and platform backends (right-handed, +Z forward, inverse-depth buffer).
 | `he3d-platform` | The `Platform` trait: backend-neutral input / presentation / timing |
 | `he3d-platform-std` | `StdBackend`, presenting to standard output (stdout) |
 | `he3d-platform-sdl3` | `SdlBackend`, presenting to an SDL3 window |
+| `he3d-bench` | **Internal** criterion benchmarks and a heap report; `publish = false` |
 
 Every library crate is `no_std + alloc` when built without `std`, and the optional
 `std` feature adds std-backed impls (such as `std::error::Error`) while enabling
@@ -71,6 +72,25 @@ The feature set it plans to grow into, and the limits it currently has, are in
 `scripts/check-deps.sh` verifies that every crate cargo unpacked into the
 registry still matches the checksummed archive it came from; run it when a build
 error points at dependency source rather than at this workspace.
+
+## Benchmarks
+
+Performance claims are measured, not asserted. `crates/he3d-bench` holds a
+criterion suite and a heap report; it is `publish = false`, depends on no backend
+crate, and so builds and runs headless.
+
+```sh
+cargo bench -p he3d-bench                  # full run: physics, renderer, assets, core/math
+cargo bench -p he3d-bench -- --test        # smoke: every case once (what CI runs)
+cargo run  -p he3d-bench --bin memreport   # heap allocation + size_of tables
+```
+
+`memreport` installs a counting global allocator and prints, per scenario, the
+number of allocations, the bytes requested, and the peak added. It is how "resting
+Bodies cost nothing" is checked: a settled `World` stepped a hundred times, and a
+`Renderer` drawing a hundred frames, both report **zero allocations** — both reuse
+their buffers. The measured numbers behind [`docs/physics-spec.md`](docs/physics-spec.md)
+§12 come from these benches.
 
 ## Publishing
 

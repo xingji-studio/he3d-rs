@@ -67,6 +67,18 @@ jobs:
           sudo ldconfig
       - run: cargo test --workspace
 
+  bench:
+    name: bench smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Smoke-test the benchmark suite
+        # `--test` runs every case exactly once: it proves the benches build and run
+        # without spending CI time on statistics. `he3d-bench` is headless, so it
+        # needs none of the SDL3 setup the other jobs do.
+        run: cargo bench -p he3d-bench -- --test
+
   audit-features:
     name: dependency feature audit
     runs-on: ubuntu-latest

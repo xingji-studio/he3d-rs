@@ -2,6 +2,24 @@
 
 All notable changes to the HE3D workspace crates are documented here.
 
+## [Unreleased]
+
+### Added
+- `crates/he3d-bench`: a criterion benchmark suite (physics, renderer, assets,
+  core/math) and a `memreport` binary that counts heap allocations through a
+  counting global allocator and prints `size_of` for the core types. The crate is
+  `publish = false` and depends on no backend crate, so it builds and runs headless.
+  CI runs it with `cargo bench -p he3d-bench -- --test` (smoke only).
+- `.github/workflows/ci.yml`: a `bench` job that compiles and smoke-runs the suite.
+
+### Changed
+- `docs/physics-spec.md` §12 now carries numbers measured by that suite, replacing
+  the earlier unmeasured figures; the "assumption, not a measurement" risk for the
+  two-thousand-Body budget (§14) is settled by the measurement.
+
+### Removed
+- The tutorial documentation and the `he3d-docs` crate.
+
 ## [0.3.0] - 2026-09-22
 
 ### Breaking

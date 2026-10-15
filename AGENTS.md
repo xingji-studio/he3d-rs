@@ -104,3 +104,8 @@ What must not regress:
   requirement.** `sdl3-sys` declares `links = "SDL3"`, so merely depending on
   `he3d-platform-sdl3` makes cargo look for SDL3 at build time. Anything expected
   to build headlessly must keep it out of its dependency graph.
+- **Benchmarks live in `crates/he3d-bench`, and they are `publish = false`.** That
+  crate is the only place criterion appears, and it depends on no backend crate, so
+  it stays headless. Do not move benchmark targets into the library crates: that
+  would drag criterion into their dependency graphs. CI runs the suite with
+  `cargo bench -p he3d-bench -- --test` (smoke only), never a full timing run.

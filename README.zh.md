@@ -21,6 +21,7 @@
 | `he3d-platform` | `Platform` trait：后端无关的输入/呈现/计时 |
 | `he3d-platform-std` | `StdBackend`，输出到标准输出（stdout） |
 | `he3d-platform-sdl3` | `SdlBackend`，输出到 SDL3 窗口 |
+| `he3d-bench` | **内部** criterion 基准与堆报告；`publish = false` |
 
 每个库 crate 在不启用 `std` 时是 `no_std + alloc`，可选的 `std` 特性添加基于 std 的实现（如 `std::error::Error`），同时为其依赖的 crate 启用 `std`。
 
@@ -57,6 +58,18 @@ cargo check -p he3d-math -p he3d-core -p he3d-renderer \
 `he3d-physics` 只依赖 `he3d-math`：它永远看不到 `Scene`、`ObjectId` 或 `Transform`。`Body` 自带 `BodyId`，应用同时拥有 Body 与绘制它的对象之间的关联，以及每帧位姿的副本。它的能力规划与当前限制写在 [`docs/physics-spec.md`](docs/physics-spec.md)。
 
 `scripts/check-deps.sh` 验证 cargo 解包到 registry 的每个 crate 是否仍与其校验和归档一致；当构建错误指向依赖源码而非本仓库时运行它。
+
+## 基准测试
+
+性能数字是量出来的，不是断言的。`crates/he3d-bench` 存放 criterion 基准套件与堆报告；它 `publish = false`、不依赖任何后端 crate，可无头构建与运行。
+
+```sh
+cargo bench -p he3d-bench                  # 完整运行：physics、renderer、assets、core/math
+cargo bench -p he3d-bench -- --test        # 冒烟：每个用例跑一次（CI 运行的就是这个）
+cargo run  -p he3d-bench --bin memreport   # 堆分配 + size_of 表
+```
+
+`memreport` 安装一个计数型全局分配器，逐场景打印分配次数、请求字节数与新增峰值。"静止 Body 几乎不花钱"的说法就是这样检验的：一个已稳定的 `World` 连步一百次、一个 `Renderer` 连画一百帧，两者都报告**零分配**——因为两者都复用缓冲。[`docs/physics-spec.md`](docs/physics-spec.md) §12 的实测数字正来自这套基准。
 
 ## 发布
 
