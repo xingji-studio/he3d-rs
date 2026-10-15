@@ -329,9 +329,9 @@ what can overspend a frame, the settled cost is what a running scene actually pa
 |---|---|---|---|---|---|
 | Freefall grid, nothing ever touches | 2000 | — | 0.23 ms | 0.23 ms | nothing to settle |
 | Single layer on a slab | 2000 | 1 | 0.41 ms | 0.41 ms | yes, all 2000 |
-| Lattice on a slab | 200 | 6 | 2.5 ms | 0.05 ms | yes, after ~800 steps |
-| Lattice on a slab | 500 | 8 | 6.6 ms | 4.4 ms | **never** |
-| Lattice on a slab | 2000 | 12 | 32 ms | 8.8 ms | **never**; sheds edge Bodies |
+| Lattice on a slab | 200 | 6 | 1.5 ms | 0.05 ms | yes, after ~800 steps |
+| Lattice on a slab | 500 | 8 | 3.7 ms | 2.3 ms | **never** |
+| Lattice on a slab | 2000 | 12 | 17 ms | 5.5 ms | **never**; sheds edge Bodies |
 
 The peak is the criterion bench: one step, taken sixteen steps into a freshly built
 scene. The settled value is `settle`: the median of the last hundred of 1500 steps.
@@ -341,55 +341,54 @@ scene. The settled value is `settle`: the median of the last hundred of 1500 ste
 
 **A pile the solver cannot converge never sleeps.** Six layers settle, fall asleep,
 and then cost 0.05 ms for the whole pile. Eight and twelve layers never do: their
-residual speed settles around 0.16 m/s — three times the 0.05 m/s sleep threshold —
-so every Body stays awake and the scene pays for its Contacts forever. More
-iterations do not rescue it: at 48 velocity iterations an eight-layer pile is still
-awake, at close to four times the cost. This is the tall-stack limitation of §14
-risk 7, now measured instead of assumed. The twelve-layer pile additionally creeps
-and sheds edge Bodies, which then free-fall to the end of the run — that is why its
-settled cost (8.8 ms) sits well below its peak (32 ms) rather than at zero.
+residual speed holds at least twice the 0.05 m/s sleep threshold, so every Body stays
+awake and the scene pays for its Contacts forever. More iterations do not rescue it:
+at 48 velocity iterations an eight-layer pile is still awake, at close to four times
+the cost. This is the tall-stack limitation of §14 risk 7, now measured instead of
+assumed. The twelve-layer pile additionally creeps and sheds edge Bodies, which then
+free-fall to the end of the run — that is why its settled cost (5.5 ms) sits well
+below its peak (17 ms) rather than at zero.
 
 **求解器收敛不了的堆叠永不入睡。** 六层会稳定、入睡，之后整堆只要 0.05 ms。八层与十二层
-则永远不会：残余速度稳定在约 0.16 m/s——是 0.05 m/s 睡眠阈值的 3 倍——因此每个 Body 都保持
-清醒，场景永远为它的 Contact 付费。增加迭代次数救不了它：48 次速度迭代下八层堆叠仍然清醒，
-代价却接近四倍。这就是 §14 风险 7 的高塔限制，现在是实测而非假设。十二层堆叠还会蠕动并
-甩掉边缘的 Body，后者一路自由落体到运行结束——这正是它的稳态成本（8.8 ms）远低于峰值
-（32 ms）、而不是降到零的原因。
+则永远不会：残余速度始终不低于 0.05 m/s 睡眠阈值的两倍，因此每个 Body 都保持清醒，场景永远
+为它的 Contact 付费。增加迭代次数救不了它：48 次速度迭代下八层堆叠仍然清醒，代价却接近四倍。
+这就是 §14 风险 7 的高塔限制，现在是实测而非假设。十二层堆叠还会蠕动并甩掉边缘的 Body，
+后者一路自由落体到运行结束——这正是它的稳态成本（5.5 ms）远低于峰值（17 ms）、而不是降到零
+的原因。
 
 **Cost tracks contacts, not Bodies.** Two thousand Bodies that step without ever
 touching cost 0.23 ms; the same two thousand packed so that a fifth of them are in
-contact cost 4.4 ms at eight layers — twenty times more, at an identical Body count,
-and 8.8 ms at twelve. Within a regime the cost *is* linear in Body count, exactly as
-§6 and §8 intend: the awake lattice runs at roughly 12 µs per Body, while sleep
-removes a Body's cost entirely.
+contact cost 2.3 ms at eight layers — ten times more, at an identical Body count —
+and 5.5 ms at twelve. Within a regime the cost *is* linear in Body count, exactly as
+§6 and §8 intend: the settled twelve-layer lattice runs at roughly 3 µs per Body,
+while sleep removes a Body's cost entirely.
 
 **开销跟的是接触，不是 Body。** 两千个互不接触的 Body 每步 0.23 ms；同样两千个、其中约
-五分之一彼此相触的堆叠，八层时要 4.4 ms——Body 数完全相同，代价高二十倍——十二层时要
-8.8 ms。在同一状态内，开销对 Body 数量**确实是线性的**，正是 §6 与 §8 想要的结果：清醒格架
-约 12 µs/Body，而睡眠会完全抹掉一个 Body 的开销。
+五分之一彼此相触的堆叠，八层时要 2.3 ms——Body 数完全相同，代价高十倍——十二层时要
+5.5 ms。在同一状态内，开销对 Body 数量**确实是线性的**，正是 §6 与 §8 想要的结果：十二层
+格架的稳态约 3 µs/Body，而睡眠会完全抹掉一个 Body 的开销。
 
 **The frame budget.** Two thousand resting Bodies cost 0.41 ms and leave the frame
-untouched. Two thousand packed Bodies peak at 32 ms — they do **not** fit a 60 Hz
-frame (16.7 ms), and settle only to 8.8 ms, about half of one. A scene of two
-thousand Bodies that are moving but largely out of contact — freefall, spreading
-debris — costs 0.23 ms and is comfortably real-time. Contact density, not Body count,
-decides which regime a scene is in, and the tall-stack limitation decides whether the
-dense regime ever ends.
+untouched. Two thousand packed Bodies peak at 17 ms — just over a 60 Hz frame
+(16.7 ms) — and settle to 5.5 ms, a third of one. A scene of two thousand Bodies that
+are moving but largely out of contact — freefall, spreading debris — costs 0.23 ms and
+is comfortably real-time. Contact density, not Body count, decides which regime a
+scene is in, and the tall-stack limitation decides whether the dense regime ever ends.
 
-**帧预算。** 两千个静止 Body 只花 0.41 ms，几乎不占一帧。两千个塞满接触的 Body 峰值 32 ms
-——**塞不进** 60 Hz 的一帧（16.7 ms）——稳态也只降到 8.8 ms，约占半帧。而两千个虽有运动但
+**帧预算。** 两千个静止 Body 只花 0.41 ms，几乎不占一帧。两千个塞满接触的 Body 峰值 17 ms
+——刚好越过 60 Hz 的一帧（16.7 ms）——稳态降到 5.5 ms，约一帧的三分之一。而两千个虽有运动但
 基本不接触的场景（自由落体、散开的碎块）只要 0.23 ms，实时绰绰有余。决定场景落在哪个区间
 的是接触密度而非 Body 数量；而密集区间能否结束，取决于高塔限制。
 
-**Broadphase cell size** at 2000 awake Bodies: 0.5 → 38 ms, 2.0 → 32 ms, 8.0 →
-32 ms. The default 2.0 is near-optimal; halving the cell is the only setting that
+**Broadphase cell size** at 2000 awake Bodies: 0.5 → 24 ms, 2.0 → 17.6 ms, 8.0 →
+18.1 ms. The default 2.0 is near-optimal; halving the cell is the only setting that
 hurts.
 
-**宽阶段网格尺寸**（2000 个清醒 Body）：0.5 → 38 ms，2.0 → 32 ms，8.0 → 32 ms。默认的
+**宽阶段网格尺寸**（2000 个清醒 Body）：0.5 → 24 ms，2.0 → 17.6 ms，8.0 → 18.1 ms。默认的
 2.0 接近最优；把格子减半是唯一会拖慢的取值。
 
-**Static geometry** under 16 resting Bodies: 100 triangles → 31 µs, 1000 →
-57 µs, 10 000 → 238 µs. It is not free, but 10 000 triangles are 1.4% of a 60 Hz
+**Static geometry** under 16 resting Bodies: 100 triangles → 16 µs, 1000 →
+38 µs, 10 000 → 230 µs. It is not free, but 10 000 triangles are 1.4% of a 60 Hz
 frame, and the mesh welds into one shared topology (§7) rather than being paid for
 per Body.
 
@@ -450,8 +449,8 @@ Each entry records what would bring it back.
    curved shapes (cylinder, cone) are the hardest contact-manifold cases and
    should be scheduled last within §5.
 4. **The two-thousand-Body budget is now a measurement, with one gap left.** §12
-   records it: 0.41 ms asleep, 32 ms at the peak of a fully packed pile that settles
-   to 8.8 ms. The gap is the *combination* — physics and the software rasterizer
+   records it: 0.41 ms asleep, 17 ms at the peak of a fully packed pile that settles
+   to 5.5 ms. The gap is the *combination* — physics and the software rasterizer
    share one CPU and have been profiled only separately, never in the same frame. A
    scene that both simulates and draws two thousand Bodies needs the two costs added
    before any frame rate is promised.
@@ -462,18 +461,18 @@ Each entry records what would bring it back.
    mandatory the moment triggers or self-collision appear.
 7. **Tall stacks are limited by the solver, not by the manifold — measured.** §12
    records it: a six-layer pile settles and sleeps (0.05 ms), while eight- and
-   twelve-layer piles never sleep at all, their residual speed holding near
-   0.16 m/s against a 0.05 m/s threshold. Raising the iteration count does not
+   twelve-layer piles never sleep at all, their residual speed holding at least twice
+   the 0.05 m/s threshold. Raising the iteration count does not
    rescue them: at 48 velocity iterations an eight-layer pile is still awake, at
    close to four times the cost. Plain sequential impulses converge by Gauss-Seidel,
    so the iteration count would have to scale with the height of what is stacked, and
    past a handful of layers no practical count is enough. The identified fix is a
-   block solver over the four points of a box manifold. Separately, the profile says
-   most of one velocity iteration goes into `apply_inv_inertia`, which recomputes two
-   quaternion rotations on every impulse; hoisting `inv_inertia(arm × axis)` per
-   point and axis would cut that, but it buys speed, not convergence, and would not
-   make these piles sleep. Until the convergence work lands, do not promise that a
-   dense pile settles.
+   block solver over the four points of a box manifold. Separately, the profile said
+   most of one velocity iteration went into `apply_inv_inertia`, which recomputed two
+   quaternion rotations on every impulse; the point now carries
+   `inv_inertia(anchor × axis)` for each solve axis, which took about 46% off a packed
+   lattice, but that buys speed, not convergence, and made none of these piles sleep.
+   Until the convergence work lands, do not promise that a dense pile settles.
 
 1. **EPA 数值稳定性。** 分层窄相位唯一的真坑。EPA 在浅穿透下不稳定，要专门为它留
    调试时间。
@@ -482,7 +481,7 @@ Each entry records what would bring it back.
 3. **六种形状 × 混合窄相位**是最宽的工作面。曲面形状（圆柱、圆锥）是最难的接触流形
    情形，应排在 §5 的最后。
 4. **两千个 Body 的预算现在是实测，但还差一块。** §12 已记录：睡眠 0.41 ms，塞满接触的堆叠
-   峰值 32 ms、稳态 8.8 ms。缺的是**两者叠加**——物理与软件光栅化器抢同一批 CPU，目前只
+   峰值 17 ms、稳态 5.5 ms。缺的是**两者叠加**——物理与软件光栅化器抢同一批 CPU，目前只
    分别测过，从未在同一帧里一起量。既模拟又绘制两千个 Body 的场景，需要先把两份开销相加，
    再谈帧率。
 5. **没有 CCD 意味着隧穿。** flight simulator 就是具体案例：直接 `set_velocity`、
@@ -490,13 +489,13 @@ Each entry records what would bring it back.
 6. **没有碰撞过滤。** 对当前功能集是正确的，但一旦触发器或自碰撞出现就变成刚需。
 
 7. **高塔的限制来自求解器，而非流形——已实测。** §12 已记录：六层堆叠会稳定并入睡
-   （0.05 ms），而八层与十二层堆叠**永不入睡**，残余速度稳定在约 0.16 m/s，远超 0.05 m/s
-   的阈值。调高迭代次数救不了它们：48 次速度迭代下八层堆叠仍然清醒，代价却接近四倍。纯
+   （0.05 ms），而八层与十二层堆叠**永不入睡**，残余速度始终不低于 0.05 m/s 阈值的两倍。
+   调高迭代次数救不了它们：48 次速度迭代下八层堆叠仍然清醒，代价却接近四倍。纯
    序列冲量靠 Gauss-Seidel 收敛，迭代次数必须随堆叠高度增长，而超过若干层后没有一个实用的
    次数够用。已识别的修法是针对盒流形四个点做块求解器。另外，profile 显示一次速度迭代的
-   大部分时间花在 `apply_inv_inertia` 上——它对每个冲量重算两次四元数旋转；把
-   `inv_inertia(arm × axis)` 按点与轴预先算好可以削减它，但那买到的是速度而非收敛，不会让
-   这些堆叠入睡。在收敛那一项落地之前，不要承诺密集堆叠会稳定。
+   大部分时间花在 `apply_inv_inertia` 上——它对每个冲量重算两次四元数旋转；现在每个点会
+   保存各条求解轴的 `inv_inertia(anchor × axis)`，这让塞满接触的格架快了约 46%，但那买到的
+   是速度而非收敛，没有让任何一堆入睡。在收敛那一项落地之前，不要承诺密集堆叠会稳定。
 
 ## 15. Acceptance criteria
 
@@ -513,8 +512,8 @@ Each entry records what would bring it back.
   No hand-rolled geometry tests with tuned tolerances.
 - Two thousand sleeping Bodies cost approximately nothing (0.41 ms, §12), and the
   cost of two thousand active Bodies is measured and recorded with the frame budget
-  stated as a number (0.23 ms out of contact; 32 ms at the packed peak, settling to
-  8.8 ms). What the solver cannot settle is recorded beside it: piles eight layers
+  stated as a number (0.23 ms out of contact; 17 ms at the packed peak, settling to
+  5.5 ms). What the solver cannot settle is recorded beside it: piles eight layers
   high and taller never sleep.
 - Determinism is **not** tested, because it is not a goal.
 
@@ -528,6 +527,6 @@ Each entry records what would bring it back.
 - 回答"这个 Body 是不是搁在什么东西上"只需要 Contact 列表，不需要任何带调参容差的
   手写几何判定。
 - 两千个睡眠 Body 的开销约等于零（0.41 ms，§12）；两千个活跃 Body 的开销经过实测并记录，
-  帧预算以一个具体数字写明（不接触 0.23 ms；塞满接触时峰值 32 ms、稳态 8.8 ms）。求解器
+  帧预算以一个具体数字写明（不接触 0.23 ms；塞满接触时峰值 17 ms、稳态 5.5 ms）。求解器
   无法稳定的部分也一并记录：八层及更高的堆叠永不入睡。
 - **不**测试确定性，因为它不是目标。

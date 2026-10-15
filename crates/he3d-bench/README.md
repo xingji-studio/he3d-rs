@@ -74,15 +74,22 @@ above; the scenes are defined in `src/workloads.rs`.
 ### Speed
 
 - **Physics cost tracks contacts, not Bodies.** 2000 Bodies out of contact step in
-  0.23 ms; the same 2000 packed in contact peak at 32 ms and settle to 8.8 ms.
+  0.23 ms; the same 2000 packed in contact peak at 17 ms and settle to 5.5 ms.
   Recorded in `docs/physics-spec.md` §12.
 - **A pile the solver cannot converge never sleeps.** `settle` pokes at a lattice of
   unit cubes layered on a slab. Six layers settle around step 800, sleep, and then
-  cost 0.05 ms for the whole pile. Eight layers (0.16 m/s residual, three times the
+  cost 0.05 ms for the whole pile. Eight layers (residual speed at least twice the
   sleep threshold) and twelve layers never sleep in 1500 steps and pay for their
-  contacts forever — 4.4 ms and 8.8 ms per step. Raising the iteration count does not
+  contacts forever — 2.3 ms and 5.5 ms per step. Raising the iteration count does not
   help: at 48 velocity iterations the eight-layer pile is still awake at close to
   four times the cost. This is the tall-stack limitation of §14 risk 7, measured.
+- **The velocity solve was arithmetic-bound, and the inertia rotation was most of
+  it.** Each impulse recomputed two quaternion rotations to turn `anchor × axis` into
+  angular velocity. Storing `inv_inertia(anchor × axis)` per point instead (ADR 0004)
+  cut the per-iteration cost by about 60%: the packed 2000-Body lattice went from
+  32 ms to 17 ms at the same contact count, and `static_terrain/100` halved. `freefall`
+  and `settled_asleep` did not move, which is the point — the win is where the contacts
+  are, and nowhere else.
 - **A renderer frame is pixels, and the hard floor is the clear.** An empty 720p
   frame — clearing colour + inverse depth, ~7.4 MB — costs 83.6 µs, which is
   0.092 ns per pixel at 64x36, 320x180, and 1280x720 alike. Drawing the 8-cube scene

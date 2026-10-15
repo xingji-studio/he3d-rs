@@ -168,6 +168,26 @@ pub(crate) struct ConstraintPoint {
    pub normal_mass: f32,
    /// Effective mass along each friction tangent.
    pub tangent_mass: [f32; 2],
+   /// The angular half of the effective mass: `inv_inertia(anchor × axis)` for
+   /// each of the three solve axes, per side.
+   ///
+   /// The velocity solver applies every impulse along one of these three axes, and
+   /// the inertia tensor is linear, so
+   /// `inv_inertia(anchor × (axis * delta)) == inv_inertia(anchor × axis) * delta`.
+   /// Keeping the product of the first two lets an iteration apply an impulse with
+   /// one scalar multiply where it would otherwise do two quaternion rotations —
+   /// and a four-point constraint does twenty-four of those per iteration otherwise.
+   /// The position solve reuses the normal entry.
+   /// 有效质量的角速度部分：三条求解轴上各自的 `inv_inertia(anchor × axis)`，按侧存放。
+   /// 速度求解器施加的每个冲量都沿这三条轴之一，而惯量张量是线性的，因此
+   /// `inv_inertia(anchor × (axis * delta)) == inv_inertia(anchor × axis) * delta`。把前
+   /// 两者相乘的结果存下来，每次迭代施加冲量就只需一次标量乘法，而不必做两次四元数旋转——否则
+   /// 四点的约束每次迭代要做二十四次。位置求解复用其中的法线项。
+   ///
+   /// Indexed `[side][axis]`, where the axes are the normal and then the two
+   /// tangents, and the second side is zero for Static geometry.
+   /// 索引为 `[side][axis]`：轴依次是法线与两条切线；第二侧为 Static geometry 时为零。
+   pub angular_response: [[Vec3; 3]; 2],
    /// Velocity bias from restitution, applied to real velocities.
    pub bias: f32,
    /// Penetration bias, applied only to pseudo-velocities so that removing

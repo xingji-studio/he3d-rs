@@ -2,8 +2,18 @@ use he3d_math::Vec3;
 use he3d_math::scalar::sqrt;
 
 use crate::body::Body;
-use crate::contact::ContactConstraint;
+use crate::contact::{ConstraintPoint, ContactConstraint};
 use crate::storage::{Slot, constraint_bodies, constraint_bodies_ref};
+
+/// Index of the contact normal among a point's three solve axes.
+/// 接触法线在某个点的三条求解轴中的下标。
+const NORMAL_AXIS: usize = 0;
+/// Index of the first friction tangent among a point's three solve axes.
+/// 第一条摩擦切线在某个点的三条求解轴中的下标。
+const TANGENT_AXIS_0: usize = 1;
+/// Index of the second friction tangent among a point's three solve axes.
+/// 第二条摩擦切线在某个点的三条求解轴中的下标。
+const TANGENT_AXIS_1: usize = 2;
 
 /// Velocity iterations per step.
 ///
@@ -133,28 +143,29 @@ pub(crate) fn prepare(slots: &[Slot], constraints: &mut [ContactConstraint], del
          let arm_first = point.anchor_a;
          let arm_second = point.anchor_b;
 
-         // Effective mass is the relative velocity's response to a unit impulse.
-         // 有效质量是相对速度对单位冲量的响应。
-         let normal_term = normal_effective_mass(
-            first,
-            second,
-            arm_first,
-            arm_second,
-            normal,
-            inverse_mass_sum,
-         );
-         point.normal_mass = reciprocal_or_zero(normal_term);
-         for (index, tangent) in tangents.into_iter().enumerate() {
-            let term = normal_effective_mass(
+         // Effective mass is the relative velocity's response to a unit impulse, and
+         // it is needed along all three axes: the normal and then the two tangents.
+         // The angular half of that response is what the solver later applies its
+         // impulses with, so it is kept here instead of being recomputed in every
+         // velocity iteration.
+         // 有效质量是相对速度对单位冲量的响应，三条轴上都要求它：法线与两条切线。该响应的
+         // 角速度部分正是求解器稍后施加冲量所用的，因此在此保留，而不是每次速度迭代重算。
+         let mut reciprocal_masses = [0.0; 3];
+         for (index, axis) in [normal, tangents[0], tangents[1]].into_iter().enumerate() {
+            let (term, response) = effective_mass_and_response(
                first,
                second,
                arm_first,
                arm_second,
-               tangent,
+               axis,
                inverse_mass_sum,
             );
-            point.tangent_mass[index] = reciprocal_or_zero(term);
+            point.angular_response[0][index] = response[0];
+            point.angular_response[1][index] = response[1];
+            reciprocal_masses[index] = reciprocal_or_zero(term);
          }
+         point.normal_mass = reciprocal_masses[0];
+         point.tangent_mass = [reciprocal_masses[1], reciprocal_masses[2]];
 
          let approach = relative_velocity(first, second, arm_first, arm_second, normal);
          // The velocity solve only ever removes energy, so a resting stack ends a
@@ -199,7 +210,12 @@ pub(crate) fn warm_start(slots: &mut [Slot], constraints: &[ContactConstraint]) 
          if impulse.length_squared() <= MINIMUM_WARM_START_IMPULSE_SQUARED {
             continue;
          }
-         pair.apply_impulse(point.anchor_a, point.anchor_b, impulse);
+         // Applying the three axes one at a time adds up to that same impulse, and
+         // the point already holds each axis's angular response.
+         // 三条轴逐条施加，合起来就是同一个冲量；每个轴的角速度响应已存在点上。
+         pair.apply_impulse(point, NORMAL_AXIS, normal, point.normal_impulse);
+         pair.apply_impulse(point, TANGENT_AXIS_0, tangents[0], point.tangent_impulse[0]);
+         pair.apply_impulse(point, TANGENT_AXIS_1, tangents[1], point.tangent_impulse[1]);
       }
    }
 }
@@ -246,7 +262,7 @@ fn solve_constraint_velocity(slots: &mut [Slot], constraint: &mut ContactConstra
       // 接触只能推，永远不能拉。
       point.normal_impulse = (previous + lambda).max(0.0);
       let delta = point.normal_impulse - previous;
-      pair.apply_impulse(point.anchor_a, point.anchor_b, normal * delta);
+      pair.apply_impulse(point, NORMAL_AXIS, normal, delta);
 
       for (index, tangent) in tangents.into_iter().enumerate() {
          let relative = pair.relative_velocity(point.anchor_a, point.anchor_b, tangent);
@@ -255,7 +271,7 @@ fn solve_constraint_velocity(slots: &mut [Slot], constraint: &mut ContactConstra
          let previous = point.tangent_impulse[index];
          point.tangent_impulse[index] = (previous + lambda).clamp(-limit, limit);
          let delta = point.tangent_impulse[index] - previous;
-         pair.apply_impulse(point.anchor_a, point.anchor_b, tangent * delta);
+         pair.apply_impulse(point, TANGENT_AXIS_0 + index, tangent, delta);
       }
    }
 }
@@ -282,7 +298,7 @@ pub(crate) fn solve_positions(slots: &mut [Slot], constraints: &mut [ContactCons
             let previous = point.position_impulse;
             point.position_impulse = (previous + lambda).max(0.0);
             let delta = point.position_impulse - previous;
-            pair.apply_pseudo_impulse(point.anchor_a, point.anchor_b, normal * delta);
+            pair.apply_pseudo_impulse(point, normal, delta);
          }
       }
    }
@@ -345,29 +361,35 @@ impl<'a> ContactPair<'a> {
       second_share - first_share
    }
 
-   /// Apply one impulse, at the given anchors.
+   /// Apply an impulse of `delta` along `axis` at a contact point.
    ///
    /// The impulse pushes `second` along its own direction and `first` against it. A
    /// missing `second` is Static geometry and simply receives nothing.
-   /// 在给定锚点施加一个冲量。冲量沿自身方向推 `second`，并反向推 `first`。缺失的
-   /// `second` 表示 Static geometry，它不接收任何东西。
-   fn apply_impulse(&mut self, arm_first: Vec3, arm_second: Vec3, impulse: Vec3) {
+   /// `axis` is an index into the point's solve axes, and `direction` is the axis
+   /// itself; the point already holds the angular response for it.
+   /// 在接触点沿 `axis` 施加大小为 `delta` 的冲量。冲量沿自身方向推 `second`，并反向推
+   /// `first`。缺失的 `second` 表示 Static geometry，它不接收任何东西。`axis` 是该点求解轴
+   /// 的下标，`direction` 是对应的轴向量；该轴的角速度响应已存在点上。
+   fn apply_impulse(&mut self, point: &ConstraintPoint, axis: usize, direction: Vec3, delta: f32) {
+      let impulse = direction * delta;
       self.first.linear_velocity -= impulse * self.first.mass.inv_mass;
-      self.first.angular_velocity -= self.first.apply_inv_inertia(arm_first.cross(impulse));
+      self.first.angular_velocity -= point.angular_response[0][axis] * delta;
       if let Some(second) = self.second.as_deref_mut() {
          second.linear_velocity += impulse * second.mass.inv_mass;
-         second.angular_velocity += second.apply_inv_inertia(arm_second.cross(impulse));
+         second.angular_velocity += point.angular_response[1][axis] * delta;
       }
    }
 
-   /// Apply one impulse to the pair's pseudo-velocities, at the given anchors.
-   /// 向该对在给定锚点施加一个作用于伪速度的冲量。
-   fn apply_pseudo_impulse(&mut self, arm_first: Vec3, arm_second: Vec3, impulse: Vec3) {
+   /// Apply an impulse of `delta` along the contact normal to the pair's
+   /// pseudo-velocities, at a contact point.
+   /// 沿接触法线向该对在接触点施加大小为 `delta` 的冲量，作用于伪速度。
+   fn apply_pseudo_impulse(&mut self, point: &ConstraintPoint, normal: Vec3, delta: f32) {
+      let impulse = normal * delta;
       self.first.pseudo_linear_velocity -= impulse * self.first.mass.inv_mass;
-      self.first.pseudo_angular_velocity -= self.first.apply_inv_inertia(arm_first.cross(impulse));
+      self.first.pseudo_angular_velocity -= point.angular_response[0][NORMAL_AXIS] * delta;
       if let Some(second) = self.second.as_deref_mut() {
          second.pseudo_linear_velocity += impulse * second.mass.inv_mass;
-         second.pseudo_angular_velocity += second.apply_inv_inertia(arm_second.cross(impulse));
+         second.pseudo_angular_velocity += point.angular_response[1][NORMAL_AXIS] * delta;
       }
    }
 }
@@ -390,22 +412,36 @@ fn relative_velocity(
    second_share - first_share
 }
 
-/// The effective mass of one contact along `axis`, before taking its reciprocal.
-/// 单个接触沿 `axis` 的有效质量（取倒数之前）。
-fn normal_effective_mass(
+/// The effective mass of one contact along `axis`, and the angular response the
+/// solver needs in order to apply an impulse along that same axis.
+///
+/// The two are returned together because both need `inv_inertia(anchor × axis)`:
+/// the mass is that vector's dot product with `anchor × axis`, and the response
+/// *is* it.
+/// 返回接触沿 `axis` 的有效质量，以及求解器沿同一轴施加冲量所需的角速度响应。两者一起
+/// 返回是因为都需要 `inv_inertia(anchor × axis)`：质量是该向量与 `anchor × axis` 的点积，
+/// 而响应本身就是它。
+fn effective_mass_and_response(
    first: &Body,
    second: Option<&Body>,
    arm_first: Vec3,
    arm_second: Vec3,
    axis: Vec3,
    inverse_mass_sum: f32,
-) -> f32 {
-   let first_arm_cross = arm_first.cross(axis);
-   let second_term = second.map_or(0.0, |body| {
-      let second_arm_cross = arm_second.cross(axis);
-      second_arm_cross.dot(body.apply_inv_inertia(second_arm_cross))
-   });
-   inverse_mass_sum + first_arm_cross.dot(first.apply_inv_inertia(first_arm_cross)) + second_term
+) -> (f32, [Vec3; 2]) {
+   let cross_first = arm_first.cross(axis);
+   let response_first = first.apply_inv_inertia(cross_first);
+   let mut response = [response_first, Vec3::ZERO];
+   let mut second_term = 0.0;
+   if let Some(body) = second {
+      let cross_second = arm_second.cross(axis);
+      response[1] = body.apply_inv_inertia(cross_second);
+      second_term = cross_second.dot(response[1]);
+   }
+   (
+      inverse_mass_sum + cross_first.dot(response_first) + second_term,
+      response,
+   )
 }
 
 /// `1.0 / value`, or zero when the value cannot produce a usable impulse.

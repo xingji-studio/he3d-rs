@@ -21,12 +21,21 @@ All notable changes to the HE3D workspace crates are documented here.
   from its **settled** one. §14 risk 7's tall-stack limit is measured rather than
   assumed: a six-layer pile settles and sleeps, an eight-layer pile never does at any
   iteration count, and its settled cost is recorded.
+- `he3d-physics`: each constraint point now stores `inv_inertia(anchor × axis)` for
+  all three solve axes, so a velocity iteration applies an impulse with a scalar
+  multiply instead of two quaternion rotations. It costs 72 bytes per point (about
+  1.7× the constraint array) and bought roughly 46% off a packed 2000-Body lattice —
+  32 ms → 17 ms at the developed peak — while `freefall` and `settled_asleep` were
+  unchanged. The solve is mathematically the same, but reassociating the arithmetic
+  moves a chaotic pile's trajectory: the eight-layer pile's residual speed went from
+  0.16 to 0.11 m/s, still well above the sleep threshold, and the six-layer pile still
+  settles and sleeps. See `docs/adr/0004`.
 - `he3d-physics`: the velocity and position solvers now resolve each constraint's
   pair of Bodies once per constraint instead of once per point and per axis, behind a
-  `ContactPair` type. Behaviour is unchanged and the timing is unchanged — an A/B of
-  the packed lattice puts the two within run-to-run noise — so this is a structural
-  change: the loop is arithmetic-bound, and the win is that the resolve-once
-  invariant is now impossible to violate rather than merely observed.
+  `ContactPair` type. Behaviour and timing are both unchanged — an A/B of the packed
+  lattice puts the two within run-to-run noise, because the loop is arithmetic-bound
+  — so this is a structural change: the win is that the resolve-once invariant is now
+  impossible to violate rather than merely observed.
 
 ### Removed
 - The tutorial documentation and the `he3d-docs` crate.

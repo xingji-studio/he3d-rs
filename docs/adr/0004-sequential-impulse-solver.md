@@ -27,3 +27,11 @@ framework without re-architecting.
 Because warm starting requires per-Contact persistent state keyed across steps, the
 engine already knows whether a Contact existed last step — which is what makes
 `Begin`/`Persist`/`End` Contact phases nearly free.
+
+Each constraint point stores `inv_inertia(anchor × axis)` for all three solve axes,
+so a velocity iteration applies an impulse with a scalar multiply instead of two
+quaternion rotations. That costs 72 bytes per point — roughly 1.7× the constraint
+array — and bought about 46% off a packed 2000-Body lattice (32 ms → 17 ms at the
+developed peak), because every iteration of every contact reads it. The trade goes
+the other way only if the solve is bandwidth-bound rather than arithmetic-bound,
+which this one is not: the constraint array still fits a 2000-Body scene in cache.
