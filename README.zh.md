@@ -67,6 +67,7 @@ cargo check -p he3d-math -p he3d-core -p he3d-renderer \
 cargo bench -p he3d-bench                  # 完整运行：physics、renderer、assets、core/math
 cargo bench -p he3d-bench -- --test        # 冒烟：每个用例跑一次（CI 运行的就是这个）
 cargo run  -p he3d-bench --bin memreport   # 堆分配 + size_of 表
+cargo run  -p he3d-bench --bin settle      # 成本随步数的变化，以及睡眠状态
 ```
 
 `memreport` 安装一个计数型全局分配器，逐场景打印分配次数、请求字节数与新增峰值。"静止 Body 几乎不花钱"的说法就是这样检验的：一个已稳定的 `World` 连步一百次、一个 `Renderer` 连画一百帧，两者都报告**零分配**——因为两者都复用缓冲。[`docs/physics-spec.md`](docs/physics-spec.md) §12 的实测数字正来自这套基准。

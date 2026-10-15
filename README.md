@@ -83,6 +83,7 @@ crate, and so builds and runs headless.
 cargo bench -p he3d-bench                  # full run: physics, renderer, assets, core/math
 cargo bench -p he3d-bench -- --test        # smoke: every case once (what CI runs)
 cargo run  -p he3d-bench --bin memreport   # heap allocation + size_of tables
+cargo run  -p he3d-bench --bin settle      # cost vs step index, and sleep state
 ```
 
 `memreport` installs a counting global allocator and prints, per scenario, the

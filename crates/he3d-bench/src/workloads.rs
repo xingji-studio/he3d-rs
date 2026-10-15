@@ -63,6 +63,18 @@ fn lattice_dims(n: usize) -> (usize, usize, usize) {
    (side, layers, side)
 }
 
+/// How many vertical layers [`world_lattice_on_slab`] stacks `n` cubes into.
+///
+/// A pile only sleeps if the solver converges it, and taller piles are harder to
+/// converge (see the tall-stack limitation in `docs/physics-spec.md`), so the layer
+/// count is the number to quote beside a pile's behaviour.
+/// 堆叠越大越难收敛（见 `docs/physics-spec.md` 中的高塔限制），因此这个层数是与一堆物体的
+/// 行为并列给出的数字。
+#[must_use]
+pub fn lattice_layers(n: usize) -> usize {
+   lattice_dims(n).1
+}
+
 /// A lattice of `n` unit cubes resting on a slab, fully awake at step zero.
 ///
 /// This is the `docs/physics-spec.md` §12 scenario: a block of touching unit cubes

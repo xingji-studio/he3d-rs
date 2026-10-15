@@ -184,9 +184,13 @@ pub(crate) fn prepare(slots: &[Slot], constraints: &mut [ContactConstraint], del
 /// 这使静止的堆叠能在少数几次迭代内收敛，而不必每步从零重建接触力。
 pub(crate) fn warm_start(slots: &mut [Slot], constraints: &[ContactConstraint]) {
    for constraint in constraints {
-      let (first_index, second_index) = (constraint.a as usize, constraint.b as usize);
       let normal = constraint.normal;
       let tangents = constraint.tangents;
+      let Some(mut pair) =
+         ContactPair::resolve(slots, constraint.a as usize, constraint.b as usize)
+      else {
+         continue;
+      };
       for point in constraint.points() {
          let mut impulse = normal * point.normal_impulse;
          for (index, tangent) in tangents.into_iter().enumerate() {
@@ -195,10 +199,7 @@ pub(crate) fn warm_start(slots: &mut [Slot], constraints: &[ContactConstraint]) 
          if impulse.length_squared() <= MINIMUM_WARM_START_IMPULSE_SQUARED {
             continue;
          }
-         let Some((first, second)) = constraint_bodies(slots, first_index, second_index) else {
-            continue;
-         };
-         apply_impulse(first, second, point.anchor_a, point.anchor_b, impulse);
+         pair.apply_impulse(point.anchor_a, point.anchor_b, impulse);
       }
    }
 }
@@ -215,64 +216,46 @@ pub(crate) fn solve_velocities(
 ) {
    for _ in 0..settings.velocity_iterations {
       for constraint in constraints.iter_mut() {
-         let (first_index, second_index) = (constraint.a as usize, constraint.b as usize);
-         let normal = constraint.normal;
-         let tangents = constraint.tangents;
-         let friction = constraint.friction;
+         solve_constraint_velocity(slots, constraint);
+      }
+   }
+}
 
-         for point in constraint.points_mut() {
-            {
-               let Some((first, second)) = constraint_bodies(slots, first_index, second_index)
-               else {
-                  continue;
-               };
-               let relative = relative_velocity(
-                  first,
-                  second.as_deref(),
-                  point.anchor_a,
-                  point.anchor_b,
-                  normal,
-               );
-               let lambda = -point.normal_mass * (relative - point.bias);
-               let previous = point.normal_impulse;
-               // A contact can push but never pull.
-               // 接触只能推，永远不能拉。
-               point.normal_impulse = (previous + lambda).max(0.0);
-               let delta = point.normal_impulse - previous;
-               apply_impulse(
-                  first,
-                  second,
-                  point.anchor_a,
-                  point.anchor_b,
-                  normal * delta,
-               );
-            }
-            for (index, tangent) in tangents.into_iter().enumerate() {
-               let Some((first, second)) = constraint_bodies(slots, first_index, second_index)
-               else {
-                  continue;
-               };
-               let relative = relative_velocity(
-                  first,
-                  second.as_deref(),
-                  point.anchor_a,
-                  point.anchor_b,
-                  tangent,
-               );
-               let lambda = -point.tangent_mass[index] * relative;
-               let limit = friction * point.normal_impulse;
-               let previous = point.tangent_impulse[index];
-               point.tangent_impulse[index] = (previous + lambda).clamp(-limit, limit);
-               let delta = point.tangent_impulse[index] - previous;
-               apply_impulse(
-                  first,
-                  second,
-                  point.anchor_a,
-                  point.anchor_b,
-                  tangent * delta,
-               );
-            }
-         }
+/// Drive one constraint's points toward a non-negative separating velocity.
+/// 将一条约束的各个点推向非负的分离速度。
+fn solve_constraint_velocity(slots: &mut [Slot], constraint: &mut ContactConstraint) {
+   let normal = constraint.normal;
+   let tangents = constraint.tangents;
+   let friction = constraint.friction;
+   // Resolve the pair once for the whole constraint, not once per point and
+   // per tangent: the Bodies a constraint names cannot change while it is
+   // being solved, and re-deriving them is the inner loop's largest fixed
+   // cost.
+   // 整条约束只解析一次 Body 对，而不是每个点、每条切线各解析一次：求解期间约束所指
+   // 的 Body 不会改变，而重复解析正是内循环最大的一笔固定开销。
+   let Some(mut pair) = ContactPair::resolve(slots, constraint.a as usize, constraint.b as usize)
+   else {
+      return;
+   };
+
+   for point in constraint.points_mut() {
+      let relative = pair.relative_velocity(point.anchor_a, point.anchor_b, normal);
+      let lambda = -point.normal_mass * (relative - point.bias);
+      let previous = point.normal_impulse;
+      // A contact can push but never pull.
+      // 接触只能推，永远不能拉。
+      point.normal_impulse = (previous + lambda).max(0.0);
+      let delta = point.normal_impulse - previous;
+      pair.apply_impulse(point.anchor_a, point.anchor_b, normal * delta);
+
+      for (index, tangent) in tangents.into_iter().enumerate() {
+         let relative = pair.relative_velocity(point.anchor_a, point.anchor_b, tangent);
+         let lambda = -point.tangent_mass[index] * relative;
+         let limit = friction * point.normal_impulse;
+         let previous = point.tangent_impulse[index];
+         point.tangent_impulse[index] = (previous + lambda).clamp(-limit, limit);
+         let delta = point.tangent_impulse[index] - previous;
+         pair.apply_impulse(point.anchor_a, point.anchor_b, tangent * delta);
       }
    }
 }
@@ -287,41 +270,114 @@ pub(crate) fn solve_velocities(
 pub(crate) fn solve_positions(slots: &mut [Slot], constraints: &mut [ContactConstraint]) {
    for _ in 0..POSITION_ITERATIONS {
       for constraint in constraints.iter_mut() {
-         let (first_index, second_index) = (constraint.a as usize, constraint.b as usize);
          let normal = constraint.normal;
+         let Some(mut pair) =
+            ContactPair::resolve(slots, constraint.a as usize, constraint.b as usize)
+         else {
+            continue;
+         };
          for point in constraint.points_mut() {
-            let Some((first, second)) = constraint_bodies(slots, first_index, second_index) else {
-               continue;
-            };
-            let relative = pseudo_relative_velocity(
-               first,
-               second.as_deref(),
-               point.anchor_a,
-               point.anchor_b,
-               normal,
-            );
+            let relative = pair.pseudo_relative_velocity(point.anchor_a, point.anchor_b, normal);
             let lambda = -point.normal_mass * (relative - point.position_bias);
             let previous = point.position_impulse;
             point.position_impulse = (previous + lambda).max(0.0);
             let delta = point.position_impulse - previous;
-            apply_pseudo_impulse(
-               first,
-               second,
-               point.anchor_a,
-               point.anchor_b,
-               normal * delta,
-            );
+            pair.apply_pseudo_impulse(point.anchor_a, point.anchor_b, normal * delta);
          }
       }
    }
 }
 
-/// The relative velocity along `axis`, measured at the two contact anchors.
+/// The two Bodies a constraint acts on, resolved once and held for the whole solve.
+/// 一条约束所作用的两个 Body，解析一次并在整个求解过程中持有。
+///
+/// Resolving is not a detail the loops should repeat: the pair behind a constraint
+/// is fixed for as long as the constraint is solved, and every point and every
+/// iteration must push on exactly that pair. Folding the lookup, the two
+/// relative-velocity readings, and the two impulse writers behind one type is what
+/// makes "resolve once" something the code cannot get wrong — the hot loop has no
+/// way to reach a Body except through a resolved pair.
+/// 解析不该由各个循环反复进行：一条约束背后的 Body 对在其求解期间是固定的，每个点、每次
+/// 迭代都必须正好作用于该对。把查找、两个相对速度读数与两个冲量写入收进一个类型，使"只解析
+/// 一次"成为代码无法做错的事——热循环除了经由已解析的对，没有别的途径触及 Body。
+///
+/// A missing second Body is Static geometry: it never moves, so it contributes
+/// nothing to a relative velocity and receives nothing from an impulse.
+/// 缺失的第二个 Body 表示 Static geometry：它永不移动，因此对相对速度没有贡献，也不从冲量
+/// 中接收任何东西。
+struct ContactPair<'a> {
+   /// The Body the constraint's first side names.
+   /// 约束第一侧所指的 Body。
+   first: &'a mut Body,
+   /// The other side, or `None` for Static geometry.
+   /// 另一侧；对于 Static geometry 为 `None`。
+   second: Option<&'a mut Body>,
+}
+
+impl<'a> ContactPair<'a> {
+   /// Resolve the pair a constraint names, or `None` when a slot is empty.
+   /// 解析一条约束所指的对；当某个槽位为空时返回 `None`。
+   fn resolve(slots: &'a mut [Slot], first: usize, second: usize) -> Option<Self> {
+      let (first, second) = constraint_bodies(slots, first, second)?;
+      Some(Self { first, second })
+   }
+
+   /// The relative velocity along `axis`, measured at the two contact anchors.
+   /// 沿 `axis` 在两个接触锚点处测量的相对速度。
+   fn relative_velocity(&self, arm_first: Vec3, arm_second: Vec3, axis: Vec3) -> f32 {
+      relative_velocity(
+         self.first,
+         self.second.as_deref(),
+         arm_first,
+         arm_second,
+         axis,
+      )
+   }
+
+   /// The relative pseudo-velocity along `axis`, measured at the contact anchors.
+   /// 沿 `axis` 在接触锚点处测量的相对伪速度。
+   fn pseudo_relative_velocity(&self, arm_first: Vec3, arm_second: Vec3, axis: Vec3) -> f32 {
+      let first_share = self.first.pseudo_point_velocity(arm_first).dot(axis);
+      let second_share = self
+         .second
+         .as_deref()
+         .map_or(0.0, |body| body.pseudo_point_velocity(arm_second).dot(axis));
+      second_share - first_share
+   }
+
+   /// Apply one impulse, at the given anchors.
+   ///
+   /// The impulse pushes `second` along its own direction and `first` against it. A
+   /// missing `second` is Static geometry and simply receives nothing.
+   /// 在给定锚点施加一个冲量。冲量沿自身方向推 `second`，并反向推 `first`。缺失的
+   /// `second` 表示 Static geometry，它不接收任何东西。
+   fn apply_impulse(&mut self, arm_first: Vec3, arm_second: Vec3, impulse: Vec3) {
+      self.first.linear_velocity -= impulse * self.first.mass.inv_mass;
+      self.first.angular_velocity -= self.first.apply_inv_inertia(arm_first.cross(impulse));
+      if let Some(second) = self.second.as_deref_mut() {
+         second.linear_velocity += impulse * second.mass.inv_mass;
+         second.angular_velocity += second.apply_inv_inertia(arm_second.cross(impulse));
+      }
+   }
+
+   /// Apply one impulse to the pair's pseudo-velocities, at the given anchors.
+   /// 向该对在给定锚点施加一个作用于伪速度的冲量。
+   fn apply_pseudo_impulse(&mut self, arm_first: Vec3, arm_second: Vec3, impulse: Vec3) {
+      self.first.pseudo_linear_velocity -= impulse * self.first.mass.inv_mass;
+      self.first.pseudo_angular_velocity -= self.first.apply_inv_inertia(arm_first.cross(impulse));
+      if let Some(second) = self.second.as_deref_mut() {
+         second.pseudo_linear_velocity += impulse * second.mass.inv_mass;
+         second.pseudo_angular_velocity += second.apply_inv_inertia(arm_second.cross(impulse));
+      }
+   }
+}
+
+/// The relative velocity along `axis`, for a borrow that cannot write.
 ///
 /// A missing second Body is Static geometry: it never moves, so its share of the
 /// relative velocity is zero.
-/// 沿 `axis` 在两个接触锚点处测量的相对速度。缺失的第二个 Body 表示 Static geometry：
-/// 它永不移动，因此其对相对速度的贡献为零。
+/// 沿 `axis` 测量的相对速度，用于无法写入的借用。缺失的第二个 Body 表示 Static
+/// geometry：它永不移动，因此其对相对速度的贡献为零。
 fn relative_velocity(
    first: &Body,
    second: Option<&Body>,
@@ -331,20 +387,6 @@ fn relative_velocity(
 ) -> f32 {
    let first_share = first.point_velocity(arm_first).dot(axis);
    let second_share = second.map_or(0.0, |body| body.point_velocity(arm_second).dot(axis));
-   second_share - first_share
-}
-
-/// The relative pseudo-velocity along `axis`, measured at the contact anchors.
-/// 沿 `axis` 在接触锚点处测量的相对伪速度。
-fn pseudo_relative_velocity(
-   first: &Body,
-   second: Option<&Body>,
-   arm_first: Vec3,
-   arm_second: Vec3,
-   axis: Vec3,
-) -> f32 {
-   let first_share = first.pseudo_point_velocity(arm_first).dot(axis);
-   let second_share = second.map_or(0.0, |body| body.pseudo_point_velocity(arm_second).dot(axis));
    second_share - first_share
 }
 
@@ -373,44 +415,6 @@ fn reciprocal_or_zero(value: f32) -> f32 {
       1.0 / value
    } else {
       0.0
-   }
-}
-
-/// Apply one impulse to the pair, at the given anchors.
-///
-/// The impulse pushes `second` along its own direction and `first` against it. A
-/// missing `second` is Static geometry and simply receives nothing.
-/// 向该对在给定锚点施加一个冲量。冲量沿自身方向推 `second`，并反向推 `first`。缺失的
-/// `second` 表示 Static geometry，它不接收任何东西。
-fn apply_impulse(
-   first: &mut Body,
-   second: Option<&mut Body>,
-   arm_first: Vec3,
-   arm_second: Vec3,
-   impulse: Vec3,
-) {
-   first.linear_velocity -= impulse * first.mass.inv_mass;
-   first.angular_velocity -= first.apply_inv_inertia(arm_first.cross(impulse));
-   if let Some(second) = second {
-      second.linear_velocity += impulse * second.mass.inv_mass;
-      second.angular_velocity += second.apply_inv_inertia(arm_second.cross(impulse));
-   }
-}
-
-/// Apply one impulse to the pair's pseudo-velocities, at the given anchors.
-/// 向该对在给定锚点施加一个作用于伪速度的冲量。
-fn apply_pseudo_impulse(
-   first: &mut Body,
-   second: Option<&mut Body>,
-   arm_first: Vec3,
-   arm_second: Vec3,
-   impulse: Vec3,
-) {
-   first.pseudo_linear_velocity -= impulse * first.mass.inv_mass;
-   first.pseudo_angular_velocity -= first.apply_inv_inertia(arm_first.cross(impulse));
-   if let Some(second) = second {
-      second.pseudo_linear_velocity += impulse * second.mass.inv_mass;
-      second.pseudo_angular_velocity += second.apply_inv_inertia(arm_second.cross(impulse));
    }
 }
 

@@ -18,6 +18,12 @@ cargo bench -p he3d-bench -- --test
 # Heap and size_of tables (installs a counting global allocator).
 cargo run -p he3d-bench --bin memreport --release
 
+# Cost versus step index, and whether a pile ever sleeps.
+cargo run -p he3d-bench --bin settle --release
+
+# One pile, every hundredth step.
+cargo run -p he3d-bench --bin settle --release -- 500 1500 12
+
 # One target only.
 cargo bench -p he3d-bench --bench physics
 ```
@@ -33,6 +39,12 @@ cargo bench -p he3d-bench --bench physics
 
 `src/bin/memreport.rs` installs `alloc::CountingAlloc` and prints, per scenario,
 the allocations made, bytes requested, and peak added, plus a `size_of` table.
+
+`src/bin/settle.rs` prints cost as a function of step index, alongside the Contact
+count and how many Bodies have slept. A criterion case answers "what does one step
+cost now"; a scene dropped into contact ramps up and then decays, so that single
+number is the *peak*. `settle` is how "does this scene ever settle and sleep" is
+answered rather than assumed.
 
 ## What the suite found
 
@@ -62,8 +74,15 @@ above; the scenes are defined in `src/workloads.rs`.
 ### Speed
 
 - **Physics cost tracks contacts, not Bodies.** 2000 Bodies out of contact step in
-  0.23 ms; the same 2000 packed in contact take 32 ms. Recorded in
-  `docs/physics-spec.md` §12.
+  0.23 ms; the same 2000 packed in contact peak at 32 ms and settle to 8.8 ms.
+  Recorded in `docs/physics-spec.md` §12.
+- **A pile the solver cannot converge never sleeps.** `settle` pokes at a lattice of
+  unit cubes layered on a slab. Six layers settle around step 800, sleep, and then
+  cost 0.05 ms for the whole pile. Eight layers (0.16 m/s residual, three times the
+  sleep threshold) and twelve layers never sleep in 1500 steps and pay for their
+  contacts forever — 4.4 ms and 8.8 ms per step. Raising the iteration count does not
+  help: at 48 velocity iterations the eight-layer pile is still awake at close to
+  four times the cost. This is the tall-stack limitation of §14 risk 7, measured.
 - **A renderer frame is pixels, and the hard floor is the clear.** An empty 720p
   frame — clearing colour + inverse depth, ~7.4 MB — costs 83.6 µs, which is
   0.092 ns per pixel at 64x36, 320x180, and 1280x720 alike. Drawing the 8-cube scene
@@ -90,6 +109,10 @@ above; the scenes are defined in `src/workloads.rs`.
   developed, contact-loaded state. A freshly built scene is much cheaper to step
   than a developed one, and a long `iter` drifts toward sleep — both would lie.
   See the module comment in `benches/physics.rs`.
+- **The peak is not the steady state.** A scene dropped into contact is most
+  expensive a dozen or so steps in, before positional correction pushes the pile
+  apart, and cheapest once it sleeps. The physics cases report the peak; `settle`
+  reports the curve between them. Quote whichever one the question is about.
 - **The zeros in `memreport` are the interesting ones.** A settled `World` stepped
   a hundred times and a `Renderer` drawing a hundred frames both report **zero
   allocations**: both reuse their buffers. Any nonzero here is a real per-call

@@ -10,12 +10,23 @@ All notable changes to the HE3D workspace crates are documented here.
   counting global allocator and prints `size_of` for the core types. The crate is
   `publish = false` and depends on no backend crate, so it builds and runs headless.
   CI runs it with `cargo bench -p he3d-bench -- --test` (smoke only).
+- `he3d-bench`'s `settle` binary: cost as a function of step index beside the Contact
+  count and the number of sleeping Bodies, which is how "does this pile ever settle
+  and sleep" is measured rather than assumed.
 - `.github/workflows/ci.yml`: a `bench` job that compiles and smoke-runs the suite.
 
 ### Changed
 - `docs/physics-spec.md` §12 now carries numbers measured by that suite, replacing
-  the earlier unmeasured figures; the "assumption, not a measurement" risk for the
-  two-thousand-Body budget (§14) is settled by the measurement.
+  the earlier unmeasured figures, and distinguishes a packed scene's **peak** step
+  from its **settled** one. §14 risk 7's tall-stack limit is measured rather than
+  assumed: a six-layer pile settles and sleeps, an eight-layer pile never does at any
+  iteration count, and its settled cost is recorded.
+- `he3d-physics`: the velocity and position solvers now resolve each constraint's
+  pair of Bodies once per constraint instead of once per point and per axis, behind a
+  `ContactPair` type. Behaviour is unchanged and the timing is unchanged — an A/B of
+  the packed lattice puts the two within run-to-run noise — so this is a structural
+  change: the loop is arithmetic-bound, and the win is that the resolve-once
+  invariant is now impossible to violate rather than merely observed.
 
 ### Removed
 - The tutorial documentation and the `he3d-docs` crate.
