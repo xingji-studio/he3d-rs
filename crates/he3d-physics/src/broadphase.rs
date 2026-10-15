@@ -296,7 +296,7 @@ mod tests {
    #[test]
    fn separated_boxes_are_not_reported() {
       let aabbs = [box_at(0.0, 0.5), box_at(100.0, 0.5)];
-      assert!(pairs(&aabbs).is_empty());
+      assert_eq!(pairs(&aabbs), [] as [(u32, u32); 0]);
    }
 
    #[test]
@@ -339,7 +339,7 @@ mod tests {
 
    #[test]
    fn an_empty_grid_reports_nothing() {
-      assert!(pairs(&[]).is_empty());
+      assert_eq!(pairs(&[]), [] as [(u32, u32); 0]);
    }
 
    #[test]
@@ -349,6 +349,6 @@ mod tests {
          aabbs.push(box_at(index as f32 * 4.0, 0.5));
       }
       // Not touching: centres are 4 apart with half extent 0.5.
-      assert!(pairs(&aabbs).is_empty());
+      assert_eq!(pairs(&aabbs), [] as [(u32, u32); 0]);
    }
 }

@@ -41,11 +41,9 @@
 //!
 //! The complete programs live in `examples/`, and CI compiles them:
 //! `examples/triangle` is the minimal one, and the rest add physics, asset loading,
-//! and streamed terrain, in that order. `docs/getting-started.zh.md` walks through
-//! the same material in Chinese, from the first frame to a body falling onto a floor.
+//! and streamed terrain, in that order.
 //! 完整程序在 `examples/`，CI 会编译它们：`examples/triangle` 是最小的一个，其余依次加上
-//! 物理、资源加载与流式地形。`docs/getting-started.zh.md` 用中文讲同一套内容，从第一帧画面
-//! 一直到落到地面上的物体。
+//! 物理、资源加载与流式地形。
 //!
 //! Between a Body and the thing that draws it, the engine provides no binding layer
 //! and will not: the application keeps the association and copies the pose each

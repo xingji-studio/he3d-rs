@@ -1,3 +1,5 @@
+[中文](README.zh.md)
+
 # HE3D (Rust)
 
 [![crates.io](https://img.shields.io/crates/v/he3d.svg)](https://crates.io/crates/he3d)
@@ -6,9 +8,6 @@
 
 A `no_std + alloc` software 3D engine written in Rust: rasterizer, scene graph, assets,
 physics, and platform backends (right-handed, +Z forward, inverse-depth buffer).
-
-**New here? Read [`docs/getting-started.zh.md`](docs/getting-started.zh.md).** It goes from
-nothing to a moving cube, then to physics; the complete programs live in `examples/`.
 
 ## Crates
 
@@ -23,12 +22,10 @@ nothing to a moving cube, then to physics; the complete programs live in `exampl
 | `he3d-platform` | The `Platform` trait: backend-neutral input / presentation / timing |
 | `he3d-platform-std` | `StdBackend`, presenting to standard output (stdout) |
 | `he3d-platform-sdl3` | `SdlBackend`, presenting to an SDL3 window |
-| `he3d-docs` | Compiles the code blocks in `docs/`; not published |
 
 Every library crate is `no_std + alloc` when built without `std`, and the optional
 `std` feature adds std-backed impls (such as `std::error::Error`) while enabling
-`std` in the crates it depends on. `he3d-docs` is not a library: it exists only to
-compile the guides, and is not published.
+`std` in the crates it depends on.
 
 ## Quick start
 
@@ -79,9 +76,8 @@ error points at dependency source rather than at this workspace.
 
 Crates are published in dependency order (`he3d-math` → `he3d-core` →
 `he3d-renderer` → `he3d-assets` → `he3d-platform` → `he3d-platform-std` →
-`he3d-platform-sdl3` → `he3d-physics` → `he3d`). `he3d-docs` is the one crate with
-`publish = false`: it exists only so that `cargo test` compiles the code blocks in
-`docs/`. See `cargo package --list` before each release.
+`he3d-platform-sdl3` → `he3d-physics` → `he3d`). See `cargo package --list` before
+each release.
 
 ## Attributions
 

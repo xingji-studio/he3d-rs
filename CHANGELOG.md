@@ -22,17 +22,9 @@ All notable changes to the HE3D workspace crates are documented here.
   that produced it.
 - `he3d_platform_sdl3::BackendError` is now `SdlBackendError`.
 
-### Added
-- `he3d-docs`, a `publish = false` crate with a `build.rs` that lifts every `rust`
-  block out of `docs/getting-started.zh.md` and compiles it, so a guide that drifts
-  from the API fails the build. The guide stays plain Markdown: no hidden lines, no
-  fence attributes, no `no_run`. Setup a fragment needs is keyed to the fragment's
-  first line in `build.rs`.
-
 ### Changed
 - The `he3d` crate documentation no longer contains code blocks; the complete
-  programs live in `examples/`, and `docs/getting-started.zh.md` walks through
-  them in Chinese.
+  programs live in `examples/`.
 - The facade's headless smoke test moved to `he3d-platform-std`, where the backend
   it drives lives.
 

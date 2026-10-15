@@ -1776,7 +1776,7 @@ mod tests {
       world.add_body(BodyDesc::dynamic(Shape::sphere(0.5), 1.0).at(Vec3::new(0.0, 10.0, 0.0)));
       world.add_body(BodyDesc::dynamic(Shape::sphere(0.5), 1.0).at(Vec3::new(50.0, 10.0, 0.0)));
       world.step(1.0 / 120.0);
-      assert!(world.contacts().is_empty());
+      assert_eq!(world.contacts(), []);
    }
 
    #[test]
@@ -1787,7 +1787,7 @@ mod tests {
          BodyDesc::stationary(Shape::cuboid(Vec3::splat(1.0))).at(Vec3::new(0.5, 0.0, 0.0)),
       );
       world.step(1.0 / 120.0);
-      assert!(world.contacts().is_empty());
+      assert_eq!(world.contacts(), []);
    }
 
    #[test]

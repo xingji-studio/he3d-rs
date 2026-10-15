@@ -99,29 +99,7 @@ What must not regress:
 - **Every library crate is publishable again.** Deleting the `gp3d` dependency
   removed the `publish = false` path dependency that used to block
   `he3d-physics`; publishing now only needs the usual dependency order from
-  `README.md`. The one exception is `he3d-docs`, which carries `publish = false`
-  because it only exists to compile the guides.
-- **The guides are compiled.** `crates/he3d-docs` has a `build.rs` that lifts every
-  `rust` block out of `docs/getting-started.zh.md` and generates a module from it, so
-  `cargo check --workspace` fails when a guide drifts from the API. The guide file
-  itself stays plain Markdown — no hidden lines, no fence attributes, no `no_run` —
-  because GitHub and editors are its first readers. A fragment taken from the guide's
-  compiled program gets that program's imports automatically; setup beyond that
-  (values, or names the program never imports) is keyed to the fragment's first line
-  in `build.rs`.
-- **Counterexamples are compiled too, and must fail.** A fragment registered in the
-  `FAILING` table of the same `build.rs` is written out as a crate of its own instead of
-  being compiled into the guide, and `crates/he3d-docs/tests/compile_fail.rs` builds it
-  expecting the error code the table names. That is what keeps the compiler output
-  pasted into a guide from rotting. Since these crates and the guide's own program use
-  `SdlBackend`, `he3d-docs` depends on `he3d-platform-sdl3`, so building it needs SDL3
-  like the examples do.
-- **Guides without an English pair.** `docs/writing-style.zh.md` and
-  `docs/getting-started.zh.md` have no `docs/writing-style.md` /
-  `docs/getting-started.md`, and `docs/physics-spec.md` is still one interleaved
-  bilingual file with no `.zh.md` beside it. The language-switcher line belongs at
-  the top of a file only once its pair exists; a switcher pointing at a file that is
-  not there is a 404 on GitHub.
+  `README.md`.
 - **A dependency on the SDL3 backend is a system requirement, not a code
   requirement.** `sdl3-sys` declares `links = "SDL3"`, so merely depending on
   `he3d-platform-sdl3` makes cargo look for SDL3 at build time. Anything expected

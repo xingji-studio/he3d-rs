@@ -18,7 +18,7 @@ fn std_backend_drives_a_headless_frame() {
 
    // Non-TTY (CI) input is skipped, so no synthetic events arrive.
    // 非 TTY（CI）输入会被跳过，因此不会产生合成事件。
-   assert!(backend.poll_events().is_empty());
+   assert_eq!(backend.poll_events(), [] as [he3d_platform::Event; 0]);
 
    let scene = Scene::new();
    let mut renderer = Renderer::new(RendererConfig::new(64, 36)).expect("renderer");

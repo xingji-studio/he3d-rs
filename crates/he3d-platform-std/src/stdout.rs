@@ -446,7 +446,7 @@ mod tests {
       assert!(!backend.should_close());
 
       let events = backend.poll_events();
-      assert!(events.is_empty());
+      assert_eq!(events, [] as [he3d_platform::Event; 0]);
 
       let w = 64;
       let h = 36;

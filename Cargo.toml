@@ -10,7 +10,6 @@ members = [
     "crates/he3d-platform",
     "crates/he3d-platform-std",
     "crates/he3d-platform-sdl3",
-    "crates/he3d-docs",
     "examples/triangle",
     "examples/biplane",
     "examples/physics-test",

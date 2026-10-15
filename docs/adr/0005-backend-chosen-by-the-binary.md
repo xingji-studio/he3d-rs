@@ -35,9 +35,8 @@ provides no helper that picks one.
   `sdl3-sys` declares `links = "SDL3"`. Nothing hides it any more: an application
   that must build headlessly has to keep that crate out of its dependency graph.
   The escape hatch is now a type name, not a feature flag.
-- The four demos hardcode `SdlBackend`; the getting-started guide hardcodes
-  `StdBackend`, which needs nothing from the system. Swapping backends is one line
-  in `main` plus one line in the manifest.
+- The four demos hardcode `SdlBackend`. Swapping backends is one line in `main`
+  plus one line in the manifest.
 - `he3d-platform` has no `PlatformFactory`: each backend has an inherent
   constructor and its own error type, so construction failures stay specific to the
   backend that produced them.
