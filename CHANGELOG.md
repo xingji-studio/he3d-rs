@@ -24,6 +24,12 @@ All notable changes to the HE3D workspace crates are documented here.
   ten layers and taller do not converge at any practical count. This corrects an
   earlier claim that no iteration count could settle an eight-layer pile, which was an
   artifact of reading the 1500-step `settle` window as if it were the whole run.
+- `docs/physics-spec.md` §14 risk 7 also records what was tried and ruled out for that
+  limit, so the dead ends are not walked again: sweep reordering (no effect, in any of
+  the three orders tried), the positional-correction pass (not the cause — disabling it
+  only jams the pile at 0.15 m of penetration, and fewer position iterations is worse),
+  and a block solver over a manifold's four points (its linear system is exactly
+  singular, the checkerboard impulse pattern being in its null space). No code changed.
 - `he3d-physics`: each constraint point now stores `inv_inertia(anchor × axis)` for
   all three solve axes, so a velocity iteration applies an impulse with a scalar
   multiply instead of two quaternion rotations. It costs 72 bytes per point (about

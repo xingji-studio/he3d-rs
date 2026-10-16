@@ -480,15 +480,31 @@ Each entry records what would bring it back.
    measured.** §12 records it: a six-layer pile settles and sleeps at the default 12
    iterations; an eight-layer pile does not converge at 12 (it creeps off the slab over
    a few thousand steps) and needs 16 or more — non-monotonically, since 20, 28 and 40
-   still fail; ten layers needs 64; twelve does not converge up to 96. Sweep order was
-   the obvious suspect and was tried: reversing the fixed order, alternating the
-   direction each iteration, and sorting the sweep top-down by contact height all failed
-   to converge an eight- or ten-layer pile at 12 iterations — alternating made it worse —
-   so the limitation is the relaxation rate, not the ordering. What does converge the
-   pile is more velocity iterations (16 and up for eight layers, non-monotonically, about
-   64 for ten) or disabling the positional-correction pass, which at 12 velocity
-   iterations lets eight layers sleep; neither is a free fix, and the correct one is not
-   yet identified. Separately, the profile said most of one velocity iteration went into
+   still fail; ten layers needs 64; twelve does not converge up to 96. More velocity
+   iterations do converge it (16 and up for eight layers, about 64 for ten). No free fix
+   has been found; three plausible ones were tried and ruled out:
+
+   - **Sweep order.** Reversing the fixed order, alternating the direction each
+     iteration, and sorting the sweep top-down by contact height all failed to converge
+     an eight- or ten-layer pile at 12 iterations — alternating made it worse. The
+     limitation is the relaxation rate, not the ordering.
+   - **The positional-correction pass.** Disabling it does let eight layers sleep at 12
+     velocity iterations, but that is a red herring: with the pass off, penetration grows
+     to 0.15 m and the pile only "sleeps" because it jams into a deeply interpenetrated
+     lock. At steps 1500 and 2000 the pass *on* has the lower residual (0.108 and 0.174
+     against 0.138 and 0.192), and running it once instead of three times is far worse
+     (residual 2.0 by step 2000). The pass is doing its job; it is not the defect.
+   - **A block solver over the four points of a box manifold.** It cannot be solved
+     directly: for the four coplanar points of a face contact,
+     `K[i][j] = inv_mass_sum + (I⁻¹(arm_j × n))·(arm_i × n)` is exactly singular, and the
+     checkerboard impulse pattern `(+,-,-,+)` is in its null space — four normal impulses
+     span only three relative-motion degrees of freedom. For a unit box on a static floor
+     `K` is `[[4,1,-2,1],[1,4,1,-2],[-2,1,4,1],[1,-2,1,4]]` and `(1,-1,1,-1)` maps to
+     zero. This is why Box2D block-solves only two-point manifolds. A damped least-norm
+     or three-degree-of-freedom variant is possible, but it addresses coupling *within*
+     one contact, not the load carried between layers, which is where the limit lives.
+
+   Separately, the profile said most of one velocity iteration went into
    `apply_inv_inertia`, which recomputed two quaternion rotations on every impulse; the
    point now carries `inv_inertia(anchor × axis)` for each solve axis, which took about
    46% off a packed lattice, but that buys speed, not convergence, and made none of
@@ -511,14 +527,27 @@ Each entry records what would bring it back.
 
 7. **高塔的限制来自求解器的松弛速率，而非流形——已实测。** §12 已记录：六层堆叠在默认 12 次
    迭代下会稳定并入睡；八层在 12 次下不收敛（会在数千步内蠕动到离开平板），需要 16 次以上
-   ——而且不单调，20、28、40 次仍然失败；十层需要 64 次；十二层到 96 次仍不收敛。扫描顺序是
-   最自然的怀疑对象，也已试过：固定反序、每次迭代交替方向、按接触高度自上而下排序，三者在 12 次
-   迭代下都无法让八层或十层收敛——交替方向反而更糟——因此限制来自松弛速率而非顺序。真正能让堆叠
-   收敛的是更多的速度迭代（八层 16 次起，但不单调；十层约 64 次），或停用位置修正通道——后者在
-   12 次速度迭代下就能让八层入睡；两者都不是免费的修法，而正确的修法尚未确定。另外，profile 显示
-   一次速度迭代的大部分时间花在 `apply_inv_inertia` 上——它对每个冲量重算两次四元数旋转；现在
-   每个点会保存各条求解轴的 `inv_inertia(anchor × axis)`，这让塞满接触的格架快了约 46%，但那买
-   到的是速度而非收敛，没有让任何一堆入睡。在收敛那一项落地之前，不要承诺密集堆叠会稳定。
+   ——而且不单调，20、28、40 次仍然失败；十层需要 64 次；十二层到 96 次仍不收敛。更多的速度
+   迭代确实能让它收敛（八层 16 次起，十层约 64 次）。没有找到免费的修法，而三条看似可行的路
+   都已试过并排除：
+
+   - **扫描顺序。** 固定反序、每次迭代交替方向、按接触高度自上而下排序，三者在 12 次迭代下
+     都无法让八层或十层收敛——交替方向反而更糟。限制来自松弛速率，而非顺序。
+   - **位置修正通道。** 关掉它确实能让八层在 12 次速度迭代下入睡，但那是误导：关掉后穿透长到
+     0.15 m，堆叠只是被"卡死"成一个深度互相嵌入的锁死体才入睡。在第 1500、2000 步，开着位置
+     修正的残余反而更低（0.108 与 0.174，对 0.138 与 0.192）；只迭代一次比三次差得多（2000 步
+     时残余 2.0）。它在做该做的事，不是缺陷。
+   - **对盒流形四个点做块求解。** 它无法直接求解：对于面接触的四个共面点，
+     `K[i][j] = inv_mass_sum + (I⁻¹(arm_j × n))·(arm_i × n)` 精确奇异，棋盘格冲量模式
+     `(+,-,-,+)` 就在其零空间中——四个法向冲量只能张出三个相对运动自由度。单位立方体放在静止
+     地面上时 `K` 为 `[[4,1,-2,1],[1,4,1,-2],[-2,1,4,1],[1,-2,1,4]]`，而 `(1,-1,1,-1)`
+     映到零。这正是 Box2D 只对两点流形做块求解的原因。带阻尼的最小范数解或三自由度变体可行，
+     但它处理的是单条接触**内部**的耦合，而不是层**之间**传递的载荷——而限制恰恰在后者的位置。
+
+   另外，profile 显示一次速度迭代的大部分时间花在 `apply_inv_inertia` 上——它对每个冲量重算两次
+   四元数旋转；现在每个点会保存各条求解轴的 `inv_inertia(anchor × axis)`，这让塞满接触的格架
+   快了约 46%，但那买到的是速度而非收敛，没有让任何一堆入睡。在收敛那一项落地之前，不要承诺
+   密集堆叠会稳定。
 
 ## 15. Acceptance criteria
 
