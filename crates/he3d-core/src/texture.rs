@@ -120,22 +120,29 @@ impl Texture {
 // float→i64→usize 路径不会溢出或产生有意义的精度损失。
 #[expect(
    clippy::cast_possible_truncation,
+   clippy::cast_possible_wrap,
    clippy::cast_precision_loss,
    clippy::cast_sign_loss
 )]
 fn sample_axis(coord: f32, size: u32) -> usize {
    let wrapped = wrap_uv(coord);
    let scaled = wrapped * size as f32;
-   let index = scaled as i64;
-   index.clamp(0, i64::from(size) - 1) as usize
+   let index = scaled as i32;
+   index.clamp(0, size as i32 - 1) as usize
 }
 
 /// Return the fractional part of `x` in `[0, 1)`, wrapping upward for negative
 /// input so a texture tiles on both sides of the origin.
 /// 返回 `x` 在 `[0, 1)` 范围内的小数部分；负输入向正方向环绕，因此纹理在原点两侧都能平铺。
+///
+/// `x - floor(x)` already lies in `[0, 1)` for every finite `x` (and is `NaN` for
+/// an infinity, which the index cast maps to 0), so no negative correction is
+/// needed.
+/// 对每个有限的 `x`，`x - floor(x)` 本就落在 `[0, 1)` 内（无穷时为 `NaN`，索引转换会
+/// 将其映射为 0），因此无需负数修正。
+#[inline]
 fn wrap_uv(x: f32) -> f32 {
-   let frac = x - floor(x);
-   if frac < 0.0 { frac + 1.0 } else { frac }
+   x - floor(x)
 }
 
 #[cfg(test)]

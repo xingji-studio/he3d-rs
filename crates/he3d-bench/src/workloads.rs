@@ -5,8 +5,9 @@
 //! mirrors a documented claim (`docs/physics-spec.md` §12) the shape of the scene is
 //! stated on the builder, because the claim is only as good as its reproduction.
 
-use he3d_core::{Camera, Material, Mesh, RenderObject, Rgb, Scene, Transform};
-use he3d_math::{Quat, Vec3};
+use he3d_core::{Camera, ColorRgba8, Material, Mesh, RenderObject, Rgb, Scene, Texture, Transform};
+use he3d_math::scalar::tan;
+use he3d_math::{Quat, Vec3, conv};
 use he3d_physics::{BodyDesc, Shape, World};
 
 /// The fixed simulation step every physics workload uses: 1/120 s.
@@ -318,6 +319,66 @@ pub fn render_scene_objects(n: usize) -> (Scene, Camera) {
 #[must_use]
 pub fn render_scene_small() -> (Scene, Camera) {
    render_scene_objects(8)
+}
+
+/// A single quad that fills the whole viewport exactly, seen from the
+/// [`default_camera`] distance of 3 units.
+///
+/// Fill-rate benchmarks use this to make every pixel pay the per-fragment cost
+/// once: two triangles cover the framebuffer with no overdraw and no bounding-box
+/// waste, so the frame cost is the fixed clear plus `pixels * per-fragment cost`,
+/// independent of triangle count.
+#[must_use]
+pub fn screen_fill_quad(width: u32, height: u32) -> Mesh {
+   let distance = 3.0_f32;
+   let half_h = distance * tan(conv::deg_to_rad(60.0) * 0.5);
+   let half_w = half_h * (width as f32 / height as f32);
+   // Clockwise winding leaves the face normal pointing at -Z, i.e. at the camera,
+   // so the renderer's back-face cull keeps it.
+   Mesh::from_vertices(vec![
+      Vec3::new(-half_w, -half_h, distance),
+      Vec3::new(-half_w, half_h, distance),
+      Vec3::new(half_w, -half_h, distance),
+      Vec3::new(half_w, -half_h, distance),
+      Vec3::new(-half_w, half_h, distance),
+      Vec3::new(half_w, half_h, distance),
+   ])
+   .expect("screen-fill quad is well formed")
+}
+
+/// A scene with one screen-filling quad.
+///
+/// `textured` picks a 256x256 texture; otherwise the quad uses a 1x1 colour, which
+/// exercises the renderer's constant-texture fast path. The pair separates the
+/// cost of sampling a real texture from the depth test and colour write.
+#[must_use]
+pub fn render_scene_screen_fill(width: u32, height: u32, textured: bool) -> (Scene, Camera) {
+   let mut scene = Scene::new();
+   let mesh = scene.meshes.insert(screen_fill_quad(width, height));
+   let texture = if textured {
+      let pixels = (0..256 * 256)
+         .map(|i| ColorRgba8::from_rgb((i % 255) as u8, 40, 200))
+         .collect();
+      Some(
+         scene
+            .textures
+            .insert(Texture::new(256, 256, pixels).expect("256x256 texture")),
+      )
+   } else {
+      Some(
+         scene
+            .textures
+            .insert(Texture::solid(ColorRgba8::from_rgb(180, 140, 90))),
+      )
+   };
+   scene.spawn(RenderObject {
+      mesh,
+      texture,
+      transform: Transform::default(),
+      material: Material::new(Rgb::WHITE),
+      visible: true,
+   });
+   (scene, default_camera())
 }
 
 // ---------------------------------------------------------------------------

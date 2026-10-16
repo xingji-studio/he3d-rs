@@ -33,7 +33,7 @@ cargo bench -p he3d-bench --bench physics
 | Target | Covers |
 |---|---|
 | `benches/physics.rs` | `World::step` across freefall, a packed lattice, a settled sleeping scene, static terrain, and broadphase cell sizes; plus `add_body` and construction |
-| `benches/renderer.rs` | `Renderer::new`, resolution / triangle-count / object-count sweeps, and each anti-aliasing mode |
+| `benches/renderer.rs` | `Renderer::new`, resolution / triangle-count / object-count sweeps, per-fragment fill (a screen-filling quad, textured and constant-colour), and each anti-aliasing mode |
 | `benches/assets.rs` | `parse_obj` and `decode_image` on the shipped `biplane` fixtures, plus a scaling synthetic OBJ |
 | `benches/core_math.rs` | The `glam`/`Transform` operations the engine leans on |
 
@@ -62,12 +62,12 @@ above; the scenes are defined in `src/workloads.rs`.
 - **A renderer's memory is its framebuffers.** `Renderer::new(1280x720)` requests
   ~7.4 MB in three allocations (colour + inverse depth, four bytes each per pixel).
   Nothing else in the engine holds memory like that.
-- **The renderer allocates per visible triangle.** Drawing the 8-cube scene at
-  640x360 makes ~49 short-lived allocations per frame (~3.9 KB), all freed inside the
-  frame, so the peak never moves. One is `self.missing_texture.clone()` per frame
-  (`renderer.rs:232`); the other ~48 are one `Vec` per front-facing triangle from
-  `clip_triangle_to_near` (`renderer.rs:1005`). At 60 Hz that is ~3000 allocator
-  calls per second that a reusable scratch buffer would remove.
+- **The renderer used to allocate per visible triangle; now it allocates once per
+  frame.** Drawing the 8-cube scene at 640x360 a hundred times makes 100 allocations
+  — one per frame, `self.missing_texture.clone()` (`renderer.rs:232`). Each
+  front-facing triangle used to cost one `Vec` from `clip_triangle_to_near`
+  (~48 per frame); clipping now writes into a fixed four-vertex stack buffer, so at
+  60 Hz that is ~60 allocator calls per second instead of ~3000.
 - **Decoding is one shot.** `decode_image` of the 256x256 BMP is a single 256 KB
   allocation; a 10 000-triangle static mesh costs ~134 bytes per triangle.
 
@@ -92,20 +92,26 @@ above; the scenes are defined in `src/workloads.rs`.
   and `settled_asleep` did not move, which is the point — the win is where the contacts
   are, and nowhere else.
 - **A renderer frame is pixels, and the hard floor is the clear.** An empty 720p
-  frame — clearing colour + inverse depth, ~7.4 MB — costs 83.6 µs, which is
-  0.092 ns per pixel at 64x36, 320x180, and 1280x720 alike. Drawing the 8-cube scene
-  raises the 720p frame to 772 µs; the 688 µs difference is pixel fill (16x the
+  frame — clearing colour + inverse depth, ~7.4 MB — costs 82.4 µs, which is
+  0.089 ns per pixel at 64x36, 320x180, and 1280x720 alike. Drawing the 8-cube scene
+  raises the 720p frame to 738 µs; the 656 µs difference is pixel fill (16x the
   pixels from 320x180 buys 12x the fill). Geometry *count* is not the driver: 1000
-  objects still cost only 501 µs at 64x36, because their triangles are small.
+  objects still cost only 391 µs at 64x36, because their triangles are small.
+- **Textured fill is texture sampling, not the depth test.** A single quad covering
+  the 1280x720 framebuffer costs 7.45 ms when textured and 1.93 ms when its texture is
+  a 1x1 constant — two triangles either way, so the 5.5 ms difference is
+  `Texture::sample` plus shading, about 6 ns per pixel. Roughly three quarters of a
+  full-screen textured frame is spent in the sampler; the depth test, the
+  perspective divide, and the colour and depth writes are the other quarter.
 - **`Renderer::new` pays page faults, once.** Allocating the 720p buffers costs
   797 µs — nearly ten times the 83.6 µs it takes to clear those same buffers
   afterwards — because fresh pages are faulted in on first touch. The per-frame cost
   is the 83.6 µs, not the 797 µs.
 - **Per-triangle setup shows up when triangles are small.** 10 000 sub-pixel
-  triangles at 64x36 cost 617 µs — 62 ns each, which includes the one heap allocation
-  per front-facing triangle noted above.
-- **Anti-aliasing multiplies pixel or sample work.** At 64x36: none 8.4 µs, MSAA
-  34 µs (x4 samples), FXAA 22 µs (a full-screen pass), TAA 46 µs, SSAA x4 60 µs. The
+  triangles at 64x36 cost 530 µs — 53 ns each, now that a triangle costs no heap
+  allocation and one composed rotation per vertex instead of two.
+- **Anti-aliasing multiplies pixel or sample work.** At 64x36: none 7.3 µs, MSAA
+  31.5 µs (x4 samples), FXAA 21 µs (a full-screen pass), TAA 44 µs, SSAA x4 57 µs. The
   full-screen passes scale with pixel count, so they grow with resolution.
 - **Assets are well under a frame.** `biplane.obj` parses in ~122 µs; `biplane.bmp`
   decodes in ~93 µs.

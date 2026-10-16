@@ -398,11 +398,19 @@ impl Renderer {
       jitter: Vec2,
    ) {
       let cam_inv_rot = camera.orientation.inverse();
-      let cam_pos = camera.position;
-      let obj_rot = object.transform.orientation;
-      let obj_pos = object.transform.position;
       let scale = object.transform.scale;
       let tint = object.material.tint;
+
+      // Fold the object rotation and the world→view rotation into one quaternion,
+      // and the translation into one vector, so each vertex costs a single rotation
+      // instead of two. Rotations are norm-preserving, so shading can equally be
+      // done in view space with the light direction rotated once here.
+      // 把物体旋转与世界→视图旋转合成同一个四元数，并把平移合成同一个向量，使每个顶点
+      // 只需一次旋转而非两次。旋转保持长度，因此着色同样可以在视图空间完成——只需在此
+      // 把光照方向旋转一次。
+      let view_rot = cam_inv_rot * object.transform.orientation;
+      let view_trans = cam_inv_rot * (object.transform.position - camera.position);
+      let light_dir = cam_inv_rot * light.direction;
 
       let fov_scale = 1.0 / tan(conv::deg_to_rad(camera.fov_y_degrees) * 0.5);
       let half_w = self.width as f32 * 0.5;
@@ -417,15 +425,10 @@ impl Renderer {
 
       let mut tri_index = 0;
       for tri in vertices.chunks_exact(3) {
-         let world = [
-            obj_rot * (tri[0] * scale) + obj_pos,
-            obj_rot * (tri[1] * scale) + obj_pos,
-            obj_rot * (tri[2] * scale) + obj_pos,
-         ];
          let view = [
-            cam_inv_rot * (world[0] - cam_pos),
-            cam_inv_rot * (world[1] - cam_pos),
-            cam_inv_rot * (world[2] - cam_pos),
+            view_rot * (tri[0] * scale) + view_trans,
+            view_rot * (tri[1] * scale) + view_trans,
+            view_rot * (tri[2] * scale) + view_trans,
          ];
 
          let ab = view[1] - view[0];
@@ -449,8 +452,15 @@ impl Renderer {
                uv: uvs[tri_index * 3 + 2],
             },
          ];
-         let clipped = clip_triangle_to_near(&clip_in, near);
-         if clipped.len() < 3 {
+         // Clip into a fixed stack buffer: a clipped triangle has at most four
+         // vertices, so this avoids a heap allocation per triangle.
+         // 裁剪写入固定大小的栈缓冲：三角形被裁剪后至多四个顶点，因此避免了逐三角形的堆分配。
+         let mut clipped = [ClipVertex {
+            view: Vec3::ZERO,
+            uv: Vec2::ZERO,
+         }; 4];
+         let count = clip_triangle_to_near(&clip_in, near, &mut clipped);
+         if count < 3 {
             tri_index += 1;
             continue;
          }
@@ -459,14 +469,14 @@ impl Renderer {
             tri_index += 1;
             continue;
          };
-         // For a T·R·S transform, the correct normal transform is the inverse-transpose of (R·S), which reduces to R·S⁻¹. Uniform scale (`S = I`) collapses to the plain rotation.
-         // 对于 T·R·S 变换，正确的法线变换是 (R·S) 的逆转置，化简后为 R·S⁻¹。均匀缩放（`S = I`）时退化为纯旋转。
+         // For a T·R·S transform, the correct normal transform is the inverse-transpose of (R·S), which reduces to R·S⁻¹. Uniform scale (`S = I`) collapses to the plain rotation. Shading is done in view space, where `view_rot` and `light_dir` share the camera rotation, so their dot product equals the world-space one.
+         // 对于 T·R·S 变换，正确的法线变换是 (R·S) 的逆转置，化简后为 R·S⁻¹。均匀缩放（`S = I`）时退化为纯旋转。着色在视图空间完成，其中 `view_rot` 与 `light_dir` 共享相机旋转，因此它们的点积与世界空间一致。
          let inv_scale = scale.recip();
-         let n_world = obj_rot * (local_normal * inv_scale).normalize_or_zero();
-         let diffuse = n_world.dot(light.direction).max(0.0);
+         let n_view = view_rot * (local_normal * inv_scale).normalize_or_zero();
+         let diffuse = n_view.dot(light_dir).max(0.0);
          let lit = tint * light.color * (light.ambient + diffuse);
 
-         for k in 1..clipped.len() - 1 {
+         for k in 1..count - 1 {
             let tri_view = [clipped[0].view, clipped[k].view, clipped[k + 1].view];
             let screen = project_triangle(&tri_view, half_w, half_h, scale_x, scale_y, jitter);
             if triangle_outside_viewport(&screen, self.width, self.height) {
@@ -546,6 +556,18 @@ impl Renderer {
       let lg = ((light.g * 256.0) as i32).clamp(0, 512);
       let lb = ((light.b * 256.0) as i32).clamp(0, 512);
 
+      // A 1x1 texture is constant, so its shaded colour is a per-triangle
+      // constant. Hoisting it keeps the constant-texture case out of the
+      // per-pixel loop, where the branch would otherwise be paid on every
+      // fragment of every ordinary texture.
+      // 1x1 纹理恒定，其着色后颜色也是逐三角形常量。把它提到循环外，避免普通纹理的
+      // 每个片元都支付这一分支。
+      let flat = if tex.pixels().len() == 1 {
+         Some(shade(tex.pixels()[0], lr, lg, lb))
+      } else {
+         None
+      };
+
       let msaa = self.anti_aliasing == AntiAliasing::Msaa && self.ensure_msaa_buffers();
       let stride = self.width as usize;
       for y in y_start..=y_end {
@@ -580,16 +602,22 @@ impl Renderer {
                      let u = (sw0 * uz0.x + sw1 * uz1.x + sw2 * uz2.x) * inv_sample;
                      let v = (sw0 * uz0.y + sw1 * uz1.y + sw2 * uz2.y) * inv_sample;
                      self.msaa_depth_buf[sample_idx] = sample_depth;
-                     self.msaa_color_buf[sample_idx] = shade(tex.sample(u, v), lr, lg, lb);
+                     self.msaa_color_buf[sample_idx] = match flat {
+                        Some(color) => color,
+                        None => shade(tex.sample(u, v), lr, lg, lb),
+                     };
                      pixel_max_depth = pixel_max_depth.max(sample_depth);
                   }
                }
                self.depth_buf[idx] = pixel_max_depth;
             } else if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 && ciz > self.depth_buf[idx] {
                self.depth_buf[idx] = ciz;
-               let inv = 1.0 / ciz;
-               let texel = tex.sample(cuz * inv, cvz * inv);
-               self.color_buf[idx] = shade(texel, lr, lg, lb);
+               if let Some(color) = flat {
+                  self.color_buf[idx] = color;
+               } else {
+                  let inv = 1.0 / ciz;
+                  self.color_buf[idx] = shade(tex.sample(cuz * inv, cvz * inv), lr, lg, lb);
+               }
             }
             w0 += dw0;
             w1 += dw1;
@@ -1002,24 +1030,36 @@ fn lerp_clip(a: ClipVertex, b: ClipVertex, t: f32) -> ClipVertex {
    }
 }
 
-fn clip_triangle_to_near(input: &[ClipVertex; 3], near: f32) -> Vec<ClipVertex> {
-   let mut out = Vec::with_capacity(4);
+/// Clip a view-space triangle against the near plane, writing the resulting 0–4
+/// vertices into `out` and returning how many were written. `out` must hold 4.
+/// 对视空间三角形做近平面裁剪，把得到的 0–4 个顶点写入 `out` 并返回写入数量。
+/// `out` 必须能容纳 4 个顶点。
+fn clip_triangle_to_near(input: &[ClipVertex; 3], near: f32, out: &mut [ClipVertex; 4]) -> usize {
+   let mut count = 0;
    for i in 0..3 {
       let a = input[i];
       let b = input[(i + 1) % 3];
       let a_inside = a.view.z > near;
       let b_inside = b.view.z > near;
       match (a_inside, b_inside) {
-         (true, true) => out.push(b),
-         (true, false) => out.push(lerp_clip(a, b, (near - a.view.z) / (b.view.z - a.view.z))),
+         (true, true) => {
+            out[count] = b;
+            count += 1;
+         }
+         (true, false) => {
+            out[count] = lerp_clip(a, b, (near - a.view.z) / (b.view.z - a.view.z));
+            count += 1;
+         }
          (false, true) => {
-            out.push(lerp_clip(a, b, (near - a.view.z) / (b.view.z - a.view.z)));
-            out.push(b);
+            out[count] = lerp_clip(a, b, (near - a.view.z) / (b.view.z - a.view.z));
+            count += 1;
+            out[count] = b;
+            count += 1;
          }
          (false, false) => {}
       }
    }
-   out
+   count
 }
 
 fn project_triangle(

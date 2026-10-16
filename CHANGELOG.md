@@ -14,8 +14,33 @@ All notable changes to the HE3D workspace crates are documented here.
   count and the number of sleeping Bodies, which is how "does this pile ever settle
   and sleep" is measured rather than assumed.
 - `.github/workflows/ci.yml`: a `bench` job that compiles and smoke-runs the suite.
+- `he3d-bench`'s renderer target: a fill-rate sweep
+  (`render/fill/{solid,tex}/{320x180,1280x720}`) of one screen-filling quad, so a
+  frame's cost is the fixed clear plus one per-fragment cost per pixel. The `solid`
+  and `tex` arms separate the constant-texture fast path from sampling a real
+  texture. This is the pair that shows where a flight-simulator-style textured
+  terrain spends its time.
 
 ### Changed
+- `he3d-renderer`: a triangle is clipped into a fixed four-vertex stack buffer
+  instead of a fresh `Vec`, which removes the only per-triangle allocation in a frame
+  (`memreport` on the 8-cube scene: ~49 allocations per frame → 1, the remaining one
+  being the per-frame `missing_texture` clone). 10 000 small triangles at 64x36:
+  611 µs → 530 µs, and 1000 objects: 496 µs → 391 µs.
+- `he3d-renderer`: `draw_mesh` composes the object rotation and the world→view
+  rotation into a single quaternion and folds the two translations into one vector, so
+  each vertex costs one rotation instead of two. Shading moves to view space, where
+  the light direction is rotated once per mesh, so the dot product is unchanged. This
+  is what carries most of the per-object win above.
+- `he3d-renderer`: a 1x1 texture is constant, so its shaded colour is hoisted out of
+  the per-pixel loop and the branch is never paid by an ordinary texture. A
+  full-screen solid-colour quad at 1280x720 fell from 7.81 ms to 1.93 ms; the
+  textured quad is unchanged by this.
+- `he3d-core`: `Texture::sample` drops a branch that `x - floor(x)` can never take
+  (the fraction is in `[0, 1)` for every finite coordinate) and indexes with 32-bit
+  arithmetic. A full-screen 256x256-textured quad at 1280x720 went from 7.81 ms to
+  7.45 ms. Sampling remains ~¾ of a full-screen textured frame, which is now the
+  largest single cost in the renderer.
 - `docs/physics-spec.md` §12 now carries numbers measured by that suite, replacing
   the earlier unmeasured figures, and distinguishes a packed scene's **peak** step
   from its **settled** one. §14 risk 7's tall-stack limit is measured rather than

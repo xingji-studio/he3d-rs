@@ -9,6 +9,9 @@
 //! triangle/object counts run at a fixed 64x36, resolution runs a fixed small scene,
 //! and an empty scene at each resolution isolates the fixed per-frame cost — clearing
 //! the colour and inverse-depth buffers and presenting — from the cost of geometry.
+//! A screen-filling quad holds geometry constant at two triangles, so its cost minus
+//! the empty-scene cost is the per-fragment (fill) cost, with `solid` and `tex`
+//! separating the constant-texture fast path from sampling a real texture.
 
 #![allow(clippy::pedantic)]
 
@@ -84,6 +87,22 @@ fn renderer(c: &mut Criterion) {
                .expect("render")
          });
       });
+   }
+
+   // Fill-rate sweep: one screen-filling quad, so frame cost is the fixed clear
+   // plus one per-fragment cost for every pixel. Triangle/object counts are held
+   // constant at two triangles, which is what separates fill from geometry.
+   for (w, h) in [(320u32, 180u32), (1280, 720)] {
+      for (label, textured) in [("solid", false), ("tex", true)] {
+         let mut r = Renderer::new(RendererConfig::new(w, h)).expect("renderer");
+         let (scene, camera) = workloads::render_scene_screen_fill(w, h, textured);
+         c.bench_function(&format!("render/fill/{label}/{w}x{h}"), |b| {
+            b.iter(|| {
+               r.render(black_box(&scene), black_box(&camera), CLEAR)
+                  .expect("render")
+            });
+         });
+      }
    }
 
    // Anti-aliasing: same scene and resolution, one mode each.
