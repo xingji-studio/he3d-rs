@@ -76,13 +76,14 @@ above; the scenes are defined in `src/workloads.rs`.
 - **Physics cost tracks contacts, not Bodies.** 2000 Bodies out of contact step in
   0.23 ms; the same 2000 packed in contact peak at 17 ms and settle to 5.5 ms.
   Recorded in `docs/physics-spec.md` §12.
-- **A pile the solver cannot converge never sleeps.** `settle` pokes at a lattice of
-  unit cubes layered on a slab. Six layers settle around step 800, sleep, and then
-  cost 0.05 ms for the whole pile. Eight layers (residual speed at least twice the
-  sleep threshold) and twelve layers never sleep in 1500 steps and pay for their
-  contacts forever — 2.3 ms and 5.5 ms per step. Raising the iteration count does not
-  help: at 48 velocity iterations the eight-layer pile is still awake at close to
-  four times the cost. This is the tall-stack limitation of §14 risk 7, measured.
+- **Sleep is decided by convergence, and convergence fails with height.** `settle`
+  pokes at a lattice of unit cubes layered on a slab. Six layers settle around step
+  800, sleep, and then cost 0.05 ms for the whole pile. Eight layers sit on the edge:
+  at the default 12 iterations the pile never converges (a few Bodies hold 0.05–0.11
+  m/s against the 0.05 m/s threshold) and slowly creeps off the slab, whereas 16, 24,
+  32 and 48 iterations all reach sleep — but 20, 28 and 40 do not, so the outcome is
+  not monotone in the count. Ten layers needs 64; twelve does not converge even at 96
+  and sheds edge Bodies. This is the tall-stack limitation of §14 risk 7, measured.
 - **The velocity solve was arithmetic-bound, and the inertia rotation was most of
   it.** Each impulse recomputed two quaternion rotations to turn `anchor × axis` into
   angular velocity. Storing `inv_inertia(anchor × axis)` per point instead (ADR 0004)

@@ -330,31 +330,48 @@ what can overspend a frame, the settled cost is what a running scene actually pa
 | Freefall grid, nothing ever touches | 2000 | — | 0.23 ms | 0.23 ms | nothing to settle |
 | Single layer on a slab | 2000 | 1 | 0.41 ms | 0.41 ms | yes, all 2000 |
 | Lattice on a slab | 200 | 6 | 1.5 ms | 0.05 ms | yes, after ~800 steps |
-| Lattice on a slab | 500 | 8 | 3.7 ms | 2.3 ms | **never** |
-| Lattice on a slab | 2000 | 12 | 17 ms | 5.5 ms | **never**; sheds edge Bodies |
+| Lattice on a slab | 500 | 8 | 3.7 ms | 2.3 ms | no at 12 iterations; sleeps at 16+ (non-monotone) |
+| Lattice on a slab | 2000 | 12 | 17 ms | 5.5 ms | **never**, even at 96 iterations; sheds edge Bodies |
 
 The peak is the criterion bench: one step, taken sixteen steps into a freshly built
-scene. The settled value is `settle`: the median of the last hundred of 1500 steps.
+scene. The settled value is `settle`: the median of the last hundred of 1500 steps. The
+window forces one caveat on the sleep column: 1500 steps cannot tell a pile that will
+never settle from one that has converged but has not yet held the threshold for the
+whole of `SLEEP_TIME`, so "sleeps" is only meaningful stated beside an iteration count.
 
 峰值取自 criterion 基准：新建场景后第 16 步处测量的单步耗时。稳态值取自 `settle`：
-1500 步中最后一百步的中位数。
+1500 步中最后一百步的中位数。这个窗口给"入睡"一列带来一条前提：1500 步无法区分"永远不会
+稳定的堆叠"与"虽已收敛、却还没连续保持睡眠阈值达到 `SLEEP_TIME` 的堆叠"，因此"是否入睡"
+只有连同迭代次数一起说明才有意义。
 
-**A pile the solver cannot converge never sleeps.** Six layers settle, fall asleep,
-and then cost 0.05 ms for the whole pile. Eight and twelve layers never do: their
-residual speed holds at least twice the 0.05 m/s sleep threshold, so every Body stays
-awake and the scene pays for its Contacts forever. More iterations do not rescue it:
-at 48 velocity iterations an eight-layer pile is still awake, at close to four times
-the cost. This is the tall-stack limitation of §14 risk 7, now measured instead of
-assumed. The twelve-layer pile additionally creeps and sheds edge Bodies, which then
-free-fall to the end of the run — that is why its settled cost (5.5 ms) sits well
-below its peak (17 ms) rather than at zero.
+**Sleep is decided by convergence, and convergence fails with height.** Six layers
+settle, fall asleep, and then cost 0.05 ms for the whole pile. Eight layers sit on the
+edge. At the default 12 iterations the pile never converges: a handful of Bodies hold a
+residual speed of 0.05–0.11 m/s against the 0.05 m/s threshold, so the scene looks
+merely jittery for a while and then slowly creeps — by about step 2200 it has drifted
+off the slab and starts to spill, and its settled cost reads 2.3 ms only because the
+window ends before it does. Raising the count converges it, but **not monotonically**:
+over 4000 steps 16, 24, 32 and 48 iterations all reach sleep, while 20, 28 and 40 do
+not, because the residual sits close enough to the threshold that the trajectory
+decides. Converging is cheap in itself — 16 iterations run the awake pile at ~2.7 ms
+against ~2.3 ms at 12 — but whether the pile actually sleeps is not something the
+caller can rely on. Ten layers needs 64 iterations before only one or two Bodies remain
+over threshold; twelve layers does not converge even at 96 and sheds edge Bodies that
+free-fall to the end of the run, which is why its settled cost (5.5 ms) sits well below
+its peak (17 ms) rather than at zero. This is the tall-stack limitation of §14 risk 7:
+Gauss-Seidel propagates one layer per iteration, so the count must scale with the height
+of what is stacked, and the boundary sits between eight and ten layers.
 
-**求解器收敛不了的堆叠永不入睡。** 六层会稳定、入睡，之后整堆只要 0.05 ms。八层与十二层
-则永远不会：残余速度始终不低于 0.05 m/s 睡眠阈值的两倍，因此每个 Body 都保持清醒，场景永远
-为它的 Contact 付费。增加迭代次数救不了它：48 次速度迭代下八层堆叠仍然清醒，代价却接近四倍。
-这就是 §14 风险 7 的高塔限制，现在是实测而非假设。十二层堆叠还会蠕动并甩掉边缘的 Body，
-后者一路自由落体到运行结束——这正是它的稳态成本（5.5 ms）远低于峰值（17 ms）、而不是降到零
-的原因。
+**入睡取决于收敛，而收敛随高度失效。** 六层会稳定、入睡，之后整堆只要 0.05 ms。八层则卡在
+边缘：默认 12 次迭代下这一堆永不收敛——少数 Body 的残余速度停在 0.05–0.11 m/s，正压在
+0.05 m/s 的阈值上，因此短时间内看着只是一点抖动，随后开始缓慢蠕动，到约第 2200 步已漂离
+平板并开始溢出；它的稳态读数之所以是 2.3 ms，只是因为窗口在溢出之前结束。提高迭代次数能让它
+收敛，但**不单调**：4000 步内 16、24、32、48 次都能入睡，而 20、28、40 次不能，因为残余速度
+离阈值太近，结果由轨迹决定。收敛本身并不贵——16 次迭代下清醒的堆叠约 2.7 ms，12 次时约
+2.3 ms——但这堆是否真的入睡，调用方无法依赖。十层需要 64 次迭代才只剩一两个 Body 超标；
+十二层到 96 次仍不收敛，并甩掉边缘的 Body，后者一路自由落体到运行结束，因此它的稳态成本
+（5.5 ms）远低于峰值（17 ms）、而非降到零。这就是 §14 风险 7 的高塔限制：Gauss-Seidel 每次
+迭代只向下传播一层，因此迭代次数必须随堆叠高度增长，而边界落在八层与十层之间。
 
 **Cost tracks contacts, not Bodies.** Two thousand Bodies that step without ever
 touching cost 0.23 ms; the same two thousand packed so that a fifth of them are in
@@ -392,8 +409,8 @@ hurts.
 frame, and the mesh welds into one shared topology (§7) rather than being paid for
 per Body.
 
-**静态几何**（16 个静止 Body 之下）：100 个三角形 → 31 µs，1000 个 → 57 µs，
-10000 个 → 238 µs。它不是免费的，但 10000 个三角形也只占 60 Hz 一帧的 1.4%；而且网格
+**静态几何**（16 个静止 Body 之下）：100 个三角形 → 16 µs，1000 个 → 38 µs，
+10000 个 → 230 µs。它不是免费的，但 10000 个三角形也只占 60 Hz 一帧的 1.4%；而且网格
 焊接进同一套共享拓扑（§7），而不是按 Body 逐个付费。
 
 **Heap.** Steady-state `World::step` allocates nothing: the World reuses its
@@ -459,20 +476,24 @@ Each entry records what would bring it back.
    add CCD, thicken the terrain, or cap speed — decide with a measurement.
 6. **No collision filtering.** Correct for this feature set, but it becomes
    mandatory the moment triggers or self-collision appear.
-7. **Tall stacks are limited by the solver, not by the manifold — measured.** §12
-   records it: a six-layer pile settles and sleeps (0.05 ms), while eight- and
-   twelve-layer piles never sleep at all, their residual speed holding at least twice
-   the 0.05 m/s threshold. Raising the iteration count does not
-   rescue them: at 48 velocity iterations an eight-layer pile is still awake, at
-   close to four times the cost. Plain sequential impulses converge by Gauss-Seidel,
-   so the iteration count would have to scale with the height of what is stacked, and
-   past a handful of layers no practical count is enough. The identified fix is a
-   block solver over the four points of a box manifold. Separately, the profile said
-   most of one velocity iteration went into `apply_inv_inertia`, which recomputed two
-   quaternion rotations on every impulse; the point now carries
-   `inv_inertia(anchor × axis)` for each solve axis, which took about 46% off a packed
-   lattice, but that buys speed, not convergence, and made none of these piles sleep.
-   Until the convergence work lands, do not promise that a dense pile settles.
+7. **Tall stacks are limited by the solver's relaxation rate, not by the manifold —
+   measured.** §12 records it: a six-layer pile settles and sleeps at the default 12
+   iterations; an eight-layer pile does not converge at 12 (it creeps off the slab over
+   a few thousand steps) and needs 16 or more — non-monotonically, since 20, 28 and 40
+   still fail; ten layers needs 64; twelve does not converge up to 96. Sweep order was
+   the obvious suspect and was tried: reversing the fixed order, alternating the
+   direction each iteration, and sorting the sweep top-down by contact height all failed
+   to converge an eight- or ten-layer pile at 12 iterations — alternating made it worse —
+   so the limitation is the relaxation rate, not the ordering. What does converge the
+   pile is more velocity iterations (16 and up for eight layers, non-monotonically, about
+   64 for ten) or disabling the positional-correction pass, which at 12 velocity
+   iterations lets eight layers sleep; neither is a free fix, and the correct one is not
+   yet identified. Separately, the profile said most of one velocity iteration went into
+   `apply_inv_inertia`, which recomputed two quaternion rotations on every impulse; the
+   point now carries `inv_inertia(anchor × axis)` for each solve axis, which took about
+   46% off a packed lattice, but that buys speed, not convergence, and made none of
+   these piles sleep. Until the convergence work lands, do not promise that a dense pile
+   settles.
 
 1. **EPA 数值稳定性。** 分层窄相位唯一的真坑。EPA 在浅穿透下不稳定，要专门为它留
    调试时间。
@@ -488,14 +509,16 @@ Each entry records what would bring it back.
    大重力、地形格子间距十二米。要么加 CCD，要么加厚地形，要么限制速度——用实测决定。
 6. **没有碰撞过滤。** 对当前功能集是正确的，但一旦触发器或自碰撞出现就变成刚需。
 
-7. **高塔的限制来自求解器，而非流形——已实测。** §12 已记录：六层堆叠会稳定并入睡
-   （0.05 ms），而八层与十二层堆叠**永不入睡**，残余速度始终不低于 0.05 m/s 阈值的两倍。
-   调高迭代次数救不了它们：48 次速度迭代下八层堆叠仍然清醒，代价却接近四倍。纯
-   序列冲量靠 Gauss-Seidel 收敛，迭代次数必须随堆叠高度增长，而超过若干层后没有一个实用的
-   次数够用。已识别的修法是针对盒流形四个点做块求解器。另外，profile 显示一次速度迭代的
-   大部分时间花在 `apply_inv_inertia` 上——它对每个冲量重算两次四元数旋转；现在每个点会
-   保存各条求解轴的 `inv_inertia(anchor × axis)`，这让塞满接触的格架快了约 46%，但那买到的
-   是速度而非收敛，没有让任何一堆入睡。在收敛那一项落地之前，不要承诺密集堆叠会稳定。
+7. **高塔的限制来自求解器的松弛速率，而非流形——已实测。** §12 已记录：六层堆叠在默认 12 次
+   迭代下会稳定并入睡；八层在 12 次下不收敛（会在数千步内蠕动到离开平板），需要 16 次以上
+   ——而且不单调，20、28、40 次仍然失败；十层需要 64 次；十二层到 96 次仍不收敛。扫描顺序是
+   最自然的怀疑对象，也已试过：固定反序、每次迭代交替方向、按接触高度自上而下排序，三者在 12 次
+   迭代下都无法让八层或十层收敛——交替方向反而更糟——因此限制来自松弛速率而非顺序。真正能让堆叠
+   收敛的是更多的速度迭代（八层 16 次起，但不单调；十层约 64 次），或停用位置修正通道——后者在
+   12 次速度迭代下就能让八层入睡；两者都不是免费的修法，而正确的修法尚未确定。另外，profile 显示
+   一次速度迭代的大部分时间花在 `apply_inv_inertia` 上——它对每个冲量重算两次四元数旋转；现在
+   每个点会保存各条求解轴的 `inv_inertia(anchor × axis)`，这让塞满接触的格架快了约 46%，但那买
+   到的是速度而非收敛，没有让任何一堆入睡。在收敛那一项落地之前，不要承诺密集堆叠会稳定。
 
 ## 15. Acceptance criteria
 
@@ -513,8 +536,9 @@ Each entry records what would bring it back.
 - Two thousand sleeping Bodies cost approximately nothing (0.41 ms, §12), and the
   cost of two thousand active Bodies is measured and recorded with the frame budget
   stated as a number (0.23 ms out of contact; 17 ms at the packed peak, settling to
-  5.5 ms). What the solver cannot settle is recorded beside it: piles eight layers
-  high and taller never sleep.
+  5.5 ms). What the solver cannot settle is recorded beside it: an eight-layer pile
+  needs more than the default iterations to converge, and ten layers and taller do not
+  converge at any practical iteration count.
 - Determinism is **not** tested, because it is not a goal.
 
 - 保持 `no_std + alloc`：裸机 target 检查与 `--no-default-features` 检查均通过。
@@ -528,5 +552,6 @@ Each entry records what would bring it back.
   手写几何判定。
 - 两千个睡眠 Body 的开销约等于零（0.41 ms，§12）；两千个活跃 Body 的开销经过实测并记录，
   帧预算以一个具体数字写明（不接触 0.23 ms；塞满接触时峰值 17 ms、稳态 5.5 ms）。求解器
-  无法稳定的部分也一并记录：八层及更高的堆叠永不入睡。
+  无法稳定的部分也一并记录：八层需要高于默认的迭代次数才能收敛，十层及更高在任何实用的
+  迭代次数下都不收敛。
 - **不**测试确定性，因为它不是目标。

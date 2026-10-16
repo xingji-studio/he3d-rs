@@ -19,8 +19,11 @@ All notable changes to the HE3D workspace crates are documented here.
 - `docs/physics-spec.md` §12 now carries numbers measured by that suite, replacing
   the earlier unmeasured figures, and distinguishes a packed scene's **peak** step
   from its **settled** one. §14 risk 7's tall-stack limit is measured rather than
-  assumed: a six-layer pile settles and sleeps, an eight-layer pile never does at any
-  iteration count, and its settled cost is recorded.
+  assumed: a six-layer pile settles and sleeps at the default iterations, an
+  eight-layer pile needs 16 or more and the outcome is not monotone in the count, and
+  ten layers and taller do not converge at any practical count. This corrects an
+  earlier claim that no iteration count could settle an eight-layer pile, which was an
+  artifact of reading the 1500-step `settle` window as if it were the whole run.
 - `he3d-physics`: each constraint point now stores `inv_inertia(anchor × axis)` for
   all three solve axes, so a velocity iteration applies an impulse with a scalar
   multiply instead of two quaternion rotations. It costs 72 bytes per point (about
