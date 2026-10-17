@@ -53,15 +53,14 @@ All notable changes to the HE3D workspace crates are documented here.
   the earlier unmeasured figures, and distinguishes a packed scene's **peak** step
   from its **settled** one. §14 risk 7's tall-stack limit is measured rather than
   assumed: a six-layer pile settles and sleeps at the default iterations, an
-  eight-layer pile needs 16 or more and the outcome is not monotone in the count, and
-  ten layers and taller do not converge at any practical count. This corrects an
-  earlier claim that no iteration count could settle an eight-layer pile, which was an
-  artifact of reading the 1500-step `settle` window as if it were the whole run.
+  eight-layer pile needs 16 or more, and ten layers and taller do not converge at any
+  practical count. This corrects an earlier claim that no iteration count could settle
+  an eight-layer pile, which was an artifact of reading a 1500-step `settle` window as
+  if it were the whole run.
 - `docs/physics-spec.md` §14 risk 7 also records what was tried and ruled out for that
   limit, so the dead ends are not walked again: sweep reordering (no effect, in any of
-  the three orders tried), the positional-correction pass (not the cause — disabling it
-  only jams the pile at 0.15 m of penetration, and fewer position iterations is worse),
-  and a block solver over a manifold's four points (its linear system is exactly
+  the three orders tried), the positional-correction pass (not the cause), and a block
+  solver over a manifold's four points (its linear system is exactly
   singular, the checkerboard impulse pattern being in its null space). No code changed.
 - `he3d-physics`: each constraint point now stores `inv_inertia(anchor × axis)` for
   all three solve axes, so a velocity iteration applies an impulse with a scalar
@@ -78,6 +77,40 @@ All notable changes to the HE3D workspace crates are documented here.
   lattice puts the two within run-to-run noise, because the loop is arithmetic-bound
   — so this is a structural change: the win is that the resolve-once invariant is now
   impossible to violate rather than merely observed.
+- `he3d-physics`: a two-point manifold's two normal constraints are now inverted
+  together as one 2×2 block (`ContactBlock`), with the friction solve placed *before*
+  it so the block's answer is the iteration's final word. Solving the two points in
+  sequence settles them on unequal impulses, and their difference is a torque about the
+  axis the two points share — which is exactly a cube rolled onto its edge, and was
+  measured as a phantom spin of 2.04e-4 rad/s. Three- and four-point manifolds keep the
+  per-point path, byte for byte: their block is singular and their points are coplanar,
+  so reordering them buys nothing and costs ~4% on a contact-dense lattice. A singular
+  or NaN block falls back to the per-point path. Cost: ~3% on the packed lattice
+  (`step/lattice_on_slab/2000`), and no extra iteration count.
+- `he3d-physics`: warm-start identity is now the geometry a contact point came from,
+  not its rank in the step's list. A corner of the source polygon is its own identity;
+  a vertex inserted by a clip is named by the vertex it was cut from and the plane that
+  cut it, tagged with the shape that supplied the polygon, so a reference-face flip
+  misses a warm start instead of applying it to the wrong point. Ranking renumbers the
+  survivors whenever a manifold shrinks — a cube rolling onto its edge drops from four
+  points to two — which hands a point the impulse a different corner had accumulated.
+  Measured: the packed lattice holds ~20% more Contacts at the peak step, so the
+  twelve-layer peak went 17 ms → 19 ms and its settled cost 5.5 ms → 6.3 ms; and the
+  eight-layer pile's convergence is no longer non-monotone (16, 20, 24, 28, 32, 40 and
+  48 iterations all reach sleep, where 20, 28 and 40 used to fail). The positional
+  order is kept, as the solver's sweep order only.
+- `he3d-bench`: `settle`'s summary now runs each reference pile for 2000 steps instead
+  of 1500. The shorter window reported "does not sleep" for a six-layer pile that does
+  sleep, just after step 1100; the window has to outlast the shortest pile in the table
+  for the sleep column to mean anything.
+- `docs/physics-spec.md` §12 and §14 risk 7, `docs/adr/0004`, and
+  `crates/he3d-bench/README.md` are re-measured against the above: the packed
+  2000-Body lattice peaks at 19 ms and settles to 6.3 ms (was 17 ms / 5.5 ms), the
+  cell-size sweep is 25.8 / 18.7 / 19.2 ms, and the six-layer pile sleeps around step
+  1100. §14 risk 7 now lists the two changes that landed without moving the tall-stack
+  boundary, and its positional-correction entry is re-measured: with the pass off the
+  eight-layer pile holds 0.38 m/s at step 1500 instead of 0.07, so the pass is doing its
+  job more clearly than before, not less.
 - `examples/physics-test`: the controls separate translation from rotation, which the
   `A`/`D` keys used to couple. `A`/`D` now apply only force, and the left and right
   arrows apply only torque (6.0 about the horizontal Z axis, up from 4.0); space still

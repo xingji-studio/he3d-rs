@@ -74,16 +74,22 @@ above; the scenes are defined in `src/workloads.rs`.
 ### Speed
 
 - **Physics cost tracks contacts, not Bodies.** 2000 Bodies out of contact step in
-  0.23 ms; the same 2000 packed in contact peak at 17 ms and settle to 5.5 ms.
+  0.23 ms; the same 2000 packed in contact peak at 19 ms and settle to 6.3 ms.
   Recorded in `docs/physics-spec.md` §12.
 - **Sleep is decided by convergence, and convergence fails with height.** `settle`
   pokes at a lattice of unit cubes layered on a slab. Six layers settle around step
-  800, sleep, and then cost 0.05 ms for the whole pile. Eight layers sit on the edge:
-  at the default 12 iterations the pile never converges (a few Bodies hold 0.05–0.11
-  m/s against the 0.05 m/s threshold) and slowly creeps off the slab, whereas 16, 24,
-  32 and 48 iterations all reach sleep — but 20, 28 and 40 do not, so the outcome is
-  not monotone in the count. Ten layers needs 64; twelve does not converge even at 96
+  1100, sleep, and then cost 0.05 ms for the whole pile. Eight layers sit on the edge:
+  at the default 12 iterations the pile never converges (a few Bodies hold 0.05–0.07
+  m/s against the 0.05 m/s threshold), whereas 16, 20, 24, 28, 32, 40 and 48
+  iterations all reach sleep. Ten layers needs 64; twelve does not converge even at 96
   and sheds edge Bodies. This is the tall-stack limitation of §14 risk 7, measured.
+- **Correct warm-start identity costs about 10% of a dense lattice's peak, and buys
+  back the convergence that was non-monotone.** Matching a contact point to its own
+  previous step by the geometry that produced it — rather than by its rank in the
+  step's list, which renumbers the survivors whenever a manifold shrinks — leaves the
+  pile holding ~20% more Contacts at the peak step. The twelve-layer peak went 17 → 19
+  ms and its settled cost 5.5 → 6.3 ms; the eight-layer pile, which used to converge
+  only at 16, 24, 32 and 48 iterations, now converges at every count from 16 up.
 - **The velocity solve was arithmetic-bound, and the inertia rotation was most of
   it.** Each impulse recomputed two quaternion rotations to turn `anchor × axis` into
   angular velocity. Storing `inv_inertia(anchor × axis)` per point instead (ADR 0004)
@@ -91,6 +97,12 @@ above; the scenes are defined in `src/workloads.rs`.
   32 ms to 17 ms at the same contact count, and `static_terrain/100` halved. `freefall`
   and `settled_asleep` did not move, which is the point — the win is where the contacts
   are, and nowhere else.
+- **A two-point block solve costs ~3% and cannot fix a stack.** Two points solved in
+  sequence settle on unequal impulses, and their difference is a torque about the axis
+  they share — a cube rolled onto its edge picks up a spin nothing applied. Inverting
+  the two normal constraints as one 2×2 block removes it, for about 3% on the packed
+  lattice. It does not move the tall-stack boundary: that limit is the load between
+  layers, not coupling inside one contact.
 - **A renderer frame is pixels, and the hard floor is the clear.** An empty 720p
   frame — clearing colour + inverse depth, ~7.4 MB — costs 82.5 µs, which is
   0.089 ns per pixel at 64x36, 320x180, and 1280x720 alike. Drawing the 8-cube scene

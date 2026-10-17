@@ -34,7 +34,14 @@ use he3d_math::Vec3;
 const REFERENCE_PILES: [usize; 3] = [200, 500, 2000];
 
 /// Steps the summary runs each pile for, at 1/120 s.
-const SUMMARY_STEPS: usize = 1500;
+///
+/// The window has to be long enough for the shortest pile in the table to finish
+/// settling, or the "Sleeps" column reports "not yet" as "no". Six layers fall asleep
+/// around step 1100, so 2000 leaves margin; a longer window would only let the tall
+/// piles spill further before the settled cost is read.
+/// 窗口必须长到表中最矮的一堆能彻底稳定，否则"是否入睡"一列会把"还没"报成"不"。六层约在
+/// 第 1100 步入睡，因此 2000 留有余量；再长只会让高塔在读取稳态成本前溢出得更远。
+const SUMMARY_STEPS: usize = 2000;
 
 /// Steps between trajectory rows.
 const REPORT_EVERY: usize = 100;

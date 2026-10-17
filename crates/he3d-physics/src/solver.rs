@@ -254,25 +254,224 @@ fn solve_constraint_velocity(slots: &mut [Slot], constraint: &mut ContactConstra
       return;
    };
 
-   for point in constraint.points_mut() {
-      let relative = pair.relative_velocity(point.anchor_a, point.anchor_b, normal);
-      let lambda = -point.normal_mass * (relative - point.bias);
-      let previous = point.normal_impulse;
-      // A contact can push but never pull.
-      // 接触只能推，永远不能拉。
-      point.normal_impulse = (previous + lambda).max(0.0);
-      let delta = point.normal_impulse - previous;
-      pair.apply_impulse(point, NORMAL_AXIS, normal, delta);
-
-      for (index, tangent) in tangents.into_iter().enumerate() {
-         let relative = pair.relative_velocity(point.anchor_a, point.anchor_b, tangent);
-         let lambda = -point.tangent_mass[index] * relative;
-         let limit = friction * point.normal_impulse;
-         let previous = point.tangent_impulse[index];
-         point.tangent_impulse[index] = (previous + lambda).clamp(-limit, limit);
-         let delta = point.tangent_impulse[index] - previous;
-         pair.apply_impulse(point, TANGENT_AXIS_0 + index, tangent, delta);
+   // Two points are solved together, because solving them in sequence is what puts a
+   // couple on the Body. Three and four points cannot be: their block is singular.
+   // 两个点一起求解，因为逐个求解正是把力偶加到 Body 上的原因。三个与四个点做不到这一点：
+   // 它们的块是奇异的。
+   if constraint.point_count == TWO_POINT_MANIFOLD {
+      // The block goes last so that its answer is the last word of the iteration.
+      // A friction impulse changes the normal velocities, and only the block can put
+      // those back; leaving friction for afterwards drags the two normals apart again,
+      // which is the very couple the block exists to remove.
+      // 块放在最后，使它的答案就是本次迭代的最终答案。摩擦冲量会改变法向速度，而只有块能把
+      // 它们放回去；把摩擦留到之后又会把两个法向冲量拉开，而那正是块存在的理由。
+      solve_friction(&mut pair, constraint.points_mut(), tangents, friction);
+      solve_normal_block(&mut pair, constraint, normal);
+   } else {
+      // A face manifold keeps the original order — each point's normal and then its
+      // friction, point by point — because a block cannot help it and the order a
+      // solver sweeps in is what its tall-stack behaviour was measured with.
+      // 面流形保持原来的次序——逐点先法线后摩擦——因为块对它无能为力，而求解器的扫描次序正是
+      // 当初测量高塔行为时所用的那个。
+      for point in constraint.points_mut() {
+         solve_normal(&mut pair, point, normal);
+         solve_friction_point(&mut pair, point, tangents, friction);
       }
+   }
+}
+
+/// Drive every point's friction impulse to the edge of the Coulomb cone.
+/// 将每个点的摩擦冲量推到库仑锥的边缘。
+///
+/// Friction is solved one point and one tangent at a time rather than as a block:
+/// the cone limit couples each tangent to the normal impulse at its own point, so
+/// the two points do not share an answer the way the normals of a two-point
+/// manifold do.
+/// 摩擦逐点、逐切线求解，而不作为一个块：锥限把每条切线与它自己那个点的法向冲量耦合起来，
+/// 因此两个点并不像两点流形的法向那样共享一个答案。
+fn solve_friction(
+   pair: &mut ContactPair,
+   points: &mut [ConstraintPoint],
+   tangents: [Vec3; 2],
+   friction: f32,
+) {
+   for point in points {
+      solve_friction_point(pair, point, tangents, friction);
+   }
+}
+
+/// Drive one point's friction impulses to the edge of the Coulomb cone.
+/// 将单个点的摩擦冲量推到库仑锥的边缘。
+fn solve_friction_point(
+   pair: &mut ContactPair,
+   point: &mut ConstraintPoint,
+   tangents: [Vec3; 2],
+   friction: f32,
+) {
+   for (index, tangent) in tangents.into_iter().enumerate() {
+      let relative = pair.relative_velocity(point.anchor_a, point.anchor_b, tangent);
+      let lambda = -point.tangent_mass[index] * relative;
+      let limit = friction * point.normal_impulse;
+      let previous = point.tangent_impulse[index];
+      point.tangent_impulse[index] = (previous + lambda).clamp(-limit, limit);
+      let delta = point.tangent_impulse[index] - previous;
+      pair.apply_impulse(point, TANGENT_AXIS_0 + index, tangent, delta);
+   }
+}
+
+/// The point count whose normal constraints are solved as one block.
+/// 其法向约束作为一个块求解的点数。
+const TWO_POINT_MANIFOLD: u8 = 2;
+
+/// How much of the block's diagonal product the determinant has to keep to be used.
+/// 块的行列式必须保住的、占对角线乘积的比例。
+///
+/// The ratio is `1 - correlation²`, so this turns down blocks whose two points nearly
+/// cannot be told apart, where an impulse anywhere moves both the same way. There is
+/// no unique answer to hand back there; one point at a time is what such a pair would
+/// have got anyway.
+/// 该比例等于 `1 - 相关系数²`，因此它会拒绝两点几乎无法区分的块——那种情形下任何一处的冲量都
+/// 会把两点同样地推动，没有唯一答案可回填；而逐个求解本来也是这种对子唯一能得到的东西。
+const BLOCK_SINGULAR_RATIO: f32 = 1e-6;
+
+/// Solve one point's normal constraint on its own.
+/// 单独求解一个点的法向约束。
+fn solve_normal(pair: &mut ContactPair, point: &mut ConstraintPoint, normal: Vec3) {
+   let relative = pair.relative_velocity(point.anchor_a, point.anchor_b, normal);
+   let lambda = -point.normal_mass * (relative - point.bias);
+   let previous = point.normal_impulse;
+   // A contact can push but never pull.
+   // 接触只能推，永远不能拉。
+   point.normal_impulse = (previous + lambda).max(0.0);
+   let delta = point.normal_impulse - previous;
+   pair.apply_impulse(point, NORMAL_AXIS, normal, delta);
+}
+
+/// Solve each point's normal constraint on its own.
+/// 逐个求解各点的法向约束。
+fn solve_normals_individually(
+   pair: &mut ContactPair,
+   points: &mut [ConstraintPoint],
+   normal: Vec3,
+) {
+   for point in points {
+      solve_normal(pair, point, normal);
+   }
+}
+
+/// Solve a two-point manifold's normal constraints as one block.
+/// 把一个两点流形的法向约束作为一个块求解。
+///
+/// Solving the two points in sequence leaves a couple on the Body. The first point's
+/// impulse changes the velocity the second one measures, so the pair settles on
+/// unequal impulses, and their difference is a torque about the axis the two points
+/// share. A cube rolling over an edge is exactly two points, and that couple is
+/// rotation about the roll axis that nothing applied.
+/// 逐个求解两个点会在 Body 上留下一个力偶。第一个点的冲量改变了第二个点测到的速度，于是两点
+/// 最终分到的冲量不等，而它们的差就是绕两点共享那条轴的力矩。方块滚过一条棱时恰好是两点，
+/// 而该力偶就是无人施加的绕滚动轴的旋转。
+///
+/// The block needs both points to be movable: an impulse can only be shared out between
+/// points that can receive one.
+/// 块要求两个点都能移动：冲量只能在能接收它的点之间分配。
+fn solve_normal_block(pair: &mut ContactPair, constraint: &mut ContactConstraint, normal: Vec3) {
+   let first = constraint.points[0];
+   let second = constraint.points[1];
+   let inverse_mass_sum = pair.inverse_mass_sum();
+   // The cross-talk term: what an impulse at one point does to the other's relative
+   // velocity along the shared normal. It is the same in both directions, which is
+   // why the block is symmetric.
+   // 串扰项：一个点上的冲量对另一个点沿公共法线的相对速度做了什么。两个方向相同，因此块是对称的。
+   let block = ContactBlock {
+      first: reciprocal_or_zero(first.normal_mass),
+      coupling: inverse_mass_sum
+         + second.angular_response[0][NORMAL_AXIS].dot(first.anchor_a.cross(normal))
+         + second.angular_response[1][NORMAL_AXIS].dot(first.anchor_b.cross(normal)),
+      second: reciprocal_or_zero(second.normal_mass),
+   };
+   let velocity = (
+      pair.relative_velocity(first.anchor_a, first.anchor_b, normal) - first.bias,
+      pair.relative_velocity(second.anchor_a, second.anchor_b, normal) - second.bias,
+   );
+   let previous = (first.normal_impulse, second.normal_impulse);
+   let Some((next_first, next_second)) = block.solve(previous, velocity) else {
+      solve_normals_individually(pair, &mut constraint.points[..2], normal);
+      return;
+   };
+   constraint.points[0].normal_impulse = next_first;
+   constraint.points[1].normal_impulse = next_second;
+   pair.apply_impulse(&first, NORMAL_AXIS, normal, next_first - previous.0);
+   pair.apply_impulse(&second, NORMAL_AXIS, normal, next_second - previous.1);
+}
+
+/// The 2×2 effective mass of a two-point manifold's normal constraints.
+/// 两点流形法向约束的 2×2 有效质量。
+///
+/// The two points of a manifold are not independent: an impulse at one moves the
+/// other's relative velocity, and `coupling` is that cross-talk. Solving the diagonal
+/// alone is what leaves the pair with unequal impulses — and unequal impulses at two
+/// points apart along an axis are a torque about it.
+/// 一个流形的两点并不独立：一个点上的冲量会改变另一个点的相对速度，而 `coupling` 正是这种
+/// 串扰。只解对角项，正是使两点冲量不等的原因——而沿某条轴分开的两点冲量不等，就是绕那条轴
+/// 的力矩。
+#[derive(Clone, Copy, Debug)]
+struct ContactBlock {
+   /// `K[0][0]`.
+   first: f32,
+   /// `K[0][1]`, equal to `K[1][0]`.
+   coupling: f32,
+   /// `K[1][1]`.
+   second: f32,
+}
+
+impl ContactBlock {
+   /// The impulse pair the block settles on, or `None` when it cannot be inverted.
+   ///
+   /// `previous` is the pair already applied and `velocity` the relative velocities
+   /// it left behind; the result is the pair the two points should have accumulated.
+   /// It is clamped the way a contact is: a point may push but never pull, so a point
+   /// the block would have to pull leaves the block, and the other is re-solved against
+   /// it at zero.
+   /// 返回该块最终落定的冲量对；矩阵不可逆时返回 `None`。`previous` 是已施加的冲量对，
+   /// `velocity` 是它留下的相对速度；结果是两点应当累计到的冲量。结果按接触的规则截断：点只能
+   /// 推、永不拉，因此块需要某个点去拉时，该点离开块，另一个点对着零重新求解。
+   fn solve(self, previous: (f32, f32), velocity: (f32, f32)) -> Option<(f32, f32)> {
+      let determinant = self.first * self.second - self.coupling * self.coupling;
+      let threshold = self.first * self.second * BLOCK_SINGULAR_RATIO;
+      // `<=` is false for a NaN, so an unusable determinant is turned down by name
+      // rather than by the comparison.
+      // `<=` 对 NaN 为假，因此无法使用的行列式要显式拒绝，而不能靠比较。
+      if determinant <= threshold || determinant.is_nan() {
+         return None;
+      }
+      let (previous_first, previous_second) = previous;
+      let (velocity_first, velocity_second) = velocity;
+      // The impulse that would hold both points exactly at their bias, before the
+      // non-negativity clamp: `x = lambda - K⁻¹ v`.
+      // 在施加非负截断之前，能把两点都恰好保持在各自偏置上的冲量：`x = lambda - K⁻¹ v`。
+      let inverse = 1.0 / determinant;
+      let mut next_first = previous_first
+         - inverse * (self.second * velocity_first - self.coupling * velocity_second);
+      let mut next_second = previous_second
+         - inverse * (self.first * velocity_second - self.coupling * velocity_first);
+      if next_first < 0.0 && next_second < 0.0 {
+         next_first = 0.0;
+         next_second = 0.0;
+      } else if next_first < 0.0 {
+         // Held at zero, the first point stops contributing, so the second one is
+         // solved against the first's remaining impulse.
+         // 第一个点被压在零上、不再出力，因此第二个点对着第一个点残留的冲量求解。
+         next_first = 0.0;
+         next_second = (previous_second
+            + (self.coupling * previous_first - velocity_second) / self.second)
+            .max(0.0);
+      } else if next_second < 0.0 {
+         next_second = 0.0;
+         next_first = (previous_first
+            + (self.coupling * previous_second - velocity_first) / self.first)
+            .max(0.0);
+      }
+      Some((next_first, next_second))
    }
 }
 
@@ -348,6 +547,21 @@ impl<'a> ContactPair<'a> {
          arm_second,
          axis,
       )
+   }
+
+   /// The two Bodies' inverse masses added up, the pair's share of a contact block.
+   ///
+   /// The term is the same at every point of a constraint, because it belongs to the
+   /// pair rather than to a point, so the block solver reads it here instead of
+   /// carrying a copy on each point.
+   /// 两个 Body 的逆质量之和，即该对在一个接触块中的那一份。该项对同一条约束的每个点都相同，
+   /// 因为它属于这对 Body 而不属于某个点，因此块求解器在这里读取它，而不必在每个点上存一份。
+   fn inverse_mass_sum(&self) -> f32 {
+      self.first.mass.inv_mass
+         + self
+            .second
+            .as_deref()
+            .map_or(0.0, |body| body.mass.inv_mass)
    }
 
    /// The relative pseudo-velocity along `axis`, measured at the contact anchors.
@@ -466,9 +680,125 @@ pub(crate) fn combine_friction(first: f32, second: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-   use super::{combine_friction, is_solvable, reciprocal_or_zero};
+   use super::{ContactBlock, combine_friction, is_solvable, reciprocal_or_zero};
    use crate::body::{Body, BodyDesc};
    use crate::shape::Shape;
+
+   /// The two relative velocities a block leaves behind after an impulse pair.
+   ///
+   /// This is `v + K * impulse`, the same arithmetic the solver performs on the
+   /// Bodies, so a test can ask whether the block actually settled the pair.
+   /// 施加一对冲量后该块留下的两个相对速度。这就是 `v + K * impulse`，与求解器作用在
+   /// Body 上的算法相同，因此测试可以问该块是否真的把这一对安顿好了。
+   fn after(block: ContactBlock, impulse: (f32, f32), velocity: (f32, f32)) -> (f32, f32) {
+      (
+         velocity.0 + block.first * impulse.0 + block.coupling * impulse.1,
+         velocity.1 + block.coupling * impulse.0 + block.second * impulse.1,
+      )
+   }
+
+   /// The block of a box resting on the edge it pivots over: unit inverse mass and
+   /// `1/12` of inertia, two points apart along the edge.
+   /// 压在它所绕的那条棱上的方块的块：逆质量为 1、惯量为 `1/12`，两点沿棱分开。
+   fn edge_block() -> ContactBlock {
+      ContactBlock {
+         first: 2.5,
+         coupling: -0.5,
+         second: 2.5,
+      }
+   }
+
+   #[test]
+   fn a_block_leaves_both_points_either_touching_or_separating() {
+      let block = edge_block();
+      for velocity in [(-1.0, -0.3), (-0.2, -1.0), (-1.0, -1.0), (-5.0, 0.0)] {
+         let impulse = block
+            .solve((0.0, 0.0), velocity)
+            .expect("a two-point edge block is invertible");
+         assert!(impulse.0 >= 0.0 && impulse.1 >= 0.0, "impulse {impulse:?}");
+         let settled = after(block, impulse, velocity);
+         assert!(
+            settled.0.abs() < 1e-5 && settled.1.abs() < 1e-5,
+            "velocity {velocity:?} settled to {settled:?}"
+         );
+      }
+   }
+
+   #[test]
+   fn points_that_are_already_separating_receive_nothing() {
+      let block = edge_block();
+      let impulse = block
+         .solve((0.0, 0.0), (1.0, 0.5))
+         .expect("a two-point edge block is invertible");
+      assert!(
+         impulse.0.abs() < 1e-9 && impulse.1.abs() < 1e-9,
+         "got {impulse:?}"
+      );
+   }
+
+   #[test]
+   fn a_point_the_block_would_pull_leaves_it_and_the_other_settles_alone() {
+      // The block wants a negative impulse at the first point — it would have to
+      // pull — so only the second one pushes, and it settles on its own.
+      // 块在第一个点上想要一个负冲量——那意味着它得去拉——因此只有第二个点出推的力，它独自
+      // 安顿下来。
+      let block = edge_block();
+      let velocity = (1.0, -1.0);
+      let impulse = block
+         .solve((0.0, 0.0), velocity)
+         .expect("a two-point edge block is invertible");
+      assert!(impulse.0.abs() < 1e-9, "the pulled point must take none");
+      assert!((impulse.1 - 0.4).abs() < 1e-5, "got {impulse:?}");
+      let settled = after(block, impulse, velocity);
+      assert!(
+         settled.0 >= 0.0,
+         "a point taking no impulse must not be pulled"
+      );
+      assert!(settled.1.abs() < 1e-5, "got {settled:?}");
+   }
+
+   #[test]
+   fn a_settled_block_asks_for_no_more_impulse() {
+      // Warm starting hands the block the impulse it settled on last step, and the
+      // velocities that impulse left behind are zero — so it must ask for nothing.
+      // A block that re-requested its old impulse would pump energy into a resting
+      // contact every iteration.
+      // Warm starting 会把上一步落定的冲量交给块，而该冲量留下的速度是零——因此它必须什么也
+      // 不再要。若块反复索要旧冲量，就会每次迭代都往静止接触里灌能量。
+      let block = edge_block();
+      let impulse = block
+         .solve((0.0, 0.0), (-1.0, -0.3))
+         .expect("a two-point edge block is invertible");
+      let settled = after(block, impulse, (-1.0, -0.3));
+      let again = block
+         .solve(impulse, settled)
+         .expect("a two-point edge block is invertible");
+      assert!(
+         (again.0 - impulse.0).abs() < 1e-5 && (again.1 - impulse.1).abs() < 1e-5,
+         "{impulse:?} then {again:?}"
+      );
+   }
+
+   #[test]
+   fn a_block_whose_points_cannot_be_told_apart_is_turned_down() {
+      // Four coplanar points are famously singular; two points that an impulse moves
+      // the same way are the same problem, and falling back to one at a time is what
+      // such a pair can have.
+      // 四个共面点是出了名的奇异；两个会被同一个冲量以同样方式推动的点是同一个问题，而回退
+      // 为逐个求解正是这样的对子能得到的东西。
+      let degenerate = ContactBlock {
+         first: 2.5,
+         coupling: 2.5,
+         second: 2.5,
+      };
+      assert!(degenerate.solve((0.0, 0.0), (-1.0, 0.0)).is_none());
+      let immovable = ContactBlock {
+         first: 0.0,
+         coupling: 0.0,
+         second: 0.0,
+      };
+      assert!(immovable.solve((0.0, 0.0), (-1.0, 0.0)).is_none());
+   }
 
    fn body(motion: fn(Shape) -> BodyDesc) -> Body {
       Body::from_desc(&motion(Shape::sphere(0.5)))

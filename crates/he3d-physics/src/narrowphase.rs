@@ -16,6 +16,51 @@ use crate::contact::{MAX_MANIFOLD_POINTS, Manifold, ManifoldPoint};
 /// 静默丢弃超出上限的部分：上界过小会丢失接触点、让 Body 下沉，而且没有任何地方会报告它。
 const MAX_POLYGON_POINTS: usize = 8;
 
+/// How many corners the polygon a clip starts from can have.
+/// 交给裁剪的多边形最多有多少个角。
+///
+/// It is a box face or a triangle, so four covers both, and the count is what keeps a
+/// clipped vertex's identity clear of the corners it was cut from.
+/// 它要么是盒的一个面，要么是三角形，因此四个足以覆盖两者；这个数目正是让被裁顶点的身份
+/// 不会与它来源的角相撞的保证。
+const POLYGON_CORNER_COUNT: u32 = 4;
+
+/// How many distinct clip planes a polygon is ever cut by.
+/// 一个多边形最多会被多少条不同的裁剪平面切割。
+///
+/// Box-versus-box cuts against the reference face's two side axes, each in both
+/// directions; box-versus-triangle cuts against the triangle's three edges. Four
+/// covers both.
+/// 盒对盒按参考面的两条侧轴各切两个方向；盒对三角形按三角形的三条棱各切一次。四个足以
+/// 覆盖两者。
+const CLIP_PLANE_COUNT: u32 = 4;
+
+/// Where a feature id records which shape supplied the polygon it was cut from.
+/// 特征 id 中记录"这个点由哪一方的多边形裁出"的那一段的起始位。
+///
+/// Two shapes both number their own corners from zero, and both sides of a box pair can
+/// be the reference. Tagging the id with the supplying shape turns a point that merely
+/// shares an index with last step's point into a miss, instead of a warm start applied
+/// to geometry that never earned it.
+/// 两个形状都从零给自己的角编号，而盒对的两个面都可能是参考面。用提供多边形的形状给 id 打
+/// 上标记，就能把"只是下标与上一步某点相同"变成一次未命中，而不是把 warm start 用到一块
+/// 从未挣得它的几何上。
+const INCIDENT_SIDE_SHIFT: u32 = 16;
+
+/// The side tag for a polygon cut from a box's face.
+/// 由盒面裁出的多边形所用的侧标记。
+const BOX_FACE_SIDE: u32 = 0;
+
+/// The side tag for a polygon cut from a triangle.
+/// 由三角形裁出的多边形所用的侧标记。
+const TRIANGLE_SIDE: u32 = 1;
+
+/// Attach the supplying shape to a feature id. See [`INCIDENT_SIDE_SHIFT`].
+/// 把提供方附加到特征 id 上。见 [`INCIDENT_SIDE_SHIFT`]。
+fn tagged(feature: u32, side: u32) -> u32 {
+   feature | (side << INCIDENT_SIDE_SHIFT)
+}
+
 /// Handicap applied to a box's edge axis when both shapes are boxes.
 ///
 /// The axis contest takes the smallest least translation, so an inflation is a
@@ -151,9 +196,15 @@ impl BoxFrame {
 
 /// A small fixed-capacity polygon used while clipping.
 /// 裁剪过程中使用的小型定容多边形。
+///
+/// Every vertex carries the identity of the geometry it came from, which is what warm
+/// starting matches a point against across steps. See [`clipped_feature`].
+/// 每个顶点都带着它所来自的那块几何的身份；warm starting 正是靠它在步与步之间匹配接触点。
+/// 见 [`clipped_feature`]。
 #[derive(Clone, Copy, Debug)]
 struct Polygon {
    points: [Vec3; MAX_POLYGON_POINTS],
+   features: [u32; MAX_POLYGON_POINTS],
    count: usize,
 }
 
@@ -161,17 +212,19 @@ impl Polygon {
    fn new(points: &[Vec3]) -> Self {
       let mut polygon = Self {
          points: [Vec3::ZERO; MAX_POLYGON_POINTS],
+         features: [0; MAX_POLYGON_POINTS],
          count: 0,
       };
-      for &point in points {
-         polygon.push(point);
+      for (index, &point) in points.iter().enumerate() {
+         polygon.push(point, u32::try_from(index).unwrap_or(0));
       }
       polygon
    }
 
-   fn push(&mut self, point: Vec3) {
+   fn push(&mut self, point: Vec3, feature: u32) {
       if self.count < MAX_POLYGON_POINTS {
          self.points[self.count] = point;
+         self.features[self.count] = feature;
          self.count += 1;
       }
    }
@@ -179,6 +232,34 @@ impl Polygon {
    fn as_slice(&self) -> &[Vec3] {
       &self.points[..self.count]
    }
+
+   /// The identity carried by the vertex at `index`.
+   /// 下标 `index` 处的顶点所携带的身份。
+   fn feature_at(&self, index: usize) -> u32 {
+      self.features[index]
+   }
+}
+
+/// The identity a clipped vertex inherits from the vertex it was cut from and the
+/// plane that cut it.
+/// 被裁出的顶点从它的来源顶点与切割它的平面继承到的身份。
+///
+/// Warm starting matches a point to its own previous step through this value, so it
+/// has to name the geometry a point came from rather than its place in this step's
+/// list. A box rolling onto its edge drops from a four-point manifold to a two-point
+/// one, and an ordinal would relabel the survivors — handing each of them the impulse
+/// a different corner had accumulated.
+/// Warm starting 靠这个值把点匹配到它自己上一步的状态，因此它必须指明点来自哪块几何，而不是
+/// 它在本步列表中的位置。滚到棱上的方块会从四点流形降到两点流形，此时序号会重新标记存活点
+/// ——把另一个角积攒的冲量塞给它们。
+///
+/// A corner of the source polygon is its own identity, so the corners stay inside
+/// `POLYGON_CORNER_COUNT`; everything above that is a crossing, named by the vertex it
+/// came from and the plane that made it.
+/// 源多边形的一个角就是它自己的身份，因此各角都落在 `POLYGON_CORNER_COUNT` 之内；再往上
+/// 都是裁出的跨越点，由它所来自的顶点与制造它的平面共同命名。
+fn clipped_feature(from: u32, plane: u32) -> u32 {
+   POLYGON_CORNER_COUNT + from * CLIP_PLANE_COUNT + plane
 }
 
 /// Clip `polygon` against the half-space `dot(normal, p) <= offset`.
@@ -190,9 +271,15 @@ impl Polygon {
 /// 对单个平面做 Sutherland-Hodgman 裁剪：保留内侧顶点，并在边跨越平面处插入新顶点。
 /// 恰好发生在端点上的跨越不会被插入，因为重复的顶点会变成重复的接触点——那会使该点的
 /// 有效质量翻倍，让静止堆叠漂移。
-fn clip_polygon(polygon: &Polygon, normal: Vec3, offset: f32) -> Polygon {
+///
+/// `plane` names the cut so that an inserted vertex can be identified next step by the
+/// geometry that produced it rather than by its position in the output.
+/// `plane` 为这条切线命名，使插入的顶点下一步能凭产生它的几何、而不是凭它在输出中的位置被
+/// 认出来。
+fn clip_polygon(polygon: &Polygon, normal: Vec3, offset: f32, plane: u32) -> Polygon {
    let mut output = Polygon {
       points: [Vec3::ZERO; MAX_POLYGON_POINTS],
+      features: [0; MAX_POLYGON_POINTS],
       count: 0,
    };
    let source = polygon.as_slice();
@@ -201,12 +288,13 @@ fn clip_polygon(polygon: &Polygon, normal: Vec3, offset: f32) -> Polygon {
    }
    for index in 0..source.len() {
       let current = source[index];
+      let current_feature = polygon.feature_at(index);
       let next = source[(index + 1) % source.len()];
       let current_distance = normal.dot(current) - offset;
       let next_distance = normal.dot(next) - offset;
       let current_inside = current_distance <= 0.0;
       if current_inside {
-         output.push(current);
+         output.push(current, current_feature);
       }
       if current_inside != (next_distance <= 0.0) {
          let span = current_distance - next_distance;
@@ -216,7 +304,10 @@ fn clip_polygon(polygon: &Polygon, normal: Vec3, offset: f32) -> Polygon {
             // being emitted on one side or the other.
             // 跳过落在端点上的跨越；那些顶点已经在某一侧被输出。
             if t > CLIP_ENDPOINT_MARGIN && t < 1.0 - CLIP_ENDPOINT_MARGIN {
-               output.push(current + (next - current) * t);
+               output.push(
+                  current + (next - current) * t,
+                  clipped_feature(current_feature, plane),
+               );
             }
          }
       }
@@ -431,29 +522,39 @@ fn face_manifold(
    let incident_sign = -sign_of(axis_of(incident.axes, incident_axis).dot(reference_normal));
    let incident_face = incident.face(incident_axis, incident_sign);
 
-   // Clip the incident face against the four side planes of the reference face.
+   // Clip the incident face against the four side planes of the reference face. Each
+   // cut is named by its side axis and direction, so a vertex it inserts can be
+   // identified next step by the geometry that made it.
+   // 用参考面的四条侧平面裁剪入射面。每条切线由它的侧轴与方向命名，使插入的顶点下一步能凭
+   // 产生它的几何被认出来。
    let mut polygon = Polygon::new(&incident_face);
    for step in 1..3 {
       let side_axis = (reference_axis + step) % 3;
       let direction = axis_of(reference.axes, side_axis);
       let extent = component(reference.half, side_axis);
       let centre_offset = direction.dot(reference.center);
+      let plane = u32::try_from((step - 1) * 2).unwrap_or(0);
       polygon = clip_polygon(
          &polygon,
          direction,
          centre_offset + extent + CLIP_PLANE_MARGIN,
+         plane,
       );
       polygon = clip_polygon(
          &polygon,
          -direction,
          -centre_offset + extent + CLIP_PLANE_MARGIN,
+         plane + 1,
       );
    }
 
    let plane_offset = reference_normal.dot(reference_face[0]);
    let mut collected = [ManifoldPoint::default(); MAX_MANIFOLD_POINTS];
    let mut count = 0;
-   for &point in polygon.as_slice() {
+   for (&point, &feature) in polygon.points[..polygon.count]
+      .iter()
+      .zip(&polygon.features[..polygon.count])
+   {
       let separation = reference_normal.dot(point) - plane_offset;
       if separation > CONTACT_TOLERANCE || count >= MAX_MANIFOLD_POINTS {
          continue;
@@ -469,17 +570,19 @@ fn face_manifold(
       collected[count] = ManifoldPoint {
          position: point,
          depth: (-separation).max(0.0),
-         feature: 0,
+         feature: tagged(feature, u32::from(flip)),
       };
       count += 1;
    }
 
-   // Number the points by position rather than by clipping order. Which box
-   // supplies the reference face flips with numerical noise between steps, and
-   // clipping order flips with it — a positional order does not, so warm starting
-   // keeps its impulses across the flip.
-   // 按位置而非裁剪顺序给点编号。哪一方提供参考面会随数值噪声在步间翻转，裁剪顺序也随之
-   // 翻转——位置顺序不会，因此 warm starting 能在翻转中保住自己的冲量。
+   // The points are ordered by position, but that order is only the solver's sweep
+   // order: identity comes from `feature`, which the clipping already attached. Which
+   // box supplies the reference face flips with numerical noise between steps and
+   // clipping order flips with it, so a positional order is the one stable thing to
+   // sweep in.
+   // 各点按位置排序，但这个顺序只是求解器的扫描顺序：身份来自裁剪时已经附上的 `feature`。
+   // 哪一方提供参考面会随数值噪声在步间翻转，裁剪顺序也随之翻转，因此按位置排序是唯一稳定
+   // 的扫描顺序。
    collected[..count].sort_unstable_by(|left, right| {
       left
          .position
@@ -497,8 +600,7 @@ fn face_manifold(
       },
       ..Manifold::empty()
    };
-   for (index, mut point) in collected[..count].iter().copied().enumerate() {
-      point.feature = u32::try_from(index).unwrap_or(0);
+   for point in collected[..count].iter().copied() {
       manifold.push(point);
    }
    manifold
@@ -964,10 +1066,16 @@ fn triangle_edge_planes(triangle: &[Vec3; 3], normal: Vec3) -> [(Vec3, f32); 3] 
    planes
 }
 
-/// Collect kept points into a manifold, welding duplicates and numbering the
-/// survivors by position so warm-start identity survives a change of reference.
-/// 把保留的点收集成流形，焊接重复点，并按位置给存活点编号，使 warm-start 身份在参考面
+/// Collect kept points into a manifold, welding duplicates and ordering the
+/// survivors by position so the solver's sweep order survives a change of reference.
+/// 把保留的点收集成流形，焊接重复点，并按位置给存活点排序，使求解器的扫描顺序在参考面
 /// 改变时仍然保持。
+///
+/// The order is the sweep order and nothing else: each point keeps the `feature` it was
+/// given when it was produced, so warm-start identity names the geometry rather than a
+/// place in this step's list.
+/// 这个顺序只是扫描顺序，别无其他：每个点保留它被产生时得到的 `feature`，因此 warm-start
+/// 身份命名的是几何，而不是它在本步列表中的位置。
 fn manifold_from(
    mut points: [ManifoldPoint; MAX_MANIFOLD_POINTS],
    count: usize,
@@ -986,7 +1094,7 @@ fn manifold_from(
       normal,
       ..Manifold::empty()
    };
-   for mut point in live.iter().copied() {
+   for point in live.iter().copied() {
       let duplicate = manifold.points[..manifold.count].iter().any(|existing| {
          (existing.position - point.position).length_squared()
             < VERTEX_WELD_DISTANCE * VERTEX_WELD_DISTANCE
@@ -994,7 +1102,6 @@ fn manifold_from(
       if duplicate {
          continue;
       }
-      point.feature = u32::try_from(manifold.count).unwrap_or(0);
       manifold.push(point);
    }
    manifold
@@ -1032,16 +1139,23 @@ fn triangle_face_manifold(
    let face = box_frame.face(face_axis, face_sign);
 
    let mut polygon = Polygon::new(&face);
-   for (plane_normal, offset) in triangle_edge_planes(triangle, triangle_normal) {
+   for (index, (plane_normal, offset)) in triangle_edge_planes(triangle, triangle_normal)
+      .into_iter()
+      .enumerate()
+   {
       if plane_normal.length_squared() > 0.0 {
-         polygon = clip_polygon(&polygon, plane_normal, offset);
+         let plane = u32::try_from(index).unwrap_or(0);
+         polygon = clip_polygon(&polygon, plane_normal, offset, plane);
       }
    }
 
    let plane_offset = up.dot(triangle[0]);
    let mut collected = [ManifoldPoint::default(); MAX_MANIFOLD_POINTS];
    let mut count = 0;
-   for &point in polygon.as_slice() {
+   for (&point, &feature) in polygon.points[..polygon.count]
+      .iter()
+      .zip(&polygon.features[..polygon.count])
+   {
       let separation = up.dot(point) - plane_offset;
       if separation > CONTACT_TOLERANCE || count >= MAX_MANIFOLD_POINTS {
          continue;
@@ -1049,7 +1163,7 @@ fn triangle_face_manifold(
       collected[count] = ManifoldPoint {
          position: point,
          depth: (-separation).max(0.0),
-         feature: 0,
+         feature: tagged(feature, BOX_FACE_SIDE),
       };
       count += 1;
    }
@@ -1071,22 +1185,28 @@ fn box_face_manifold(box_frame: &BoxFrame, triangle: &[Vec3; 3], face_axis: usiz
       let direction = box_frame.axes[side_axis];
       let extent = component(box_frame.half, side_axis);
       let centre_offset = direction.dot(box_frame.center);
+      let plane = u32::try_from((step - 1) * 2).unwrap_or(0);
       polygon = clip_polygon(
          &polygon,
          direction,
          centre_offset + extent + CLIP_PLANE_MARGIN,
+         plane,
       );
       polygon = clip_polygon(
          &polygon,
          -direction,
          -centre_offset + extent + CLIP_PLANE_MARGIN,
+         plane + 1,
       );
    }
 
    let plane_offset = reference_normal.dot(reference_face[0]);
    let mut collected = [ManifoldPoint::default(); MAX_MANIFOLD_POINTS];
    let mut count = 0;
-   for &point in polygon.as_slice() {
+   for (&point, &feature) in polygon.points[..polygon.count]
+      .iter()
+      .zip(&polygon.features[..polygon.count])
+   {
       let separation = reference_normal.dot(point) - plane_offset;
       if separation > CONTACT_TOLERANCE || count >= MAX_MANIFOLD_POINTS {
          continue;
@@ -1094,7 +1214,7 @@ fn box_face_manifold(box_frame: &BoxFrame, triangle: &[Vec3; 3], face_axis: usiz
       collected[count] = ManifoldPoint {
          position: point,
          depth: (-separation).max(0.0),
-         feature: 0,
+         feature: tagged(feature, TRIANGLE_SIDE),
       };
       count += 1;
    }
@@ -1253,8 +1373,9 @@ fn closest_point_on_triangle(point: Vec3, first: Vec3, second: Vec3, third: Vec3
 
 #[cfg(test)]
 mod tests {
-   use super::{BoxFrame, collide};
+   use super::{BoxFrame, CLIP_PLANE_COUNT, POLYGON_CORNER_COUNT, clipped_feature, collide};
    use crate::shape::Shape;
+   use he3d_math::scalar::{cos, sin};
    use he3d_math::{Quat, Vec3};
 
    fn boxed(half: Vec3) -> Shape {
@@ -1494,6 +1615,119 @@ mod tests {
       let top = frame.face(1, 1.0);
       for corner in top {
          assert!((corner.y - 1.0).abs() < 1e-6);
+      }
+   }
+
+   #[test]
+   fn a_cut_vertex_is_named_by_the_geometry_that_made_it() {
+      // Warm starting matches a point to its own previous step by this value, so two
+      // vertices of one manifold must never share it. The corners of the source
+      // polygon take the low values, and every crossing above them is named by the
+      // vertex it was cut from and the plane that cut it.
+      // Warm starting 靠这个值把点匹配到它自己上一步的状态，因此同一流形的两个顶点绝不能共用
+      // 它。源多边形的各角占用低位的值，其上的每个跨越点由它的来源顶点与切割它的平面命名。
+      let mut seen = [false; 64];
+      for corner in 0..POLYGON_CORNER_COUNT {
+         seen[corner as usize] = true;
+      }
+      for from in 0..4 {
+         for plane in 0..CLIP_PLANE_COUNT {
+            let feature = clipped_feature(from, plane);
+            assert!(
+               feature >= POLYGON_CORNER_COUNT,
+               "a crossing must not take a corner's name: {feature}"
+            );
+            let feature = feature as usize;
+            assert!(
+               feature < seen.len() && !seen[feature],
+               "feature {feature} from vertex {from} and plane {plane} collides"
+            );
+            seen[feature] = true;
+         }
+      }
+   }
+
+   /// A cube tilted `angle` about z and pressed `penetration` into a slab.
+   ///
+   /// A tilt spreads the cube's bottom corners apart in height by `sin(angle)`, so
+   /// the four corners only all reach the slab while that spread stays inside the
+   /// contact tolerance. The height is measured from whichever corner is lowest,
+   /// which is at -x for one sign of the tilt and at +x for the other.
+   /// 一个绕 z 轴倾斜 `angle`、压入板中 `penetration` 的方块。倾斜使方块底面的各个角在高度上
+   /// 拉开 `sin(angle)`，因此只有当这一差值仍在接触容差之内时，四个角才都能碰到板面。高度从
+   /// 最低的那个角量起，而该角在一个倾斜方向上位于 -x，在另一个方向上位于 +x。
+   fn tilted_cube_on_slab(angle: f32, penetration: f32) -> crate::contact::Manifold {
+      let slab_top = 0.5;
+      let center = slab_top + 0.5 * cos(angle) + 0.5 * sin(angle).abs() - penetration;
+      collide(
+         boxed(Vec3::new(5.0, 0.5, 5.0)),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+         boxed(Vec3::splat(0.5)),
+         Vec3::new(0.0, center, 0.0),
+         Quat::from_rotation_z(angle),
+      )
+      .expect("the cube is pressed into the slab")
+   }
+
+   /// How far apart two points are, ignoring height.
+   ///
+   /// Tilting the cube about z slides its corners sideways as well, so matching a
+   /// point across two tilts compares where the corner is on the slab, not how deep
+   /// it is pressed in.
+   /// 两点相距多远，忽略高度。让方块绕 z 轴倾斜也会把各个角横向挪动，因此在两个倾角之间匹配
+   /// 一个点，比较的是该角在板面上的位置，而不是它压进去的深度。
+   fn sideways(
+      first: &crate::contact::ManifoldPoint,
+      second: &crate::contact::ManifoldPoint,
+   ) -> f32 {
+      ((first.position.x - second.position.x).powi(2)
+         + (first.position.z - second.position.z).powi(2))
+      .sqrt()
+   }
+
+   #[test]
+   fn a_contact_corner_keeps_its_identity_when_the_manifold_shrinks() {
+      // A cube rolled onto its edge takes its contact from four points down to two,
+      // and the two survivors must keep the features they had while all four were
+      // still down. Naming a point by where it sorts in the list instead hands each
+      // survivor the impulse a different corner had accumulated, which is a warm
+      // start applied half a metre from where it belongs.
+      // 滚到棱上的方块，接触会从四个点减到两个，而两个存活点必须保住四点在时的 feature。若改用
+      // 点在列表中的排序来命名，就会把另一个角积攒的冲量塞给每个存活点——那是一记落在半米之外
+      // 的 warm start。
+      //
+      // Both directions are walked, because they shrink the manifold from opposite
+      // ends of the positional order and only one of them used to renumber.
+      // 两个方向都走一遍，因为它们从位置顺序的两端缩减流形，而其中只有一个方向以前会重新编号。
+      for tilt in [0.002_f32, -0.002] {
+         let flat = tilted_cube_on_slab(tilt, 0.005);
+         let edged = tilted_cube_on_slab(tilt * 10.0, 0.005);
+         assert_eq!(
+            flat.count, 4,
+            "tilt {tilt}: a flat tilt puts four corners down"
+         );
+         assert_eq!(
+            edged.count, 2,
+            "tilt {tilt}: an edge tilt puts two corners down"
+         );
+
+         for point in &edged.points[..edged.count] {
+            let counterpart = flat.points[..flat.count]
+               .iter()
+               .min_by(|left, right| sideways(left, point).total_cmp(&sideways(right, point)))
+               .expect("the flat manifold has points");
+            assert!(
+               sideways(counterpart, point) < 0.1,
+               "the edged point at {:?} has no counterpart on the flat face",
+               point.position
+            );
+            assert_eq!(
+               counterpart.feature, point.feature,
+               "the corner at {:?} was renamed as the manifold shrank",
+               point.position
+            );
+         }
       }
    }
 }
