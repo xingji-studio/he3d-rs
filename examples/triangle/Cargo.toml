@@ -5,6 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 description = "Triangle example: a rotating triangle in an SDL3 window"
+# A demo is run from this repository rather than consumed as a crate.
+# It names an SDL3 backend, so publishing one would make SDL3 a build requirement for whoever resolved it.
+# 演示是在本仓库里运行的，而不是供他人作为 crate 使用。
+# 它指定了 SDL3 后端，因此发布它会让任何解析到它的人多出一条 SDL3 构建要求。
+publish = false
 
 [[bin]]
 name = "triangle"

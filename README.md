@@ -100,6 +100,9 @@ Crates are published in dependency order (`he3d-math` → `he3d-core` →
 `he3d-platform-sdl3` → `he3d-physics` → `he3d`). See `cargo package --list` before
 each release.
 
+`he3d-bench` and the four `examples/` demos are `publish = false`, so
+`cargo publish --workspace` skips them.
+
 ## Attributions
 
 The biplane model (`biplane.obj`) used by the examples is taken from

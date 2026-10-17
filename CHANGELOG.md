@@ -4,6 +4,12 @@ All notable changes to the HE3D workspace crates are documented here.
 
 ## [Unreleased]
 
+### Changed
+- The four `examples/` demos are `publish = false`, like `he3d-bench`. They exist to be
+  run from this repository, and each names an SDL3 backend, so publishing one would make
+  SDL3 a build requirement for anyone who merely resolved it. `cargo publish --workspace`
+  now skips them instead of sweeping them in.
+
 ## [0.4.0] - 2026-10-17
 
 ### Breaking
