@@ -1,8 +1,6 @@
 //! Asset-decoding benchmarks.
 //!
-//! Two arms: the real fixtures the engine ships and examples load (`biplane.obj`,
-//! `biplane.bmp`), which catch regressions against real data, and a synthetic OBJ
-//! whose triangle count can be scaled, which shows how decode cost grows.
+//! Two arms: the real fixtures the engine ships and examples load (`biplane.obj`, `biplane.bmp`), which catch regressions against real data, and a synthetic OBJ whose triangle count can be scaled, which shows how decode cost grows.
 
 #![allow(clippy::pedantic)]
 

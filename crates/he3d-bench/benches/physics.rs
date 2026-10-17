@@ -4,16 +4,11 @@
 //!
 //! Two things make a naive `b.iter(|| world.step(dt))` lie about an active scene:
 //!
-//! * the first step of a freshly built scene has no contacts yet, and contact count
-//!   climbs for several steps as Bodies settle into each other, so a step taken at
-//!   step 0 is far cheaper than one taken in the developed, fully-awake state; and
-//! * criterion repeats the closure against the *same* value, so a long run drifts
-//!   toward sleep and reports a mix of awake and resting steps.
+//! * the first step of a freshly built scene has no contacts yet, and contact count climbs for several steps as Bodies settle into each other, so a step taken at step 0 is far cheaper than one taken in the developed, fully-awake state; and
+//! * criterion repeats the closure against the *same* value, so a long run drifts toward sleep and reports a mix of awake and resting steps.
 //!
-//! [`bench_active`] sidesteps both with `iter_batched`: setup builds the scene and
-//! takes `warmup` untimed steps to bring it into the developed state, and only the
-//! single step after that is timed. The number is therefore "the cost of one step,
-//! taken while the scene is fully awake", reproduced from scratch every iteration.
+//! [`bench_active`] sidesteps both with `iter_batched`: setup builds the scene and takes `warmup` untimed steps to bring it into the developed state, and only the single step after that is timed.
+//! The number is therefore "the cost of one step, taken while the scene is fully awake", reproduced from scratch every iteration.
 
 #![allow(clippy::pedantic)]
 
@@ -67,8 +62,8 @@ fn physics(c: &mut Criterion) {
       });
    }
 
-   // Resting: a single layer settled and asleep. Repeated steps are stable here,
-   // so a plain `iter` is honest.
+   // Resting: a single layer settled and asleep.
+   // Repeated steps are stable here, so a plain `iter` is honest.
    let mut resting = workloads::world_settled_asleep(2000);
    c.bench_function("step/settled_asleep/2000", |b| {
       b.iter(|| black_box(&mut resting).step(STEP));
@@ -112,8 +107,7 @@ fn physics(c: &mut Criterion) {
    });
 }
 
-// 30 samples: enough for a stable median, few enough that the heavy lattice setups
-// do not make the suite take all afternoon.
+// 30 samples: enough for a stable median, few enough that the heavy lattice setups do not make the suite take all afternoon.
 criterion_group! {
    name = physics_group;
    config = Criterion::default().sample_size(30);

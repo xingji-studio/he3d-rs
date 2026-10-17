@@ -8,18 +8,15 @@ use crate::{AntiAliasing, MAX_SSAA_SCALE, RendererConfig};
 
 /// Hard cap on framebuffer pixels: 4096 x 4096.
 ///
-/// The operative limit is memory, not representation: colour and `f32` depth are
-/// four bytes per pixel each, so this is 64 MiB + 64 MiB — and 512 MiB once 4x MSAA
-/// multiplies the colour side. Beyond that it stops being a software rasterizer
-/// anyone can reasonably run. Staying far inside a `u32` for byte offsets is a
-/// consequence, not the reason.
-/// 真正的约束是内存而非表示范围：颜色与 `f32` 深度各占每像素四字节，因此这里是
-/// 64 MiB + 64 MiB——而在 4x MSAA 把颜色侧放大之后是 512 MiB。超过这个量级，它就不再是
-/// 任何人能合理运行的软件光栅化器了。字节偏移远在 `u32` 之内是结果，不是理由。
+/// The operative limit is memory, not representation: colour and `f32` depth are four bytes per pixel each, so this is 64 MiB + 64 MiB — and 512 MiB once 4x MSAA multiplies the colour side.
+/// Beyond that it stops being a software rasterizer anyone can reasonably run.
+/// Staying far inside a `u32` for byte offsets is a consequence, not the reason.
+/// 真正的约束是内存而非表示范围：颜色与 `f32` 深度各占每像素四字节，因此这里是 64 MiB + 64 MiB——而在 4x MSAA 把颜色侧放大之后是 512 MiB。
+/// 超过这个量级，它就不再是任何人能合理运行的软件光栅化器了。
+/// 字节偏移远在 `u32` 之内是结果，不是理由。
 const MAX_FRAMEBUFFER_PIXELS: u64 = 16_777_216;
 
-/// 4x MSAA sample offsets inside a pixel: the centres of the four sub-pixels of a
-/// 2x2 grid, which is the cheapest arrangement that still samples every quadrant.
+/// 4x MSAA sample offsets inside a pixel: the centres of the four sub-pixels of a 2x2 grid, which is the cheapest arrangement that still samples every quadrant.
 /// 像素内的 4x MSAA 样本偏移：2x2 网格中四个子像素的中心，这是仍能覆盖每个象限的最省排布。
 const MSAA_SAMPLE_OFFSETS: [[f32; 2]; 4] = [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
 
@@ -36,16 +33,13 @@ enum PresentSource {
 /// The software rasterizer.
 /// 软件光栅化器。
 ///
-/// Owns the color buffer and the inverse-depth buffer. Renders the whole scene on every [`Renderer::render`] call and hands the result back through [`Renderer::pixels`].
-/// 拥有颜色缓冲与逆深度缓冲。每次调用 [`Renderer::render`] 都会渲染整个场景，并通过 [`Renderer::pixels`] 交回结果。
+/// Owns the color buffer and the inverse-depth buffer.
+/// Renders the whole scene on every [`Renderer::render`] call and hands the result back through [`Renderer::pixels`].
+/// 拥有颜色缓冲与逆深度缓冲。
+/// 每次调用 [`Renderer::render`] 都会渲染整个场景，并通过 [`Renderer::pixels`] 交回结果。
 ///
-/// Anti-aliasing runs at the end of each frame, and the order is forced by what
-/// each stage consumes: MSAA resolves per-sample colour first, the screen-space
-/// passes (FXAA, then TAA) work on whole pixels, and SSAA's resolution change has
-/// to come last or the passes after it would run at the wrong scale.
-/// 抗锯齿在每帧末尾执行，其顺序由各阶段消费什么决定：MSAA 先解析逐样本颜色；屏幕空间
-/// 阶段（FXAA，随后 TAA）以整像素为输入；SSAA 的分辨率变化必须放在最后，否则其后的阶段
-/// 会在错误的尺度上运行。
+/// Anti-aliasing runs at the end of each frame, and the order is forced by what each stage consumes: MSAA resolves per-sample colour first, the screen-space passes (FXAA, then TAA) work on whole pixels, and SSAA's resolution change has to come last or the passes after it would run at the wrong scale.
+/// 抗锯齿在每帧末尾执行，其顺序由各阶段消费什么决定：MSAA 先解析逐样本颜色；屏幕空间阶段（FXAA，随后 TAA）以整像素为输入；SSAA 的分辨率变化必须放在最后，否则其后的阶段会在错误的尺度上运行。
 pub struct Renderer {
    /// Internal render width in pixels; equals the output width unless SSAA scales it up.
    /// 内部渲染宽度（像素）；除非 SSAA 放大，否则等于输出宽度。
@@ -100,10 +94,8 @@ impl Renderer {
    /// Allocate a framebuffer, validating size and budget.
    /// 分配帧缓冲，校验尺寸与预算。
    ///
-   /// With SSAA the internal render buffer is `scale`× the output resolution,
-   /// still capped by `MAX_FRAMEBUFFER_PIXELS`.
-   /// 使用 SSAA 时，内部渲染缓冲是输出分辨率的 `scale` 倍，仍受
-   /// `MAX_FRAMEBUFFER_PIXELS` 上限约束。
+   /// With SSAA the internal render buffer is `scale`× the output resolution, still capped by `MAX_FRAMEBUFFER_PIXELS`.
+   /// 使用 SSAA 时，内部渲染缓冲是输出分辨率的 `scale` 倍，仍受 `MAX_FRAMEBUFFER_PIXELS` 上限约束。
    ///
    /// # Examples
    /// 示例
@@ -119,13 +111,11 @@ impl Renderer {
    ///
    /// # Errors
    /// 尺寸为 0、超过 `MAX_FRAMEBUFFER_PIXELS` 预算，或尺寸乘积溢出时返回相应错误。
-   /// Returns an error when a dimension is zero, when the pixel budget
-   /// exceeds `MAX_FRAMEBUFFER_PIXELS`, or when the product overflows.
+   /// Returns an error when a dimension is zero, when the pixel budget exceeds `MAX_FRAMEBUFFER_PIXELS`, or when the product overflows.
    ///
    /// # Panics
    /// 内建 2×2 回退棋盘纹理构造失败时 panic（静态上不可能发生）。
-   /// Panics only if the built-in 2×2 fallback texture cannot be constructed,
-   /// which is statically impossible.
+   /// Panics only if the built-in 2×2 fallback texture cannot be constructed, which is statically impossible.
    pub fn new(config: RendererConfig) -> Result<Self, Error> {
       if config.width == 0 || config.height == 0 {
          return Err(Error::InvalidSize);
@@ -172,8 +162,7 @@ impl Renderer {
       })
    }
 
-   /// Presented framebuffer width in pixels (the output size, down from the
-   /// internal render size when SSAA is active).
+   /// Presented framebuffer width in pixels (the output size, down from the internal render size when SSAA is active).
    /// 已提交帧缓冲宽度（像素）——SSAA 生效时由内部渲染尺寸降为输出尺寸。
    #[must_use]
    #[expect(clippy::misnamed_getters)]
@@ -181,8 +170,7 @@ impl Renderer {
       self.presented_width
    }
 
-   /// Presented framebuffer height in pixels (the output size, down from the
-   /// internal render size when SSAA is active).
+   /// Presented framebuffer height in pixels (the output size, down from the internal render size when SSAA is active).
    /// 已提交帧缓冲高度（像素）——SSAA 生效时由内部渲染尺寸降为输出尺寸。
    #[must_use]
    #[expect(clippy::misnamed_getters)]
@@ -207,8 +195,7 @@ impl Renderer {
    ///
    /// # Errors
    /// `camera.near` 或 `camera.fov_y_degrees` 不是有限正数时返回 [`Error::InvalidSize`]。
-   /// Returns [`Error::InvalidSize`] when `camera.near` or `camera.fov_y_degrees`
-   /// is not a positive finite number.
+   /// Returns [`Error::InvalidSize`] when `camera.near` or `camera.fov_y_degrees` is not a positive finite number.
    pub fn render(&mut self, scene: &Scene, camera: &Camera, clear_color: Rgb) -> Result<(), Error> {
       if !camera.near.is_finite() || camera.near <= 0.0 {
          return Err(Error::InvalidSize);
@@ -226,8 +213,7 @@ impl Renderer {
 
       let jitter = self.current_taa_jitter();
 
-      // Clone the tiny 2×2 fallback once per frame (not per object) so objects
-      // without a texture can borrow it without aliasing `self`.
+      // Clone the tiny 2×2 fallback once per frame (not per object) so objects without a texture can borrow it without aliasing `self`.
       // 每帧只克隆一次 2×2 回退贴图（而非每个对象一次），使无纹理对象能借用它而不与 `self` 冲突。
       let missing = self.missing_texture.clone();
       for (_, object) in scene.objects.iter() {
@@ -334,8 +320,7 @@ impl Renderer {
       }
    }
 
-   /// Lazily allocate the 4× per-sample buffers, seeded from the color/depth
-   /// buffers so a frame never shows garbage when MSAA turns on mid-scene.
+   /// Lazily allocate the 4× per-sample buffers, seeded from the color/depth buffers so a frame never shows garbage when MSAA turns on mid-scene.
    /// 懒分配 4× 逐样本缓冲，并以颜色/深度缓冲播种，使 MSAA 中途开启时也不会出现垃圾。
    fn ensure_msaa_buffers(&mut self) -> bool {
       if self.width == 0 || self.height == 0 {
@@ -368,8 +353,7 @@ impl Renderer {
       true
    }
 
-   /// Average the four per-sample colors into `color_buf` and keep the deepest
-   /// sample per pixel in `depth_buf`.
+   /// Average the four per-sample colors into `color_buf` and keep the deepest sample per pixel in `depth_buf`.
    /// 将四个逐样本颜色平均写入 `color_buf`，并在 `depth_buf` 中保留每像素最深的样本。
    fn resolve_msaa(&mut self) {
       if self.msaa_color_buf.is_empty() || self.msaa_depth_buf.is_empty() {
@@ -383,10 +367,8 @@ impl Renderer {
       );
    }
 
-   // Framebuffer dimensions are bounded by MAX_FRAMEBUFFER_PIXELS, so the
-   // u32→f32 conversions in this function cannot meaningfully lose precision.
-   // 帧缓冲尺寸受 MAX_FRAMEBUFFER_PIXELS 约束，因此本函数中的 u32→f32
-   // 转换不会产生有意义的精度损失。
+   // Framebuffer dimensions are bounded by MAX_FRAMEBUFFER_PIXELS, so the u32→f32 conversions in this function cannot meaningfully lose precision.
+   // 帧缓冲尺寸受 MAX_FRAMEBUFFER_PIXELS 约束，因此本函数中的 u32→f32 转换不会产生有意义的精度损失。
    #[expect(clippy::cast_precision_loss)]
    fn draw_mesh(
       &mut self,
@@ -401,13 +383,10 @@ impl Renderer {
       let scale = object.transform.scale;
       let tint = object.material.tint;
 
-      // Fold the object rotation and the world→view rotation into one quaternion,
-      // and the translation into one vector, so each vertex costs a single rotation
-      // instead of two. Rotations are norm-preserving, so shading can equally be
-      // done in view space with the light direction rotated once here.
-      // 把物体旋转与世界→视图旋转合成同一个四元数，并把平移合成同一个向量，使每个顶点
-      // 只需一次旋转而非两次。旋转保持长度，因此着色同样可以在视图空间完成——只需在此
-      // 把光照方向旋转一次。
+      // Fold the object rotation and the world→view rotation into one quaternion, and the translation into one vector, so each vertex costs a single rotation instead of two.
+      // Rotations are norm-preserving, so shading can equally be done in view space with the light direction rotated once here.
+      // 把物体旋转与世界→视图旋转合成同一个四元数，并把平移合成同一个向量，使每个顶点只需一次旋转而非两次。
+      // 旋转保持长度，因此着色同样可以在视图空间完成——只需在此把光照方向旋转一次。
       let view_rot = cam_inv_rot * object.transform.orientation;
       let view_trans = cam_inv_rot * (object.transform.position - camera.position);
       let light_dir = cam_inv_rot * light.direction;
@@ -452,8 +431,7 @@ impl Renderer {
                uv: uvs[tri_index * 3 + 2],
             },
          ];
-         // Clip into a fixed stack buffer: a clipped triangle has at most four
-         // vertices, so this avoids a heap allocation per triangle.
+         // Clip into a fixed stack buffer: a clipped triangle has at most four vertices, so this avoids a heap allocation per triangle.
          // 裁剪写入固定大小的栈缓冲：三角形被裁剪后至多四个顶点，因此避免了逐三角形的堆分配。
          let mut clipped = [ClipVertex {
             view: Vec3::ZERO,
@@ -469,8 +447,12 @@ impl Renderer {
             tri_index += 1;
             continue;
          };
-         // For a T·R·S transform, the correct normal transform is the inverse-transpose of (R·S), which reduces to R·S⁻¹. Uniform scale (`S = I`) collapses to the plain rotation. Shading is done in view space, where `view_rot` and `light_dir` share the camera rotation, so their dot product equals the world-space one.
-         // 对于 T·R·S 变换，正确的法线变换是 (R·S) 的逆转置，化简后为 R·S⁻¹。均匀缩放（`S = I`）时退化为纯旋转。着色在视图空间完成，其中 `view_rot` 与 `light_dir` 共享相机旋转，因此它们的点积与世界空间一致。
+         // For a T·R·S transform, the correct normal transform is the inverse-transpose of (R·S), which reduces to R·S⁻¹.
+         // Uniform scale (`S = I`) collapses to the plain rotation.
+         // Shading is done in view space, where `view_rot` and `light_dir` share the camera rotation, so their dot product equals the world-space one.
+         // 对于 T·R·S 变换，正确的法线变换是 (R·S) 的逆转置，化简后为 R·S⁻¹。
+         // 均匀缩放（`S = I`）时退化为纯旋转。
+         // 着色在视图空间完成，其中 `view_rot` 与 `light_dir` 共享相机旋转，因此它们的点积与世界空间一致。
          let inv_scale = scale.recip();
          let n_view = view_rot * (local_normal * inv_scale).normalize_or_zero();
          let diffuse = n_view.dot(light_dir).max(0.0);
@@ -492,11 +474,8 @@ impl Renderer {
       }
    }
 
-   // The casts below are deliberate rasterizer math: screen coordinates are
-   // bounded by the framebuffer size, fixed-point lighting works in integers, and
-   // the x/y-paired names are idiomatic here.
-   // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照在整数上
-   // 运算，x/y 成对命名在此处是惯用法。
+   // The casts below are deliberate rasterizer math: screen coordinates are bounded by the framebuffer size, fixed-point lighting works in integers, and the x/y-paired names are idiomatic here.
+   // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照在整数上运算，x/y 成对命名在此处是惯用法。
    #[expect(
       clippy::cast_possible_truncation,
       clippy::cast_precision_loss,
@@ -549,19 +528,16 @@ impl Renderer {
       let duz_dx = dw0 * uz0.x + dw1 * uz1.x + dw2 * uz2.x;
       let dvz_dx = dw0 * uz0.y + dw1 * uz1.y + dw2 * uz2.y;
 
-      // Fixed-point light intensity: 8 fractional bits, so the per-texel shade is
-      // one integer multiply and shift instead of three float multiplies.
+      // Fixed-point light intensity: 8 fractional bits, so the per-texel shade is one integer multiply and shift instead of three float multiplies.
       // 定点光照强度：8 位小数，因此逐纹素着色只需一次整数乘法与移位，而不是三次浮点乘法。
       let lr = ((light.r * 256.0) as i32).clamp(0, 512);
       let lg = ((light.g * 256.0) as i32).clamp(0, 512);
       let lb = ((light.b * 256.0) as i32).clamp(0, 512);
 
-      // A 1x1 texture is constant, so its shaded colour is a per-triangle
-      // constant. Hoisting it keeps the constant-texture case out of the
-      // per-pixel loop, where the branch would otherwise be paid on every
-      // fragment of every ordinary texture.
-      // 1x1 纹理恒定，其着色后颜色也是逐三角形常量。把它提到循环外，避免普通纹理的
-      // 每个片元都支付这一分支。
+      // A 1x1 texture is constant, so its shaded colour is a per-triangle constant.
+      // Hoisting it keeps the constant-texture case out of the per-pixel loop, where the branch would otherwise be paid on every fragment of every ordinary texture.
+      // 1x1 纹理恒定，其着色后颜色也是逐三角形常量。
+      // 把它提到循环外，避免普通纹理的每个片元都支付这一分支。
       let flat = if tex.pixels().len() == 1 {
          Some(shade(tex.pixels()[0], lr, lg, lb))
       } else {
@@ -660,10 +636,8 @@ struct Light {
    ambient: f32,
 }
 
-/// Compute the internal render buffer for an output size and SSAA scale, capped by
-/// `MAX_FRAMEBUFFER_PIXELS`, or `None` when the request exceeds the budget.
-/// 为输出尺寸与 SSAA 倍率计算内部渲染缓冲尺寸，受 `MAX_FRAMEBUFFER_PIXELS` 约束；请求
-/// 超出预算时返回 `None`。
+/// Compute the internal render buffer for an output size and SSAA scale, capped by `MAX_FRAMEBUFFER_PIXELS`, or `None` when the request exceeds the budget.
+/// 为输出尺寸与 SSAA 倍率计算内部渲染缓冲尺寸，受 `MAX_FRAMEBUFFER_PIXELS` 约束；请求超出预算时返回 `None`。
 #[must_use]
 fn renderer_buffer_size(width: u32, height: u32, scale: u32) -> Option<(u32, u32, usize)> {
    if width == 0 || height == 0 || !(1..=MAX_SSAA_SCALE).contains(&scale) {
@@ -696,9 +670,10 @@ fn halton(mut index: u32, base: u32) -> f32 {
    r
 }
 
-/// Average the 4× MSAA samples into `color` and merge the deepest per pixel into
-/// `depth`. No-op when the MSAA buffers are empty.
-/// 将 4× MSAA 样本平均写入 `color`，并把每像素最深值合并进 `depth`。MSAA 缓冲为空时不做任何事。
+/// Average the 4× MSAA samples into `color` and merge the deepest per pixel into `depth`.
+/// No-op when the MSAA buffers are empty.
+/// 将 4× MSAA 样本平均写入 `color`，并把每像素最深值合并进 `depth`。
+/// MSAA 缓冲为空时不做任何事。
 #[expect(clippy::cast_possible_truncation)]
 fn resolve_msaa(
    color: &mut [ColorRgba8],
@@ -730,28 +705,23 @@ fn resolve_msaa(
    }
 }
 
-/// Luma of an 8-bit colour, weighted 77/150/29 for red, green and blue: the
-/// Rec.601 coefficients (0.299/0.587/0.114) scaled by 256 and rounded — 76.5,
-/// 150.3 and 29.2 — so the whole thing is integer.
-/// 8 位颜色的亮度，红绿蓝权重为 77/150/29：Rec.601 系数（0.299/0.587/0.114）乘以 256
-/// 并取整——即 76.5、150.3、29.2——因此全程为整数。
+/// Luma of an 8-bit colour, weighted 77/150/29 for red, green and blue: the Rec.601 coefficients (0.299/0.587/0.114) scaled by 256 and rounded — 76.5, 150.3 and 29.2 — so the whole thing is integer.
+/// 8 位颜色的亮度，红绿蓝权重为 77/150/29：Rec.601 系数（0.299/0.587/0.114）乘以 256 并取整——即 76.5、150.3、29.2——因此全程为整数。
 fn luma(c: ColorRgba8) -> i32 {
    (i32::from(c.r) * 77 + i32::from(c.g) * 150 + i32::from(c.b) * 29) >> 8
 }
 
 /// Blend two channels, weighting the first by 141/256 and the second by 115/256.
 ///
-/// Both weights are positive and sum to exactly 256, so the shift cannot overflow
-/// and a smoothed edge keeps the majority of its own colour.
-/// 混合两个通道：第一个权重 141/256，第二个 115/256。两个权重都为正且恰好合计 256，因此
-/// 移位不会溢出，被平滑的边缘也保留自身颜色的大部分。
+/// Both weights are positive and sum to exactly 256, so the shift cannot overflow and a smoothed edge keeps the majority of its own colour.
+/// 混合两个通道：第一个权重 141/256，第二个 115/256。
+/// 两个权重都为正且恰好合计 256，因此移位不会溢出，被平滑的边缘也保留自身颜色的大部分。
 #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn blend_u8(a: u8, b: u8) -> u8 {
    ((i32::from(a) * 141 + i32::from(b) * 115) >> 8) as u8
 }
 
-/// FXAA: smooth high-contrast edges by blending the center pixel with the average
-/// of its two neighbors along the dominant gradient.
+/// FXAA: smooth high-contrast edges by blending the center pixel with the average of its two neighbors along the dominant gradient.
 /// FXAA：沿主导梯度，将中心像素与两个相邻像素的平均值混合以平滑高对比度边缘。
 #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn apply_fxaa(
@@ -817,8 +787,7 @@ fn apply_fxaa(
    true
 }
 
-/// TAA: clamp the previous frame's color against the current 3×3 neighborhood and
-/// blend it in unless the depth/color delta rejects it as disocclusion.
+/// TAA: clamp the previous frame's color against the current 3×3 neighborhood and blend it in unless the depth/color delta rejects it as disocclusion.
 /// TAA：将上一帧颜色钳制到当前 3×3 邻域内并混合，除非深度/颜色差将其判为遮挡变化而拒绝。
 #[expect(
    clippy::cast_possible_truncation,
@@ -981,18 +950,13 @@ fn apply_ssaa(
    true
 }
 
-/// Shade a texel with fixed-point light: `(texel * light) >> 8` undoes the 8
-/// fractional bits, so a light of 256 leaves the texel untouched.
-/// 用定点光照给纹素着色：`(texel * light) >> 8` 抵消那 8 位小数，因此光照为 256 时纹素
-/// 原样保留。
+/// Shade a texel with fixed-point light: `(texel * light) >> 8` undoes the 8 fractional bits, so a light of 256 leaves the texel untouched.
+/// 用定点光照给纹素着色：`(texel * light) >> 8` 抵消那 8 位小数，因此光照为 256 时纹素原样保留。
 #[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn shade(texel: ColorRgba8, lr: i32, lg: i32, lb: i32) -> ColorRgba8 {
    ColorRgba8::from_rgba(
-      // `lr`/`lg`/`lb` are non-negative (the caller clamps them to `0..=512`) and a
-      // texel channel is a `u8`, so the product is never negative and only the
-      // upper bound needs clamping.
-      // `lr`/`lg`/`lb` 非负（调用方将其钳制在 `0..=512`），纹素通道又是 `u8`，因此乘积
-      // 不会为负，只需钳制上界。
+      // `lr`/`lg`/`lb` are non-negative (the caller clamps them to `0..=512`) and a texel channel is a `u8`, so the product is never negative and only the upper bound needs clamping.
+      // `lr`/`lg`/`lb` 非负（调用方将其钳制在 `0..=512`），纹素通道又是 `u8`，因此乘积不会为负，只需钳制上界。
       (((i32::from(texel.r) * lr) >> 8).min(255)) as u8,
       (((i32::from(texel.g) * lg) >> 8).min(255)) as u8,
       (((i32::from(texel.b) * lb) >> 8).min(255)) as u8,
@@ -1035,8 +999,8 @@ fn lerp_clip(a: ClipVertex, b: ClipVertex, t: f32) -> ClipVertex {
    }
 }
 
-/// Clip a view-space triangle against the near plane, writing the resulting 0–4
-/// vertices into `out` and returning how many were written. `out` must hold 4.
+/// Clip a view-space triangle against the near plane, writing the resulting 0–4 vertices into `out` and returning how many were written.
+/// `out` must hold 4.
 /// 对视空间三角形做近平面裁剪，把得到的 0–4 个顶点写入 `out` 并返回写入数量。
 /// `out` 必须能容纳 4 个顶点。
 fn clip_triangle_to_near(input: &[ClipVertex; 3], near: f32, out: &mut [ClipVertex; 4]) -> usize {
@@ -1087,8 +1051,7 @@ fn project_triangle(
 }
 
 fn triangle_outside_viewport(screen: &[Vec2; 3], width: u32, height: u32) -> bool {
-   // Viewport size is bounded by MAX_FRAMEBUFFER_PIXELS, so u32→f32 is exact enough
-   // for these comparisons.
+   // Viewport size is bounded by MAX_FRAMEBUFFER_PIXELS, so u32→f32 is exact enough for these comparisons.
    // 视口尺寸受 MAX_FRAMEBUFFER_PIXELS 约束，因此 u32→f32 对这些比较而言足够精确。
    #[expect(clippy::cast_precision_loss)]
    {
@@ -1156,11 +1119,10 @@ mod tests {
    #[test]
    fn triangle_render_shades_with_fixed_point_light() {
       let renderer = render_triangle(64, 64);
-      // The triangle's winding leaves it facing -Z, and the default light (0,-1,1)
-      // hits its back, so it receives only the 0.15 ambient term. The solid texture
-      // (255,89,38) is then lit in fixed point: (255*38, 89*38, 38*38) >> 8 = (37, 13, 5).
-      // 三角形的绕序使它面朝 -Z，而默认光源 (0,-1,1) 击中其背面，因此只受 0.15 的环境光
-      // 影响。纯色纹理 (255,89,38) 随后经定点光照：(255*38, 89*38, 38*38) >> 8 = (37, 13, 5)。
+      // The triangle's winding leaves it facing -Z, and the default light (0,-1,1) hits its back, so it receives only the 0.15 ambient term.
+      // The solid texture (255,89,38) is then lit in fixed point: (255*38, 89*38, 38*38) >> 8 = (37, 13, 5).
+      // 三角形的绕序使它面朝 -Z，而默认光源 (0,-1,1) 击中其背面，因此只受 0.15 的环境光影响。
+      // 纯色纹理 (255,89,38) 随后经定点光照：(255*38, 89*38, 38*38) >> 8 = (37, 13, 5)。
       let center = pixel(&renderer, 32, 32);
       assert_eq!(center, ColorRgba8::from_rgb(37, 13, 5));
    }
@@ -1253,8 +1215,7 @@ mod tests {
    #[test]
    fn textured_uv_wraps_into_texture() {
       let mut scene = Scene::new();
-      // Back-facing winding, so the normal points at -Z; the light is aimed along
-      // -Z to match, which lets the quad render and take diffuse light.
+      // Back-facing winding, so the normal points at -Z; the light is aimed along -Z to match, which lets the quad render and take diffuse light.
       // 背向绕序，因此法线指向 -Z；光源沿 -Z 对齐，使该四边形能够渲染并接受漫反射光照。
       scene.light.direction = Vec3::new(0.0, 0.0, -1.0);
       let texture = scene.textures.insert(
@@ -1329,8 +1290,10 @@ mod tests {
    #[test]
    fn triangle_golden_snapshot() {
       let renderer = render_triangle(64, 64);
-      // Frozen snapshot of a known scene; guards against accidental renderer regressions. Regenerate by deleting this value and reading the failure output.
-      // 已知场景的固定快照，防止渲染器意外回归。如需重新生成，请删除该值并读取失败输出。
+      // Frozen snapshot of a known scene; guards against accidental renderer regressions.
+      // Regenerate by deleting this value and reading the failure output.
+      // 已知场景的固定快照，防止渲染器意外回归。
+      // 如需重新生成，请删除该值并读取失败输出。
       assert_eq!(fnv1a_pixels(renderer.pixels()), 8_090_596_331_343_206_561);
    }
 
@@ -1591,8 +1554,7 @@ mod tests {
 
    #[test]
    fn msaa_averages_edge_samples() {
-      // A bright triangle on a dark clear: the edge pixels blend toward the
-      // background instead of snapping, so MSAA differs from the raw raster.
+      // A bright triangle on a dark clear: the edge pixels blend toward the background instead of snapping, so MSAA differs from the raw raster.
       // 深色清屏上的亮色三角形：边缘像素向背景色过渡而非硬切，因此 MSAA 与原始光栅不同。
       let plain = render_triangle(64, 64);
       let msaa = render_triangle_with(AntiAliasing::Msaa, 64, 64);
@@ -1616,10 +1578,8 @@ mod tests {
       // (100 + 200 + 0 + 0) >> 2 = 75.
       // (100 + 200 + 0 + 0) >> 2 = 75。
       assert_eq!(color[0], ColorRgba8::from_rgb(75, 0, 0));
-      // `resolve_msaa` forwards the deepest sample verbatim; compare with a
-      // tolerance because `clippy::float_cmp` is denied workspace-wide.
-      // `resolve_msaa` 原样转发最深的样本值；因工作区全局拒绝 `clippy::float_cmp`，
-      // 这里用容差比较。
+      // `resolve_msaa` forwards the deepest sample verbatim; compare with a tolerance because `clippy::float_cmp` is denied workspace-wide.
+      // `resolve_msaa` 原样转发最深的样本值；因工作区全局拒绝 `clippy::float_cmp`，这里用容差比较。
       assert!((depth[0] - 0.5).abs() < f32::EPSILON);
    }
 
@@ -1672,11 +1632,8 @@ mod tests {
 
    #[test]
    fn taa_blends_stable_pixels() {
-      // A 2×2 mix keeps the neighborhood range [100, 200] wide enough that the
-      // history (150) survives the clamp and the color deltas stay under the
-      // rejection thresholds.
-      // 2×2 的混合使邻域范围 [100, 200] 足够宽，历史值 150 能通过钳制，
-      // 颜色差也保持在拒绝阈值之下。
+      // A 2×2 mix keeps the neighborhood range [100, 200] wide enough that the history (150) survives the clamp and the color deltas stay under the rejection thresholds.
+      // 2×2 的混合使邻域范围 [100, 200] 足够宽，历史值 150 能通过钳制，颜色差也保持在拒绝阈值之下。
       let source = vec![
          ColorRgba8::from_rgb(200, 0, 0),
          ColorRgba8::from_rgb(100, 0, 0),

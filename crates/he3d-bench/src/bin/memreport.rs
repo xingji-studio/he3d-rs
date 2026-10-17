@@ -2,19 +2,13 @@
 //!
 //! Run with `cargo run -p he3d-bench --bin memreport [--release]`.
 //!
-//! This binary installs [`CountingAlloc`] as the global allocator and prints two
-//! tables:
+//! This binary installs [`CountingAlloc`] as the global allocator and prints two tables:
 //!
-//! * **Heap** — for each scenario, how many allocations it made, how many bytes it
-//!   requested, and the peak it added. The interesting zeros are the ones that mean
-//!   "reused": a settled [`World`] stepped many times, or a [`Renderer`] drawing many
-//!   frames, should allocate *nothing*, because both reuse their buffers.
-//! * **Sizeof** — `size_of` for the engine's core types, i.e. the stack footprint of
-//!   holding one.
+//! * **Heap** — for each scenario, how many allocations it made, how many bytes it requested, and the peak it added.
+//!   The interesting zeros are the ones that mean "reused": a settled [`World`] stepped many times, or a [`Renderer`] drawing many frames, should allocate *nothing*, because both reuse their buffers.
+//! * **Sizeof** — `size_of` for the engine's core types, i.e. the stack footprint of holding one.
 //!
-//! Bytes are what the allocation asked for, so they are a lower bound on resident
-//! memory (allocator headers and size-class rounding are not counted) and an exact
-//! count of what the engine requested.
+//! Bytes are what the allocation asked for, so they are a lower bound on resident memory (allocator headers and size-class rounding are not counted) and an exact count of what the engine requested.
 
 #![allow(clippy::pedantic)]
 
@@ -128,8 +122,7 @@ fn main() {
    }
 }
 
-/// Measure a construction, keep the result alive long enough to report its heap,
-/// then drop it.
+/// Measure a construction, keep the result alive long enough to report its heap, then drop it.
 fn measure_build<T>(name: &str, build: impl FnOnce() -> T) -> T {
    let base = alloc::stats().live_bytes;
    alloc::reset_counters();
@@ -148,8 +141,8 @@ fn measure_run(name: &str, run: impl FnOnce()) {
    print_row(name, base, &after);
 }
 
-/// Print one heap row. `base` is the live size at the start of the window, so
-/// `peak_added` and `live_delta` are relative to it.
+/// Print one heap row.
+/// `base` is the live size at the start of the window, so `peak_added` and `live_delta` are relative to it.
 fn print_row(name: &str, base: usize, after: &alloc::AllocStats) {
    let peak_added = after.peak_bytes.saturating_sub(base);
    let live_delta = after.live_bytes as isize - base as isize;

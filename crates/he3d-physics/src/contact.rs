@@ -6,14 +6,10 @@ use crate::static_geometry::StaticMeshId;
 /// The maximum number of points a single pair of Bodies can produce.
 /// 一对 Body 最多能产生的接触点数。
 ///
-/// Clipping one convex face against another yields at most one vertex per edge of
-/// the reference face, so a box-on-box manifold never exceeds four; and four
-/// coplanar points are the minimum needed to pin a resting face against rocking
-/// about either axis. The constraint arrays are sized to this, so it is also the
-/// compile-time capacity.
-/// 把一个凸面裁剪到另一个上，最多为参考面的每条棱产生一个顶点，因此盒对盒的流形不会超过
-/// 四个；而四个共面点正是把一个静止面在两个轴上都钉住、不让它摇摆所需的最小数量。约束数组
-/// 按此分配，因此它同时也是编译期容量。
+/// Clipping one convex face against another yields at most one vertex per edge of the reference face, so a box-on-box manifold never exceeds four; and four coplanar points are the minimum needed to pin a resting face against rocking about either axis.
+/// The constraint arrays are sized to this, so it is also the compile-time capacity.
+/// 把一个凸面裁剪到另一个上，最多为参考面的每条棱产生一个顶点，因此盒对盒的流形不会超过四个；而四个共面点正是把一个静止面在两个轴上都钉住、不让它摇摆所需的最小数量。
+/// 约束数组按此分配，因此它同时也是编译期容量。
 pub(crate) const MAX_MANIFOLD_POINTS: usize = 4;
 
 /// Whether a Contact is appearing, persisting, or disappearing this step.
@@ -35,10 +31,8 @@ pub enum ContactPhase {
 /// What lies on the far side of a Contact's normal.
 /// Contact 法线另一侧的东西。
 ///
-/// A Contact is always anchored on a Body; the other side is either a second Body
-/// or a piece of Static geometry, which has no Body of its own.
-/// 一个 Contact 总以某个 Body 为一端；另一端要么是另一个 Body，要么是一块本身没有 Body
-/// 的 Static geometry。
+/// A Contact is always anchored on a Body; the other side is either a second Body or a piece of Static geometry, which has no Body of its own.
+/// 一个 Contact 总以某个 Body 为一端；另一端要么是另一个 Body，要么是一块本身没有 Body 的 Static geometry。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ContactPartner {
@@ -53,12 +47,10 @@ pub enum ContactPartner {
 /// A single point at which two things touch.
 /// 两样东西相互接触的单个点。
 ///
-/// The normal points from `a` toward `b`; `depth` is how far the two shapes
-/// overlap along it. A pair that separates still reports an `End` contact built
-/// from the last state in which it overlapped, so an application can always
-/// observe both ends of a contact's lifetime.
-/// 法线由 `a` 指向 `b`；`depth` 是两形状沿该方向的重叠量。已经分离的一对仍会报出一个
-/// 由最后一次重叠状态构造的 `End` 接触，因此应用总能观察到一段接触生命周期的两端。
+/// The normal points from `a` toward `b`; `depth` is how far the two shapes overlap along it.
+/// A pair that separates still reports an `End` contact built from the last state in which it overlapped, so an application can always observe both ends of a contact's lifetime.
+/// 法线由 `a` 指向 `b`；`depth` 是两形状沿该方向的重叠量。
+/// 已经分离的一对仍会报出一个由最后一次重叠状态构造的 `End` 接触，因此应用总能观察到一段接触生命周期的两端。
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct Contact {
@@ -74,8 +66,10 @@ pub struct Contact {
    /// The unit contact normal, pointing from `a` toward `b`.
    /// 单位接触法线，由 `a` 指向 `b`。
    pub normal: Vec3,
-   /// Penetration depth along the normal. Always positive for a live Contact.
-   /// 沿法线的穿透深度。存活接触恒为正。
+   /// Penetration depth along the normal.
+   /// Always positive for a live Contact.
+   /// 沿法线的穿透深度。
+   /// 存活接触恒为正。
    pub depth: f32,
    /// Where this Contact is in its lifetime.
    /// 该接触在其生命周期中的位置。
@@ -143,11 +137,8 @@ impl Manifold {
 /// One point of a contact after the solver has claimed it.
 /// 求解器接管后的单个接触点。
 ///
-/// `anchor_a` and `anchor_b` are the contact position relative to each Body's
-/// center of mass, captured once so that every solver iteration applies its
-/// impulse at exactly the same point.
-/// `anchor_a` 与 `anchor_b` 是接触点相对于各 Body 质心的位置，只捕获一次，使每次求解
-/// 迭代都在完全相同的点上施加冲量。
+/// `anchor_a` and `anchor_b` are the contact position relative to each Body's center of mass, captured once so that every solver iteration applies its impulse at exactly the same point.
+/// `anchor_a` 与 `anchor_b` 是接触点相对于各 Body 质心的位置，只捕获一次，使每次求解迭代都在完全相同的点上施加冲量。
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ConstraintPoint {
    /// World-space contact position, captured when the constraint was built.
@@ -168,30 +159,22 @@ pub(crate) struct ConstraintPoint {
    pub normal_mass: f32,
    /// Effective mass along each friction tangent.
    pub tangent_mass: [f32; 2],
-   /// The angular half of the effective mass: `inv_inertia(anchor × axis)` for
-   /// each of the three solve axes, per side.
+   /// The angular half of the effective mass: `inv_inertia(anchor × axis)` for each of the three solve axes, per side.
    ///
-   /// The velocity solver applies every impulse along one of these three axes, and
-   /// the inertia tensor is linear, so
-   /// `inv_inertia(anchor × (axis * delta)) == inv_inertia(anchor × axis) * delta`.
-   /// Keeping the product of the first two lets an iteration apply an impulse with
-   /// one scalar multiply where it would otherwise do two quaternion rotations —
-   /// and a four-point constraint does twenty-four of those per iteration otherwise.
+   /// The velocity solver applies every impulse along one of these three axes, and the inertia tensor is linear, so `inv_inertia(anchor × (axis * delta)) == inv_inertia(anchor × axis) * delta`.
+   /// Keeping the product of the first two lets an iteration apply an impulse with one scalar multiply where it would otherwise do two quaternion rotations — and a four-point constraint does twenty-four of those per iteration otherwise.
    /// The position solve reuses the normal entry.
    /// 有效质量的角速度部分：三条求解轴上各自的 `inv_inertia(anchor × axis)`，按侧存放。
-   /// 速度求解器施加的每个冲量都沿这三条轴之一，而惯量张量是线性的，因此
-   /// `inv_inertia(anchor × (axis * delta)) == inv_inertia(anchor × axis) * delta`。把前
-   /// 两者相乘的结果存下来，每次迭代施加冲量就只需一次标量乘法，而不必做两次四元数旋转——否则
-   /// 四点的约束每次迭代要做二十四次。位置求解复用其中的法线项。
+   /// 速度求解器施加的每个冲量都沿这三条轴之一，而惯量张量是线性的，因此 `inv_inertia(anchor × (axis * delta)) == inv_inertia(anchor × axis) * delta`。
+   /// 把前两者相乘的结果存下来，每次迭代施加冲量就只需一次标量乘法，而不必做两次四元数旋转——否则四点的约束每次迭代要做二十四次。
+   /// 位置求解复用其中的法线项。
    ///
-   /// Indexed `[side][axis]`, where the axes are the normal and then the two
-   /// tangents, and the second side is zero for Static geometry.
+   /// Indexed `[side][axis]`, where the axes are the normal and then the two tangents, and the second side is zero for Static geometry.
    /// 索引为 `[side][axis]`：轴依次是法线与两条切线；第二侧为 Static geometry 时为零。
    pub angular_response: [[Vec3; 3]; 2],
    /// Velocity bias from restitution, applied to real velocities.
    pub bias: f32,
-   /// Penetration bias, applied only to pseudo-velocities so that removing
-   /// overlap never leaves kinetic energy behind.
+   /// Penetration bias, applied only to pseudo-velocities so that removing overlap never leaves kinetic energy behind.
    pub position_bias: f32,
    /// Accumulated pseudo-impulse that removes penetration.
    pub position_impulse: f32,
@@ -201,9 +184,9 @@ pub(crate) struct ConstraintPoint {
 /// 一条已求解的约束：一条法线、两条摩擦切线，以及至多四个接触点。
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ContactConstraint {
-   /// The handle of the first Body, kept so an `End` contact can still name it
-   /// after the Body itself has been removed.
-   /// 第一个 Body 的句柄。保留它是为了在 Body 已被移除之后，`End` 接触仍能指代它。
+   /// The handle of the first Body, kept so an `End` contact can still name it after the Body itself has been removed.
+   /// 第一个 Body 的句柄。
+   /// 保留它是为了在 Body 已被移除之后，`End` 接触仍能指代它。
    pub id_a: BodyId,
    /// What lies on the other side.
    /// 另一侧是什么。
@@ -211,18 +194,16 @@ pub(crate) struct ContactConstraint {
    /// Slot index of the first Body.
    /// 第一个 Body 的槽位索引。
    pub a: u32,
-   /// Slot index of the other Body, or [`crate::storage::STATIC_PARTNER`] when the
-   /// other side is Static geometry.
-   /// 另一侧 Body 的槽位索引；当另一侧是 Static geometry 时为
-   /// [`crate::storage::STATIC_PARTNER`]。
+   /// Slot index of the other Body, or [`crate::storage::STATIC_PARTNER`] when the other side is Static geometry.
+   /// 另一侧 Body 的槽位索引；当另一侧是 Static geometry 时为 [`crate::storage::STATIC_PARTNER`]。
    pub b: u32,
    /// Distinguishes constraints that share a Body pair.
    ///
-   /// All of a Body's contacts against Static geometry share the same `(a, b)`, so
-   /// this carries the mesh and triangle identity instead. It is zero for a
-   /// Body-versus-Body constraint.
-   /// 区分共享同一对 `(a, b)` 的约束。一个 Body 与 Static geometry 的所有接触共享同一个
-   /// `(a, b)`，因此这里改为携带网格与三角形的身份。Body 对 Body 的约束此值为零。
+   /// All of a Body's contacts against Static geometry share the same `(a, b)`, so this carries the mesh and triangle identity instead.
+   /// It is zero for a Body-versus-Body constraint.
+   /// 区分共享同一对 `(a, b)` 的约束。
+   /// 一个 Body 与 Static geometry 的所有接触共享同一个 `(a, b)`，因此这里改为携带网格与三角形的身份。
+   /// Body 对 Body 的约束此值为零。
    pub partner_key: u64,
    /// Unit normal from `a` toward `b`.
    /// 由 `a` 指向 `b` 的单位法线。
@@ -274,10 +255,9 @@ impl ContactConstraint {
 
    /// The key that identifies this constraint across steps.
    ///
-   /// Both constraint lists are sorted by it, so warm starting can match a pair
-   /// with a binary search.
-   /// 跨步识别这条约束的键。两份约束列表都按它排序，因此 warm starting 可以用二分查找
-   /// 匹配同一对。
+   /// Both constraint lists are sorted by it, so warm starting can match a pair with a binary search.
+   /// 跨步识别这条约束的键。
+   /// 两份约束列表都按它排序，因此 warm starting 可以用二分查找匹配同一对。
    pub(crate) fn sort_key(&self) -> (u32, u32, u64) {
       (self.a, self.b, self.partner_key)
    }
@@ -299,8 +279,7 @@ pub(crate) fn tangent_basis(normal: Vec3) -> [Vec3; 2] {
 }
 
 #[cfg(test)]
-// Test fixtures turn small loop counters into depths; the values sit far inside
-// the range f32 represents exactly.
+// Test fixtures turn small loop counters into depths; the values sit far inside the range f32 represents exactly.
 // 测试夹具把小整数循环计数转换为深度；这些值远在 f32 能精确表示的范围内。
 #[allow(clippy::cast_precision_loss)]
 mod tests {

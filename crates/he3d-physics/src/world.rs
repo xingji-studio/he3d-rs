@@ -42,13 +42,12 @@ struct StaticSlot {
 /// Owns a set of Bodies and advances them through time.
 /// 持有一组 Body 并推进它们的时间演化。
 ///
-/// A World knows nothing about rendering. It never sees an `ObjectId`, a `Scene`,
-/// or a `Transform`; a Body's placement is a position and an orientation, and the
-/// application owns the link between a Body and whatever draws it. See
-/// `CONTEXT.md` and `docs/adr/0001`.
-/// World 对渲染一无所知。它永远看不到 `ObjectId`、`Scene` 或 `Transform`；Body 的摆放
-/// 是位置与朝向，而 Body 与"画它的东西"之间的联系由应用拥有。见 `CONTEXT.md` 与
-/// `docs/adr/0001`。
+/// A World knows nothing about rendering.
+/// It never sees an `ObjectId`, a `Scene`, or a `Transform`; a Body's placement is a position and an orientation, and the application owns the link between a Body and whatever draws it.
+/// See `CONTEXT.md` and `docs/adr/0001`.
+/// World 对渲染一无所知。
+/// 它永远看不到 `ObjectId`、`Scene` 或 `Transform`；Body 的摆放是位置与朝向，而 Body 与"画它的东西"之间的联系由应用拥有。
+/// 见 `CONTEXT.md` 与 `docs/adr/0001`。
 ///
 /// # Examples
 /// 示例
@@ -87,10 +86,8 @@ pub struct World {
    static_meshes: Vec<StaticSlot>,
    /// Free Static geometry slots.
    static_free: Vec<u32>,
-   /// The shared topology every Static mesh welds into, so an edge between two
-   /// separate meshes is still recognised as an Internal edge.
-   /// 所有 Static mesh 焊接进的共享拓扑，因此两个独立 mesh 之间的边仍被识别为
-   /// Internal edge。
+   /// The shared topology every Static mesh welds into, so an edge between two separate meshes is still recognised as an Internal edge.
+   /// 所有 Static mesh 焊接进的共享拓扑，因此两个独立 mesh 之间的边仍被识别为 Internal edge。
    topology: StaticTopology,
    /// Friction of Static geometry, combined with each Body's own.
    /// Static geometry 的摩擦系数，与各 Body 自身的系数合并。
@@ -166,8 +163,10 @@ impl World {
       self.gravity
    }
 
-   /// Override the gravity vector. Non-finite input is ignored.
-   /// 覆盖重力向量。非有限输入会被忽略。
+   /// Override the gravity vector.
+   /// Non-finite input is ignored.
+   /// 覆盖重力向量。
+   /// 非有限输入会被忽略。
    pub fn set_gravity(&mut self, gravity: Vec3) {
       if gravity.is_finite() {
          self.gravity = gravity;
@@ -194,8 +193,7 @@ impl World {
    /// Friction of Static geometry, combined with each Body's own.
    /// Static geometry 的摩擦系数，与各 Body 自身的系数合并。
    ///
-   /// It is not a per-mesh property: terrain is usually one material, and a Body's
-   /// own coefficient already varies per Body.
+   /// It is not a per-mesh property: terrain is usually one material, and a Body's own coefficient already varies per Body.
    /// 它不是逐网格属性：地形通常只有一种材质，而 Body 自身的系数已经逐 Body 变化。
    pub fn set_static_friction(&mut self, friction: f32) {
       if friction.is_finite() && friction >= 0.0 {
@@ -206,19 +204,12 @@ impl World {
    /// Register immovable triangle geometry and return its handle.
    /// 注册不可移动的三角形几何并返回其句柄。
    ///
-   /// `positions` is a flat list in which every three consecutive entries form one
-   /// triangle — the layout [`he3d_math::Vec3`] arrays use everywhere else. Every
-   /// registered mesh welds into one shared topology, so an edge that lies between
-   /// two separate meshes still counts as an Internal edge; that is what keeps a
-   /// Body sliding across streamed terrain from catching on the seam between two
-   /// tiles.
-   /// `positions` 是扁平列表，每三个连续条目构成一个三角形——与其他地方使用
-   /// [`he3d_math::Vec3`] 数组的布局一致。每个已注册网格都焊接进同一套共享拓扑，因此
-   /// 位于两个独立网格之间的边仍算作 Internal edge；这正是让划过流式地形的 Body 不会卡在
-   /// 瓦片接缝上的原因。
+   /// `positions` is a flat list in which every three consecutive entries form one triangle — the layout [`he3d_math::Vec3`] arrays use everywhere else.
+   /// Every registered mesh welds into one shared topology, so an edge that lies between two separate meshes still counts as an Internal edge; that is what keeps a Body sliding across streamed terrain from catching on the seam between two tiles.
+   /// `positions` 是扁平列表，每三个连续条目构成一个三角形——与其他地方使用 [`he3d_math::Vec3`] 数组的布局一致。
+   /// 每个已注册网格都焊接进同一套共享拓扑，因此位于两个独立网格之间的边仍算作 Internal edge；这正是让划过流式地形的 Body 不会卡在瓦片接缝上的原因。
    ///
-   /// Returns `None` for malformed input: an empty list, a length that is not a
-   /// multiple of three, or a coordinate that is not finite.
+   /// Returns `None` for malformed input: an empty list, a length that is not a multiple of three, or a coordinate that is not finite.
    /// 畸形输入返回 `None`：空列表、长度不是三的倍数，或存在非有限坐标。
    pub fn add_static_mesh(&mut self, positions: &[Vec3]) -> Option<StaticMeshId> {
       if positions.is_empty() || positions.len() % 3 != 0 {
@@ -276,10 +267,8 @@ impl World {
    /// Remove a piece of Static geometry, invalidating its handle.
    /// 移除一块 Static geometry 并使其句柄失效。
    ///
-   /// Its triangles release their edges from the shared topology, so a tile that is
-   /// streamed out stops making its neighbour's boundary look internal.
-   /// 它的三角形会从共享拓扑中释放各自的边，因此被流式卸载的瓦片不再让邻居的边界显得像
-   /// 内部边。
+   /// Its triangles release their edges from the shared topology, so a tile that is streamed out stops making its neighbour's boundary look internal.
+   /// 它的三角形会从共享拓扑中释放各自的边，因此被流式卸载的瓦片不再让邻居的边界显得像内部边。
    pub fn remove_static_mesh(&mut self, id: StaticMeshId) -> bool {
       let Some(slot) = self.static_meshes.get_mut(id.index() as usize) else {
          return false;
@@ -297,17 +286,13 @@ impl World {
       slot.generation = slot.generation.wrapping_add(1);
       self.static_free.push(id.index());
 
-      // Anything asleep inside the region this geometry occupied has just lost its
-      // support, so it must be returned to simulation. Without this a Body left
-      // asleep on streamed-out terrain would hang in mid-air.
+      // Anything asleep inside the region this geometry occupied has just lost its support, so it must be returned to simulation.
+      // Without this a Body left asleep on streamed-out terrain would hang in mid-air.
       //
-      // The test is geometric rather than "which constraints mentioned this mesh",
-      // because a sleeping Body stops producing constraints at all — by the time it
-      // is asleep there is nothing left to consult.
-      // 处于该几何所占区域内的睡眠 Body 刚刚失去了支撑，因此必须被唤回模拟。若没有这一步，
-      // 睡在被流式卸载地形上的 Body 会悬在半空。
-      // 判据用几何而不是"哪些约束提到过这块网格"，因为睡眠中的 Body 根本不再产生约束——
-      // 等它睡着时已经没有可查询的记录了。
+      // The test is geometric rather than "which constraints mentioned this mesh", because a sleeping Body stops producing constraints at all — by the time it is asleep there is nothing left to consult.
+      // 处于该几何所占区域内的睡眠 Body 刚刚失去了支撑，因此必须被唤回模拟。
+      // 若没有这一步，睡在被流式卸载地形上的 Body 会悬在半空。
+      // 判据用几何而不是"哪些约束提到过这块网格"，因为睡眠中的 Body 根本不再产生约束——等它睡着时已经没有可查询的记录了。
       for body_slot in &mut self.slots {
          let Some(body) = body_slot.get_mut() else {
             continue;
@@ -372,11 +357,10 @@ impl World {
    /// 插入一个 Body 并返回其句柄。
    ///
    /// # Panics
-   /// Panics once the World holds more than `u32::MAX` Bodies. That is unreachable
-   /// in practice, since every Body occupies a slot in a `Vec` that could not grow
-   /// that large on any real machine.
-   /// 当 World 持有的 Body 数超过 `u32::MAX` 时 panic。实践中不可达：每个 Body 占用
-   /// `Vec` 中的一个槽位，没有任何真实机器能让它增长到那么大。
+   /// Panics once the World holds more than `u32::MAX` Bodies.
+   /// That is unreachable in practice, since every Body occupies a slot in a `Vec` that could not grow that large on any real machine.
+   /// 当 World 持有的 Body 数超过 `u32::MAX` 时 panic。
+   /// 实践中不可达：每个 Body 占用 `Vec` 中的一个槽位，没有任何真实机器能让它增长到那么大。
    pub fn add_body(&mut self, desc: BodyDesc) -> BodyId {
       let body = Body::from_desc(&desc);
       if let Some(index) = self.free.pop() {
@@ -393,8 +377,10 @@ impl World {
       }
    }
 
-   /// Remove a Body, invalidating its handle. Returns whether it existed.
-   /// 移除一个 Body 并使其句柄失效。返回它原先是否存在。
+   /// Remove a Body, invalidating its handle.
+   /// Returns whether it existed.
+   /// 移除一个 Body 并使其句柄失效。
+   /// 返回它原先是否存在。
    pub fn remove_body(&mut self, id: BodyId) -> bool {
       let Some(slot) = self.slots.get_mut(id.index() as usize) else {
          return false;
@@ -419,8 +405,7 @@ impl World {
    /// 所有存活 Body 的句柄，按槽位顺序。
    ///
    /// # Panics
-   /// Panics once the World holds more than `u32::MAX` Bodies; see
-   /// [`World::add_body`].
+   /// Panics once the World holds more than `u32::MAX` Bodies; see [`World::add_body`].
    /// 当 World 持有的 Body 数超过 `u32::MAX` 时 panic；见 [`World::add_body`]。
    pub fn ids(&self) -> impl Iterator<Item = BodyId> + '_ {
       self.slots.iter().enumerate().filter_map(|(index, slot)| {
@@ -513,11 +498,10 @@ impl World {
    /// Move a Body to a position and orientation, waking it.
    /// 将 Body 移动到某位置与朝向，并唤醒它。
    ///
-   /// Returns whether the Body exists and accepts the change. A Static Body is
-   /// repositioned but stays static, and a non-finite or degenerate input is
-   /// rejected.
-   /// 返回 Body 是否存在并接受该改动。Static Body 会被重新摆放但仍保持静止；非有限或
-   /// 退化的输入会被拒绝。
+   /// Returns whether the Body exists and accepts the change.
+   /// A Static Body is repositioned but stays static, and a non-finite or degenerate input is rejected.
+   /// 返回 Body 是否存在并接受该改动。
+   /// Static Body 会被重新摆放但仍保持静止；非有限或退化的输入会被拒绝。
    pub fn set_pose(&mut self, id: BodyId, position: Vec3, orientation: Quat) -> bool {
       if !position.is_finite() || !orientation.is_finite() || orientation.length_squared() <= 0.0 {
          return false;
@@ -614,17 +598,13 @@ impl World {
    /// Change how much of the World's gravity reaches a Body.
    /// 改变 World 的重力有多少作用于此 Body。
    ///
-   /// The live counterpart of [`BodyDesc::with_gravity_scale`], for a Body whose
-   /// owner changes its mind mid-scene — a flight model that hands the aircraft back
-   /// to gravity when it crashes, for instance.
-   /// [`BodyDesc::with_gravity_scale`] 的运行时对应物，用于所有者在中途改变主意的 Body
-   /// ——例如飞行模型在飞机坠毁时把它交还给重力。
+   /// The live counterpart of [`BodyDesc::with_gravity_scale`], for a Body whose owner changes its mind mid-scene — a flight model that hands the aircraft back to gravity when it crashes, for instance.
+   /// [`BodyDesc::with_gravity_scale`] 的运行时对应物，用于所有者在中途改变主意的 Body——例如飞行模型在飞机坠毁时把它交还给重力。
    ///
-   /// Returns `false` for a dead handle. Negative or non-finite values are clamped to
-   /// zero, and a zero scale wakes the Body, since a Body asleep under no gravity is
-   /// not necessarily asleep under the new one.
-   /// 句柄失效时返回 `false`。负值或非有限值被钳制为零；系数为零时会唤醒该 Body，因为在无
-   /// 重力下睡着的 Body 在新重力下未必还该睡。
+   /// Returns `false` for a dead handle.
+   /// Negative or non-finite values are clamped to zero, and a zero scale wakes the Body, since a Body asleep under no gravity is not necessarily asleep under the new one.
+   /// 句柄失效时返回 `false`。
+   /// 负值或非有限值被钳制为零；系数为零时会唤醒该 Body，因为在无重力下睡着的 Body 在新重力下未必还该睡。
    pub fn set_gravity_scale(&mut self, id: BodyId, scale: f32) -> bool {
       let scale = if scale.is_finite() && scale > 0.0 {
          scale
@@ -634,8 +614,7 @@ impl World {
       let Some(body) = self.body_mut(id) else {
          return false;
       };
-      // An exact comparison is the point here: this is a change detector, not a
-      // measurement, and any difference at all is a change worth waking for.
+      // An exact comparison is the point here: this is a change detector, not a measurement, and any difference at all is a change worth waking for.
       // 这里就是要精确比较：它是变更检测而非测量，任何差异都是值得唤醒的变化。
       #[expect(clippy::float_cmp)]
       let changed = body.gravity_scale != scale;
@@ -649,8 +628,7 @@ impl World {
    /// Add a force at the Body's center of mass, acting for the next step only.
    /// 在 Body 质心施加一个只作用于下一步的力。
    ///
-   /// Only a Dynamic Body accumulates force; Static and Kinematic Bodies ignore
-   /// gravity and forces entirely.
+   /// Only a Dynamic Body accumulates force; Static and Kinematic Bodies ignore gravity and forces entirely.
    /// 只有 Dynamic Body 会累积力；Static 与 Kinematic 完全忽略重力与力。
    pub fn apply_force(&mut self, id: BodyId, force: Vec3) -> bool {
       if !force.is_finite() {
@@ -743,11 +721,10 @@ impl World {
    /// Advance the simulation by one fixed time step.
    /// 以固定步长推进模拟一步。
    ///
-   /// Non-finite or non-positive input is ignored, so a caller handing over a
-   /// degenerate frame delta cannot corrupt the World. Forces and torques
-   /// accumulated before the call act for exactly this step and are then cleared.
-   /// 非有限或非正输入会被忽略，因此调用方传入退化的帧间隔也不会破坏 World。调用前累积
-   /// 的力与力矩恰好作用这一步，随后被清除。
+   /// Non-finite or non-positive input is ignored, so a caller handing over a degenerate frame delta cannot corrupt the World.
+   /// Forces and torques accumulated before the call act for exactly this step and are then cleared.
+   /// 非有限或非正输入会被忽略，因此调用方传入退化的帧间隔也不会破坏 World。
+   /// 调用前累积的力与力矩恰好作用这一步，随后被清除。
    pub fn step(&mut self, delta_time: f32) {
       if !delta_time.is_finite() || delta_time <= 0.0 {
          return;
@@ -770,8 +747,7 @@ impl World {
    /// Record which Bodies are still moving, for the next step's wake decisions.
    /// 记录哪些 Body 仍在运动，供下一步的唤醒决策使用。
    ///
-   /// This must run after the solve: the point of it is to read a velocity that is
-   /// not the raw post-gravity one.
+   /// This must run after the solve: the point of it is to read a velocity that is not the raw post-gravity one.
    /// 它必须在求解之后运行：其意义正是读取一个不是"刚加上重力"的速度。
    fn refresh_movement(&mut self) {
       for slot in &mut self.slots {
@@ -792,11 +768,8 @@ impl World {
          if !body.motion.is_simulated() || body.sleeping {
             continue;
          }
-         // Gravity is an acceleration, but a Body with no mass is immovable by
-         // definition and must not be dragged along by it either, and a Body whose
-         // gravity scale is zero has its motion owned by something else.
-         // 重力是加速度，但质量为零的 Body 按定义无法被移动，因此也不能被重力拖走；而重力
-         // 系数为零的 Body，其运动由别的东西拥有。
+         // Gravity is an acceleration, but a Body with no mass is immovable by definition and must not be dragged along by it either, and a Body whose gravity scale is zero has its motion owned by something else.
+         // 重力是加速度，但质量为零的 Body 按定义无法被移动，因此也不能被重力拖走；而重力系数为零的 Body，其运动由别的东西拥有。
          if body.mass.inv_mass > 0.0 && body.gravity_scale > 0.0 {
             body.linear_velocity += gravity * (body.gravity_scale * delta_time);
          }
@@ -809,8 +782,7 @@ impl World {
       }
    }
 
-   /// Move every Body that moves by its own velocity, plus whatever positional
-   /// correction asked for.
+   /// Move every Body that moves by its own velocity, plus whatever positional correction asked for.
    /// 按自身速度移动每一个会移动的 Body，并叠加位置修正所要求的那部分。
    fn integrate_positions(&mut self, delta_time: f32) {
       for slot in &mut self.slots {
@@ -823,8 +795,7 @@ impl World {
          let linear = body.linear_velocity + body.pseudo_linear_velocity;
          body.position += linear * delta_time;
 
-         // Rotate by the exact angle rather than by a truncated quaternion
-         // derivative, so a spinning Body accumulates neither drift nor shrink.
+         // Rotate by the exact angle rather than by a truncated quaternion derivative, so a spinning Body accumulates neither drift nor shrink.
          // 按精确角度旋转，而不是截断的四元数导数，因此旋转的 Body 既不累积漂移也不收缩。
          let spin = body.angular_velocity + body.pseudo_angular_velocity;
          let speed = spin.length();
@@ -839,11 +810,10 @@ impl World {
 
    /// Narrow-phase every broadphase candidate into a contact constraint.
    ///
-   /// A sleeping Body is left out of the solver entirely. It is woken only by a
-   /// neighbour that is itself moving, so a stack resting on Static geometry
-   /// stays asleep instead of being woken by its own floor every step.
-   /// 每个宽阶段候选对都经过窄相位生成接触约束。处于睡眠的 Body 完全不进入求解器；只有
-   /// 当邻居自身在运动时才会唤醒它，因此搁在静态几何上的堆叠不会被自己的地板每步唤醒。
+   /// A sleeping Body is left out of the solver entirely.
+   /// It is woken only by a neighbour that is itself moving, so a stack resting on Static geometry stays asleep instead of being woken by its own floor every step.
+   /// 每个宽阶段候选对都经过窄相位生成接触约束。
+   /// 处于睡眠的 Body 完全不进入求解器；只有当邻居自身在运动时才会唤醒它，因此搁在静态几何上的堆叠不会被自己的地板每步唤醒。
    fn detect_contacts(&mut self) {
       self.active.clear();
       self.aabbs.clear();
@@ -886,11 +856,10 @@ impl World {
          match (first.sleeping, second.sleeping) {
             (true, true) => return,
             (true, false) => {
-               // Only a neighbour that was still moving after the last solve can
-               // disturb a sleeper. Asking the live velocity would call every
-               // awake Body "moving", because gravity has just been added.
-               // 只有在上一步求解后仍在运动的邻居才能扰动睡眠者。直接看实时速度会把每个
-               // 清醒的 Body 都判为"在动"，因为重力刚刚被加上。
+               // Only a neighbour that was still moving after the last solve can disturb a sleeper.
+               // Asking the live velocity would call every awake Body "moving", because gravity has just been added.
+               // 只有在上一步求解后仍在运动的邻居才能扰动睡眠者。
+               // 直接看实时速度会把每个清醒的 Body 都判为"在动"，因为重力刚刚被加上。
                if second.was_moving {
                   wakers.push(first_index);
                } else {
@@ -952,8 +921,7 @@ impl World {
       }
    }
 
-   /// Carry accumulated impulses across from the previous step, matching points
-   /// by Body pair and feature id.
+   /// Carry accumulated impulses across from the previous step, matching points by Body pair and feature id.
    /// 按 Body 对与特征 id 匹配接触点，从上一步沿用累积冲量。
    fn carry_impulses(&mut self) {
       // Both lists are sorted, so the match is a binary search per pair.
@@ -1022,11 +990,10 @@ impl World {
          }
       }
 
-      // Anything that touched last step and does not now is ending. The Bodies are
-      // named from the handle captured last step, so an `End` still refers to a
-      // Body that has since been removed.
-      // 上一步相碰、本步不再相碰的接触正在结束。Body 用上一步捕获的句柄命名，因此
-      // `End` 仍能指代一个此后已被移除的 Body。
+      // Anything that touched last step and does not now is ending.
+      // The Bodies are named from the handle captured last step, so an `End` still refers to a Body that has since been removed.
+      // 上一步相碰、本步不再相碰的接触正在结束。
+      // Body 用上一步捕获的句柄命名，因此 `End` 仍能指代一个此后已被移除的 Body。
       for old in previous.iter() {
          let key = old.sort_key();
          let current = constraints
@@ -1057,12 +1024,10 @@ impl World {
    /// Accumulate rest time, then settle and wake whole Islands.
    /// 累积静止时间，然后以整个 Island 为单位入睡与唤醒。
    ///
-   /// Sleep is per Island, not per Body. A stack whose members slept independently
-   /// would leave the ones above a disturbed Body frozen in mid-air; grouping them
-   /// by the contact graph and moving the whole group together is what prevents
-   /// that.
-   /// 睡眠以 Island 而非 Body 为单位。若一叠箱子的成员各自独立入睡，被扰动的 Body 上方的
-   /// 那些就会僵在半空；按接触图分组并整组一起移动，正是防止这件事的手段。
+   /// Sleep is per Island, not per Body.
+   /// A stack whose members slept independently would leave the ones above a disturbed Body frozen in mid-air; grouping them by the contact graph and moving the whole group together is what prevents that.
+   /// 睡眠以 Island 而非 Body 为单位。
+   /// 若一叠箱子的成员各自独立入睡，被扰动的 Body 上方的那些就会僵在半空；按接触图分组并整组一起移动，正是防止这件事的手段。
    fn update_sleep(&mut self, delta_time: f32) {
       self.dissolve_woken_groups();
 
@@ -1085,13 +1050,11 @@ impl World {
 
    /// Wake every Island that has at least one woken member, and release its group.
    ///
-   /// A Body that has been woken keeps its group tag precisely so that this pass
-   /// can find its companions. That single rule covers every way a disturbance can
-   /// start — an impulse, a velocity, a new contact — without each call site having
-   /// to know about Islands.
-   /// 唤醒每个至少有一个成员已醒来的 Island，并释放其组。已被唤醒的 Body 会刻意保留组标记，
-   /// 正是为了让这一趟能找到它的同伴。这一条规则覆盖了扰动可能开始的每一种方式——冲量、
-   /// 速度、新接触——而无需每个调用点都了解 Island。
+   /// A Body that has been woken keeps its group tag precisely so that this pass can find its companions.
+   /// That single rule covers every way a disturbance can start — an impulse, a velocity, a new contact — without each call site having to know about Islands.
+   /// 唤醒每个至少有一个成员已醒来的 Island，并释放其组。
+   /// 已被唤醒的 Body 会刻意保留组标记，正是为了让这一趟能找到它的同伴。
+   /// 这一条规则覆盖了扰动可能开始的每一种方式——冲量、速度、新接触——而无需每个调用点都了解 Island。
    fn dissolve_woken_groups(&mut self) {
       self.woken_groups.clear();
       for slot in &self.slots {
@@ -1125,8 +1088,7 @@ impl World {
       }
    }
 
-   /// Group the awake dynamic Bodies by the contact graph and sleep any group that
-   /// has come entirely to rest.
+   /// Group the awake dynamic Bodies by the contact graph and sleep any group that has come entirely to rest.
    /// 按接触图把清醒的 Dynamic Body 分组，并让整体已稳定的组入睡。
    fn sleep_settled_islands(&mut self) {
       let count = self.slots.len();
@@ -1148,11 +1110,10 @@ impl World {
       self.island_group.clear();
       self.island_group.resize(count, NO_SLEEP_GROUP);
 
-      // Union across Body-versus-Body contacts. Static geometry and Kinematic
-      // Bodies transmit nothing: they never sleep, and a Body resting on a floor
-      // must be able to sleep without the floor joining its Island.
-      // 沿 Body 对 Body 的接触做并集。Static geometry 与 Kinematic Body 不传递任何东西：
-      // 它们从不入睡，而搁在地板上的 Body 必须能在不把地板拉进自己 Island 的前提下入睡。
+      // Union across Body-versus-Body contacts.
+      // Static geometry and Kinematic Bodies transmit nothing: they never sleep, and a Body resting on a floor must be able to sleep without the floor joining its Island.
+      // 沿 Body 对 Body 的接触做并集。
+      // Static geometry 与 Kinematic Body 不传递任何东西：它们从不入睡，而搁在地板上的 Body 必须能在不把地板拉进自己 Island 的前提下入睡。
       for constraint in &self.constraints {
          if constraint.b == STATIC_PARTNER {
             continue;
@@ -1235,11 +1196,8 @@ impl World {
 /// Narrow-phase every Body against every registered piece of Static geometry.
 /// 对每个 Body 与每块已注册 Static geometry 做窄相位。
 ///
-/// Static geometry is not in the broadphase grid: each mesh carries its own bounds
-/// and each of its triangles carries tighter ones, so a Body only reaches the
-/// triangles it can actually touch.
-/// Static geometry 不在宽阶段网格中：每个 mesh 携带自身包围盒，其每个三角形又携带更紧的
-/// 包围盒，因此 Body 只会触及它真正够得着的三角形。
+/// Static geometry is not in the broadphase grid: each mesh carries its own bounds and each of its triangles carries tighter ones, so a Body only reaches the triangles it can actually touch.
+/// Static geometry 不在宽阶段网格中：每个 mesh 携带自身包围盒，其每个三角形又携带更紧的包围盒，因此 Body 只会触及它真正够得着的三角形。
 fn detect_static_contacts(
    slots: &[Slot],
    static_friction: f32,
@@ -1247,11 +1205,10 @@ fn detect_static_contacts(
    topology: &StaticTopology,
    constraints: &mut Vec<ContactConstraint>,
 ) {
-   // Static geometry is not in the grid. Each mesh carries its own bounds, and
-   // each of its triangles carries tighter ones, so a Body only reaches the
-   // triangles it can actually touch.
-   // Static geometry 不在网格中。每个 mesh 携带自身包围盒，其每个三角形又携带更紧的
-   // 包围盒，因此 Body 只会触及它真正够得着的三角形。
+   // Static geometry is not in the grid.
+   // Each mesh carries its own bounds, and each of its triangles carries tighter ones, so a Body only reaches the triangles it can actually touch.
+   // Static geometry 不在网格中。
+   // 每个 mesh 携带自身包围盒，其每个三角形又携带更紧的包围盒，因此 Body 只会触及它真正够得着的三角形。
    for (mesh_index, slot) in static_meshes.iter().enumerate() {
       let Some(mesh) = slot.mesh.as_ref() else {
          continue;
@@ -1264,10 +1221,8 @@ fn detect_static_contacts(
          let Some(body) = body_slot.get() else {
             continue;
          };
-         // A sleeping Body stays asleep on immovable geometry: nothing there can
-         // move, so nothing there can wake it.
-         // 睡眠中的 Body 会在不可移动几何上保持睡眠：那里没有任何东西会移动，因此也
-         // 没有任何东西能唤醒它。
+         // A sleeping Body stays asleep on immovable geometry: nothing there can move, so nothing there can wake it.
+         // 睡眠中的 Body 会在不可移动几何上保持睡眠：那里没有任何东西会移动，因此也没有任何东西能唤醒它。
          if body.sleeping || !body.motion.moves() {
             continue;
          }
@@ -1302,13 +1257,10 @@ fn detect_static_contacts(
                continue;
             };
 
-            // An Internal edge is where two triangles of the shared topology
-            // meet, so there is no real corner there for a Body to catch on.
-            // Discarding the contact is what lets a Body slide across a
-            // triangulated surface instead of tripping over its seams.
-            // Internal edge 是共享拓扑中两个三角形相接之处，那里并不存在可供 Body 卡住
-            // 的真实棱角。丢弃该接触正是让 Body 能在三角化表面上滑行、而不是被其接缝绊住
-            // 的原因。
+            // An Internal edge is where two triangles of the shared topology meet, so there is no real corner there for a Body to catch on.
+            // Discarding the contact is what lets a Body slide across a triangulated surface instead of tripping over its seams.
+            // Internal edge 是共享拓扑中两个三角形相接之处，那里并不存在可供 Body 卡住的真实棱角。
+            // 丢弃该接触正是让 Body 能在三角化表面上滑行、而不是被其接缝绊住的原因。
             if let Some(edge) = hit.source_edge {
                let ids = mesh.welded[triangle_index];
                if topology.is_internal_edge(ids[edge], ids[(edge + 1) % 3]) {
@@ -1334,11 +1286,8 @@ fn detect_static_contacts(
                constraint.points[slot] = ConstraintPoint {
                   position: point.position,
                   anchor_a: point.position - body.position,
-                  // Immovable geometry has no center of mass, and the solver
-                  // never applies an impulse on that side, so the second anchor
-                  // is only ever read as a zero contribution.
-                  // 不可移动几何没有质心，且求解器永不在该侧施加冲量，因此第二个锚点
-                  // 只会被当作零贡献读取。
+                  // Immovable geometry has no center of mass, and the solver never applies an impulse on that side, so the second anchor is only ever read as a zero contribution.
+                  // 不可移动几何没有质心，且求解器永不在该侧施加冲量，因此第二个锚点只会被当作零贡献读取。
                   anchor_b: Vec3::ZERO,
                   depth: point.depth,
                   feature: point.feature,
@@ -1369,11 +1318,8 @@ fn find_root(parent: &mut [u32], start: u32) -> u32 {
 }
 
 #[cfg(test)]
-// Test fixtures convert small loop counters into world coordinates and settle
-// times into step counts; both sit far inside f32's exact integer range and the
-// step count is bounded by the test's own duration.
-// 测试夹具把小整数循环计数转换为世界坐标、把稳定时长换算为步数；两者都远在 f32 的精确
-// 整数范围内，且步数受测试自身时长的约束。
+// Test fixtures convert small loop counters into world coordinates and settle times into step counts; both sit far inside f32's exact integer range and the step count is bounded by the test's own duration.
+// 测试夹具把小整数循环计数转换为世界坐标、把稳定时长换算为步数；两者都远在 f32 的精确整数范围内，且步数受测试自身时长的约束。
 #[allow(
    clippy::cast_precision_loss,
    clippy::cast_possible_truncation,
@@ -1838,10 +1784,9 @@ mod tests {
    #[test]
    fn a_taller_tower_holds_its_height_without_sinking() {
       // Six boxes is the height this solver holds at the default iteration count.
-      // Ten needs about twenty iterations and twenty is still unstable; see the
-      // tall-stack limitation in `docs/physics-spec.md`.
-      // 六层是本求解器在默认迭代次数下能撑住的高度。十层约需二十次迭代，二十层仍不稳定；
-      // 见 `docs/physics-spec.md` 中的高塔限制。
+      // Ten needs about twenty iterations and twenty is still unstable; see the tall-stack limitation in `docs/physics-spec.md`.
+      // 六层是本求解器在默认迭代次数下能撑住的高度。
+      // 十层约需二十次迭代，二十层仍不稳定；见 `docs/physics-spec.md` 中的高塔限制。
       let mut world = World::new();
       ground(&mut world, 0.0);
       let mut cubes = alloc::vec::Vec::new();
@@ -1867,10 +1812,8 @@ mod tests {
 
    // ------------------------------------------------------- static geometry
 
-   /// A flat grid of triangles at `y = 0`, split the same way terrain tiles are:
-   /// each cell becomes two triangles sharing a diagonal.
-   /// `y = 0` 处的平坦三角形网格，按与地形瓦片相同的方式切分：每个格子分成两个共享一条
-   /// 对角线的三角形。
+   /// A flat grid of triangles at `y = 0`, split the same way terrain tiles are: each cell becomes two triangles sharing a diagonal.
+   /// `y = 0` 处的平坦三角形网格，按与地形瓦片相同的方式切分：每个格子分成两个共享一条对角线的三角形。
    fn flat_terrain_cells(start_x: usize, cells: usize, step: f32) -> alloc::vec::Vec<Vec3> {
       let mut positions = alloc::vec::Vec::new();
       for z in 0..cells {
@@ -1943,9 +1886,10 @@ mod tests {
       );
       settle(&mut world, 1.0);
       let position = world.position(cube).expect("cube exists");
-      // Frictionless travel would be four units. Without internal-edge filtering
-      // the diagonals would trip the box and eat most of that.
-      // 无摩擦滑行应前进四个单位。若没有内部边过滤，对角线会绊住方块并吃掉大部分位移。
+      // Frictionless travel would be four units.
+      // Without internal-edge filtering the diagonals would trip the box and eat most of that.
+      // 无摩擦滑行应前进四个单位。
+      // 若没有内部边过滤，对角线会绊住方块并吃掉大部分位移。
       assert!(
          position.x > 3.5,
          "the box caught on a triangle seam, ended at {position:?}"
@@ -1959,11 +1903,10 @@ mod tests {
    #[test]
    fn a_box_slides_across_a_seam_between_two_separate_meshes() {
       let mut world = World::new();
-      // Two tiles that meet exactly, the way streamed terrain does. Neither tile
-      // contains the shared boundary edge, so only the shared topology can tell
-      // that it is an Internal edge.
-      // 两块精确相接的瓦片，正如流式地形。共享的边界边不在任何单块瓦片内部，因此只有共享
-      // 拓扑才能判断它是 Internal edge。
+      // Two tiles that meet exactly, the way streamed terrain does.
+      // Neither tile contains the shared boundary edge, so only the shared topology can tell that it is an Internal edge.
+      // 两块精确相接的瓦片，正如流式地形。
+      // 共享的边界边不在任何单块瓦片内部，因此只有共享拓扑才能判断它是 Internal edge。
       world
          .add_static_mesh(&flat_terrain_cells(0, 2, 2.0))
          .expect("left tile");
@@ -2019,10 +1962,8 @@ mod tests {
       let right = world
          .add_static_mesh(&flat_terrain_cells(1, 2, 2.0))
          .expect("right tile");
-      // The two tiles overlap along x = 2, so that boundary is internal while both
-      // exist: a Body sliding over it must not catch.
-      // 两块瓦片在 x = 2 处重叠，因此只要两者都存在，该边界就是内部边：滑过它的 Body 不会
-      // 被绊住。
+      // The two tiles overlap along x = 2, so that boundary is internal while both exist: a Body sliding over it must not catch.
+      // 两块瓦片在 x = 2 处重叠，因此只要两者都存在，该边界就是内部边：滑过它的 Body 不会被绊住。
       let cube = world.add_body(
          BodyDesc::dynamic(Shape::cuboid(Vec3::splat(0.5)), 1.0)
             .at(Vec3::new(0.5, 0.55, 0.5))
@@ -2061,16 +2002,13 @@ mod tests {
 
    // --------------------------------------------------------------- ledges
 
-   /// Settle a block on a ledge with the given fraction of its base hanging off,
-   /// returning its final position, its tilt in degrees, and whether it slept.
+   /// Settle a block on a ledge with the given fraction of its base hanging off, returning its final position, its tilt in degrees, and whether it slept.
    /// 让方块以给定比例的底面悬空搁在台沿上，返回其最终位置、倾斜角度（度），以及是否入睡。
    fn ledge_block(overhang: f32, platform_half: Vec3, block_half: f32) -> (Vec3, f32, bool) {
       let mut world = World::new();
       world.add_body(BodyDesc::stationary(Shape::cuboid(platform_half)).at(Vec3::ZERO));
-      // The base spans `[c - half, c + half]` and the ledge edge is at
-      // `platform_half.x`, so the fraction hanging off solves to this centre.
-      // 底面覆盖 `[c - half, c + half]`，台沿位于 `platform_half.x`，因此悬空比例对应的
-      // 中心位置如下。
+      // The base spans `[c - half, c + half]` and the ledge edge is at `platform_half.x`, so the fraction hanging off solves to this centre.
+      // 底面覆盖 `[c - half, c + half]`，台沿位于 `platform_half.x`，因此悬空比例对应的中心位置如下。
       let centre_x = platform_half.x - block_half + overhang * block_half * 2.0;
       let block = world.add_body(
          BodyDesc::dynamic(Shape::cuboid(Vec3::splat(block_half)), 1.0)
@@ -2092,12 +2030,10 @@ mod tests {
 
    #[test]
    fn a_block_tips_off_once_its_centre_passes_the_edge() {
-      // A block on a ledge is supported while its centre of mass is over the ledge
-      // and tips off once it is not. The threshold is exactly the platform edge,
-      // and the block's centre sitting on that edge is half of its base, so this
-      // pins both sides of it.
-      // 搁在台沿上的方块，质心还在台上时受支撑，一旦越过台沿就倾覆。阈值恰好是台沿，而质心
-      // 落在台沿上正是底面的一半，因此这个测试把两侧都钉住。
+      // A block on a ledge is supported while its centre of mass is over the ledge and tips off once it is not.
+      // The threshold is exactly the platform edge, and the block's centre sitting on that edge is half of its base, so this pins both sides of it.
+      // 搁在台沿上的方块，质心还在台上时受支撑，一旦越过台沿就倾覆。
+      // 阈值恰好是台沿，而质心落在台沿上正是底面的一半，因此这个测试把两侧都钉住。
       let platform_half = Vec3::new(3.0, 0.5, 3.0);
       let block_half = 0.5;
       let resting_height = platform_half.y + block_half;
@@ -2113,8 +2049,7 @@ mod tests {
          assert!(sleeping, "{overhang} overhang should settle and sleep");
          worst_tilt = worst_tilt.max(tilt);
       }
-      // Resting on a lip must not mean propped up at an angle by an asymmetric
-      // contact.
+      // Resting on a lip must not mean propped up at an angle by an asymmetric contact.
       // 搁在台沿上不应意味着被不对称接触顶成斜的。
       assert!(
          worst_tilt < 0.01,
@@ -2131,16 +2066,13 @@ mod tests {
       }
    }
 
-   /// Tip a resting cube onto the next face with `impulse` about z, and report how
-   /// many steps it spent pivoting on an edge and how fast it twisted about x while
-   /// it did.
+   /// Tip a resting cube onto the next face with `impulse` about z, and report how many steps it spent pivoting on an edge and how fast it twisted about x while it did.
    ///
-   /// The pivot's contact points sit on the edge itself, so the correct motion is a
-   /// pure rotation about z and the contact points do not slide along it. Anything
-   /// the cube picks up about x is the solver's, not the physics'.
-   /// 用绕 z 的 `impulse` 把一个静止的方块掀到下一个面上，并报告它花了几步在棱上翻转、以及
-   /// 翻转期间绕 x 转得多快。翻转的接触点就落在那条棱上，因此正确的运动是纯绕 z 旋转、接触点
-   /// 不沿棱滑动。方块绕 x 拿到的任何东西都来自求解器，而不是物理。
+   /// The pivot's contact points sit on the edge itself, so the correct motion is a pure rotation about z and the contact points do not slide along it.
+   /// Anything the cube picks up about x is the solver's, not the physics'.
+   /// 用绕 z 的 `impulse` 把一个静止的方块掀到下一个面上，并报告它花了几步在棱上翻转、以及翻转期间绕 x 转得多快。
+   /// 翻转的接触点就落在那条棱上，因此正确的运动是纯绕 z 旋转、接触点不沿棱滑动。
+   /// 方块绕 x 拿到的任何东西都来自求解器，而不是物理。
    fn edge_pivot_twist(impulse: f32) -> (u32, f32) {
       let mut world = World::new();
       ground(&mut world, 0.0);
@@ -2171,23 +2103,15 @@ mod tests {
 
    #[test]
    fn a_cube_pivoting_on_its_edge_does_not_twist_about_the_edge() {
-      // Two contact points apart along an axis share a couple about it: solving them
-      // one after the other leaves them unequal, and their difference is a torque
-      // nothing applied. A cube rolled onto its edge is exactly this case, and the
-      // twist it picks up is rotation about the axis it is rolling over.
-      // 沿某条轴分开的两个接触点共享一个绕该轴的力偶：逐个求解会让它们不等，而它们的差就是一
-      // 个无人施加的力矩。滚到棱上的方块正是这种情形，它拿到的扭转就是绕滚动轴的旋转。
+      // Two contact points apart along an axis share a couple about it: solving them one after the other leaves them unequal, and their difference is a torque nothing applied.
+      // A cube rolled onto its edge is exactly this case, and the twist it picks up is rotation about the axis it is rolling over.
+      // 沿某条轴分开的两个接触点共享一个绕该轴的力偶：逐个求解会让它们不等，而它们的差就是一个无人施加的力矩。
+      // 滚到棱上的方块正是这种情形，它拿到的扭转就是绕滚动轴的旋转。
       //
-      // The two points are solved as one block, so the couple is gone at the default
-      // iteration count; measured, 4.2e-7 rad/s against 2.0e-4 rad/s without it, and
-      // better than raising the count to 24, which costs 65% more on a contact-dense
-      // step. Four-point manifolds cannot be blocked — theirs is singular — so what
-      // is left after this is the residual of a face landing, which is a separate
-      // and already documented limit.
-      // 两点作为一个块求解，因此默认迭代次数下该力偶就不存在了；实测 4.2e-7 rad/s，而没有它时
-      // 是 2.0e-4 rad/s，并且优于把迭代次数提到 24——后者在接触密集的一步上要多花 65%。四点
-      // 流形无法成块——它的块是奇异的——因此这里剩下的是面着地时的残差，那是一个独立且已有
-      // 记录的局限。
+      // The two points are solved as one block, so the couple is gone at the default iteration count; measured, 4.2e-7 rad/s against 2.0e-4 rad/s without it, and better than raising the count to 24, which costs 65% more on a contact-dense step.
+      // Four-point manifolds cannot be blocked — theirs is singular — so what is left after this is the residual of a face landing, which is a separate and already documented limit.
+      // 两点作为一个块求解，因此默认迭代次数下该力偶就不存在了；实测 4.2e-7 rad/s，而没有它时是 2.0e-4 rad/s，并且优于把迭代次数提到 24——后者在接触密集的一步上要多花 65%。
+      // 四点流形无法成块——它的块是奇异的——因此这里剩下的是面着地时的残差，那是一个独立且已有记录的局限。
       let (edge_steps, twist) = edge_pivot_twist(0.6);
       assert!(
          edge_steps > 10,
@@ -2201,18 +2125,13 @@ mod tests {
 
    #[test]
    fn a_block_sliding_towards_a_ledge_leaves_it_instead_of_hanging() {
-      // The realistic version of the same question: a block that slides off a
-      // ledge has to actually leave it once its centre goes past the edge, rather
-      // than being held up by a contact on the lip.
-      // 同一个问题的现实版本：滑向台沿的方块，质心越过台沿后必须真的离开，而不是被台沿上的
-      // 接触顶住悬挂。
+      // The realistic version of the same question: a block that slides off a ledge has to actually leave it once its centre goes past the edge, rather than being held up by a contact on the lip.
+      // 同一个问题的现实版本：滑向台沿的方块，质心越过台沿后必须真的离开，而不是被台沿上的接触顶住悬挂。
       //
-      // Both surfaces are nearly frictionless, so the block still carries real
-      // speed by the time it reaches the lip. With ordinary friction it coasts to a
-      // halt just short of the edge, and the test would be measuring friction
-      // rather than the ledge.
-      // 两个表面都近乎无摩擦，因此方块抵达台沿时仍有可观速度。用普通摩擦系数它会在离边缘
-      // 一步之遥处停下，那时测的就是摩擦而不是台沿了。
+      // Both surfaces are nearly frictionless, so the block still carries real speed by the time it reaches the lip.
+      // With ordinary friction it coasts to a halt just short of the edge, and the test would be measuring friction rather than the ledge.
+      // 两个表面都近乎无摩擦，因此方块抵达台沿时仍有可观速度。
+      // 用普通摩擦系数它会在离边缘一步之遥处停下，那时测的就是摩擦而不是台沿了。
       let mut world = World::new();
       world.add_body(
          BodyDesc::stationary(Shape::cuboid(Vec3::new(3.0, 0.5, 3.0)))
@@ -2242,8 +2161,7 @@ mod tests {
       );
    }
 
-   /// Settle a plank across a gap between two platforms, returning its final
-   /// height, its tilt in degrees, and whether it slept.
+   /// Settle a plank across a gap between two platforms, returning its final height, its tilt in degrees, and whether it slept.
    /// 让一块板横跨两个平台之间的缝隙，返回其最终高度、倾斜角度（度），以及是否入睡。
    fn spanning_plank(gap: f32, plank_half: f32, platform_half: f32) -> (f32, f32, bool) {
       let mut world = World::new();
@@ -2273,11 +2191,10 @@ mod tests {
 
    #[test]
    fn a_plank_spanning_a_gap_rests_level_until_the_gap_outgrows_it() {
-      // Two supports at once, which is where a solver that mishandles several
-      // simultaneous contacts shows up: the plank sags or tips instead of sharing
-      // load. Even with only a sliver of overlap on each side it must stay level.
-      // 同时有两个支撑，这正是处理不好多接触的求解器会露馅的地方：板会下垂或倾斜，而不是
-      // 分担载荷。即使每侧只剩一丝重叠，它也必须保持水平。
+      // Two supports at once, which is where a solver that mishandles several simultaneous contacts shows up: the plank sags or tips instead of sharing load.
+      // Even with only a sliver of overlap on each side it must stay level.
+      // 同时有两个支撑，这正是处理不好多接触的求解器会露馅的地方：板会下垂或倾斜，而不是分担载荷。
+      // 即使每侧只剩一丝重叠，它也必须保持水平。
       let plank_half = 0.9;
       let platform_half = 1.5;
       let resting = 0.5 + 0.25;
@@ -2301,11 +2218,8 @@ mod tests {
 
    #[test]
    fn a_sphere_rests_on_a_ledge_up_to_the_edge_and_falls_past_it() {
-      // A sphere touches a flat top at exactly the point below its centre, so the
-      // same centre-past-the-edge rule applies — through a different narrowphase
-      // path than a box takes.
-      // 球与平顶的接触点恰在其球心正下方，因此"质心越过边缘"这条规则同样适用，只是走的
-      // 窄相位路径与盒不同。
+      // A sphere touches a flat top at exactly the point below its centre, so the same centre-past-the-edge rule applies — through a different narrowphase path than a box takes.
+      // 球与平顶的接触点恰在其球心正下方，因此"质心越过边缘"这条规则同样适用，只是走的窄相位路径与盒不同。
       let radius = 0.4;
       let resting = 0.5 + radius;
       for centre_x in [2.0_f32, 2.6, 2.99] {
@@ -2346,15 +2260,10 @@ mod tests {
 
    #[test]
    fn a_sphere_rolling_across_mesh_seams_keeps_its_speed() {
-      // A sphere's contact normal always runs from the closest point of the
-      // triangle to its centre, so for coplanar triangles it is the plane normal
-      // whichever feature that closest point lands on. There is therefore no
-      // spurious normal to filter, and a seam between two separate meshes is as
-      // smooth as the interior of one triangle — unlike a box, whose manifold can
-      // be generated from a triangle edge axis.
-      // 球的接触法线始终由三角形上的最近点指向球心，因此对共面三角形而言，无论最近点落在
-      // 哪个特征上，法线都是平面法线。因此不存在需要过滤的伪法线，两块独立网格之间的接缝
-      // 与单个三角形内部一样平滑——这与盒不同，盒的流形可能由三角形棱轴生成。
+      // A sphere's contact normal always runs from the closest point of the triangle to its centre, so for coplanar triangles it is the plane normal whichever feature that closest point lands on.
+      // There is therefore no spurious normal to filter, and a seam between two separate meshes is as smooth as the interior of one triangle — unlike a box, whose manifold can be generated from a triangle edge axis.
+      // 球的接触法线始终由三角形上的最近点指向球心，因此对共面三角形而言，无论最近点落在哪个特征上，法线都是平面法线。
+      // 因此不存在需要过滤的伪法线，两块独立网格之间的接缝与单个三角形内部一样平滑——这与盒不同，盒的流形可能由三角形棱轴生成。
       let mut world = World::new();
       world
          .add_static_mesh(&flat_terrain_cells(0, 2, 2.0))
@@ -2388,10 +2297,9 @@ mod tests {
 
    /// Slide a box diagonally off the corner of a platform, along `x = z`.
    ///
-   /// The supported region is the intersection of the box's base with the platform,
-   /// which near the threshold is a tiny square out at the platform's corner.
-   /// 让方块沿 `x = z` 斜向滑出平台的角。支撑区是底面与平台的交集，在阈值附近它是平台角落
-   /// 处的一小块方形。
+   /// The supported region is the intersection of the box's base with the platform, which near the threshold is a tiny square out at the platform's corner.
+   /// 让方块沿 `x = z` 斜向滑出平台的角。
+   /// 支撑区是底面与平台的交集，在阈值附近它是平台角落处的一小块方形。
    fn corner_slide(centre: f32) -> (Vec3, f32) {
       let mut world = World::new();
       world.add_body(BodyDesc::stationary(Shape::cuboid(Vec3::new(3.0, 0.5, 3.0))).at(Vec3::ZERO));
@@ -2413,19 +2321,16 @@ mod tests {
 
    #[test]
    fn a_box_leaves_a_platform_corner_once_its_centre_passes_it() {
-      // The diagonal version of the ledge test. Two differences make it harder: the
-      // supported region is a rectangle rather than a half-plane, so the tipping
-      // direction is diagonal in the body's own frame; and just below the threshold
-      // that region shrinks to a 0.1 x 0.1 patch at the platform's corner.
+      // The diagonal version of the ledge test.
+      // Two differences make it harder: the supported region is a rectangle rather than a half-plane, so the tipping direction is diagonal in the body's own frame; and just below the threshold that region shrinks to a 0.1 x 0.1 patch at the platform's corner.
       //
-      // The rule is the same one: the box stands while its centre is inside the
-      // supported region and tips once it is not. The corner of the platform is at
-      // x = z = 3, so the centre crossing that line is exactly the threshold.
-      // 台沿测试的对角版本。两点让它更难：支撑区是矩形而非半平面，因此倾覆方向在刚体自身
-      // 坐标系里是对角线；而就在阈值之下，该区域会收缩到平台角落处 0.1 x 0.1 的一小块。
+      // The rule is the same one: the box stands while its centre is inside the supported region and tips once it is not.
+      // The corner of the platform is at x = z = 3, so the centre crossing that line is exactly the threshold.
+      // 台沿测试的对角版本。
+      // 两点让它更难：支撑区是矩形而非半平面，因此倾覆方向在刚体自身坐标系里是对角线；而就在阈值之下，该区域会收缩到平台角落处 0.1 x 0.1 的一小块。
       //
-      // 规则相同：质心位于支撑区内时方块站立，不在时倾覆。平台的角在 x = z = 3，因此质心
-      // 越过这条线正是阈值。
+      // 规则相同：质心位于支撑区内时方块站立，不在时倾覆。
+      // 平台的角在 x = z = 3，因此质心越过这条线正是阈值。
       let resting = 0.5 + 0.25;
       for centre in [1.0_f32, 2.0, 2.5, 2.9, 2.99] {
          let (position, tilt) = corner_slide(centre);
@@ -2455,15 +2360,13 @@ mod tests {
       // A contact on the lip has to turn into a torque, not into permanent support.
       // The failure this guards against is a Body left hovering beside the ledge.
       //
-      // Hovering means: still at platform height, but with its centre outside the
-      // platform. A Body could in principle be cantilevered there legitimately, but
-      // only by being balanced — and a rigid one balanced that far out has already
-      // broken the tipping rule, so it counts as the same failure.
-      // 台沿上的接触必须转化为力矩，而不是永久支撑。这里防的失效是某个 Body 悬在台沿旁边。
+      // Hovering means: still at platform height, but with its centre outside the platform.
+      // A Body could in principle be cantilevered there legitimately, but only by being balanced — and a rigid one balanced that far out has already broken the tipping rule, so it counts as the same failure.
+      // 台沿上的接触必须转化为力矩，而不是永久支撑。
+      // 这里防的失效是某个 Body 悬在台沿旁边。
       //
-      // 悬空指：仍处于平台高度，但质心已在平台之外。原则上 Body 可以被合法地悬挑在那里，
-      // 但那要求它处于平衡——而刚体在那么外面还平衡得住，本身就已经违反了倾覆规则，因此
-      // 归为同一种失效。
+      // 悬空指：仍处于平台高度，但质心已在平台之外。
+      // 原则上 Body 可以被合法地悬挑在那里，但那要求它处于平衡——而刚体在那么外面还平衡得住，本身就已经违反了倾覆规则，因此归为同一种失效。
       for friction in [0.05_f32, 0.8] {
          let mut world = World::new();
          world.add_body(
@@ -2511,17 +2414,14 @@ mod tests {
       box_slept: bool,
    }
 
-   /// A dynamic slab centred at x = -0.5 rests on a static ledge that ends at
-   /// x = 0, so it overhangs by 1.5. A box sits at `box_x` on that overhang.
+   /// A dynamic slab centred at x = -0.5 rests on a static ledge that ends at x = 0, so it overhangs by 1.5.
+   /// A box sits at `box_x` on that overhang.
    ///
-   /// Both bodies have finite mass and both can rotate, so whether the assembly
-   /// stands is decided by their **combined** centre of mass:
-   /// `(1 * -0.5 + box_mass * box_x) / (1 + box_mass)`.
-   /// 一块中心在 x = -0.5 的动态板搁在终止于 x = 0 的静态台沿上，因此悬挑 1.5。方块位于
-   /// 悬挑上的 `box_x` 处。
+   /// Both bodies have finite mass and both can rotate, so whether the assembly stands is decided by their **combined** centre of mass: `(1 * -0.5 + box_mass * box_x) / (1 + box_mass)`.
+   /// 一块中心在 x = -0.5 的动态板搁在终止于 x = 0 的静态台沿上，因此悬挑 1.5。
+   /// 方块位于悬挑上的 `box_x` 处。
    ///
-   /// 两个刚体都有有限质量、都能转动，因此整个组合能否站立由其**联合质心**决定：
-   /// `(1 * -0.5 + box_mass * box_x) / (1 + box_mass)`。
+   /// 两个刚体都有有限质量、都能转动，因此整个组合能否站立由其**联合质心**决定：`(1 * -0.5 + box_mass * box_x) / (1 + box_mass)`。
    fn loaded_slab(box_x: f32, box_mass: f32, friction: f32) -> SlabOutcome {
       let mut world = World::new();
       world.add_body(
@@ -2556,17 +2456,12 @@ mod tests {
 
    #[test]
    fn a_loaded_dynamic_slab_tips_by_its_combined_centre_of_mass() {
-      // Dynamic against dynamic, and the hardest of the edge cases: the platform
-      // itself has finite mass and can rotate, so the box's weight and the slab's
-      // own weight together decide whether the assembly stands. Getting this right
-      // needs torque to cross the contact in both directions — the box must be able
-      // to push the slab over, and the slab must be able to carry the box.
-      // 动态对动态，也是这些边缘情形里最难的：平台自身有有限质量、可以转动，因此方块的重量
-      // 与板自身的重量共同决定组合能否站立。要做对这件事，力矩必须能在接触处双向传递——
-      // 方块要能压翻板，板也要能带住方块。
+      // Dynamic against dynamic, and the hardest of the edge cases: the platform itself has finite mass and can rotate, so the box's weight and the slab's own weight together decide whether the assembly stands.
+      // Getting this right needs torque to cross the contact in both directions — the box must be able to push the slab over, and the slab must be able to carry the box.
+      // 动态对动态，也是这些边缘情形里最难的：平台自身有有限质量、可以转动，因此方块的重量与板自身的重量共同决定组合能否站立。
+      // 要做对这件事，力矩必须能在接触处双向传递——方块要能压翻板，板也要能带住方块。
       //
-      // The static ledge ends at x = 0, so the assembly tips exactly when its
-      // combined centre of mass passes it.
+      // The static ledge ends at x = 0, so the assembly tips exactly when its combined centre of mass passes it.
       // 静态台沿终止于 x = 0，因此当联合质心越过它时组合恰好倾覆。
       let combined = |box_x: f32, mass: f32| (1.0 * -0.5 + mass * box_x) / (1.0 + mass);
 
@@ -2596,8 +2491,7 @@ mod tests {
             "a standing slab should stay level, tilted {} deg",
             outcome.slab_tilt
          );
-         // With the load comfortably inside the ledge, the whole assembly settles
-         // and the box is allowed to sleep.
+         // With the load comfortably inside the ledge, the whole assembly settles and the box is allowed to sleep.
          // 当载荷稳稳位于台沿之内时，整个组合会稳定下来，方块也可以入睡。
          if centre < -0.2 {
             assert!(
@@ -2635,9 +2529,10 @@ mod tests {
 
    #[test]
    fn gravity_scale_decides_how_much_gravity_reaches_a_body() {
-      // A Body whose motion something else owns opts out with a scale of zero. The
-      // default stays full gravity, and the scale multiplies rather than replaces.
-      // 运动由别的东西拥有的 Body 用零系数退出。默认仍是完整重力，而系数是相乘而非替换。
+      // A Body whose motion something else owns opts out with a scale of zero.
+      // The default stays full gravity, and the scale multiplies rather than replaces.
+      // 运动由别的东西拥有的 Body 用零系数退出。
+      // 默认仍是完整重力，而系数是相乘而非替换。
       let mut world = World::new();
       let normal =
          world.add_body(BodyDesc::dynamic(Shape::sphere(0.5), 1.0).at(Vec3::new(0.0, 10.0, 0.0)));
@@ -2675,11 +2570,10 @@ mod tests {
 
    #[test]
    fn gravity_scale_can_be_changed_on_a_live_body() {
-      // The case the setter exists for: something owns the Body's motion for a while
-      // and then hands it back. It also has to wake the Body, because a Body asleep
-      // under no gravity is not necessarily asleep under the new one.
-      // 该 setter 存在的理由：某个东西在一段时间内拥有此 Body 的运动，随后交还回去。它还
-      // 必须唤醒该 Body，因为在无重力下睡着的 Body 在新重力下未必还该睡。
+      // The case the setter exists for: something owns the Body's motion for a while and then hands it back.
+      // It also has to wake the Body, because a Body asleep under no gravity is not necessarily asleep under the new one.
+      // 该 setter 存在的理由：某个东西在一段时间内拥有此 Body 的运动，随后交还回去。
+      // 它还必须唤醒该 Body，因为在无重力下睡着的 Body 在新重力下未必还该睡。
       let mut world = World::new();
       let body =
          world.add_body(BodyDesc::dynamic(Shape::sphere(0.5), 1.0).at(Vec3::new(0.0, 10.0, 0.0)));
@@ -2717,8 +2611,7 @@ mod tests {
 
    #[test]
    fn a_negative_or_non_finite_gravity_scale_is_clamped_to_zero() {
-      // Anti-gravity is not a thing this engine offers, and a NaN scale would put a
-      // NaN into every velocity it touched.
+      // Anti-gravity is not a thing this engine offers, and a NaN scale would put a NaN into every velocity it touched.
       // 反重力不是本引擎提供的东西，而 NaN 系数会把它碰到的每一个速度都变成 NaN。
       let mut world = World::new();
       let negative = world.add_body(
@@ -2767,10 +2660,10 @@ mod tests {
          );
       }
 
-      // Disturb the bottom box only. Sleeping per Body would leave the rest of the
-      // stack frozen in mid-air; the Island has to come back as a unit.
-      // 只扰动最下面的方块。若按 Body 独立睡眠，堆叠的其余部分会僵在半空；Island 必须
-      // 整体苏醒。
+      // Disturb the bottom box only.
+      // Sleeping per Body would leave the rest of the stack frozen in mid-air; the Island has to come back as a unit.
+      // 只扰动最下面的方块。
+      // 若按 Body 独立睡眠，堆叠的其余部分会僵在半空；Island 必须整体苏醒。
       assert!(world.apply_impulse(cubes[0], Vec3::new(3.0, 0.0, 0.0)));
       world.step(1.0 / 120.0);
       for (index, cube) in cubes.iter().enumerate() {

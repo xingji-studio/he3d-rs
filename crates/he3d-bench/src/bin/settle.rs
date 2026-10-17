@@ -2,20 +2,17 @@
 //!
 //! Run with `cargo run -p he3d-bench --bin settle --release`.
 //!
-//! A criterion case answers "what does one step cost right now". For a scene that
-//! ramps up and then decays — anything dropped into contact, where penetration
-//! deepens before positional correction pushes it apart — that single number is
-//! ambiguous, and it is the *peak* rather than what a running scene pays. This
-//! binary prints the whole trajectory instead:
+//! A criterion case answers "what does one step cost right now".
+//! For a scene that ramps up and then decays — anything dropped into contact, where penetration deepens before positional correction pushes it apart — that single number is ambiguous, and it is the *peak* rather than what a running scene pays.
+//! This binary prints the whole trajectory instead:
 //!
 //! * how much one step costs, every hundred steps;
 //! * how many Contacts exist at that point; and
 //! * how many Bodies have gone to sleep.
 //!
-//! The sleep column is the one that matters most. A settled pile is supposed to
-//! fall asleep and cost almost nothing; a pile that never does pays for every
-//! contact forever. `settle` is how "does this scene ever sleep" is answered rather
-//! than assumed.
+//! The sleep column is the one that matters most.
+//! A settled pile is supposed to fall asleep and cost almost nothing; a pile that never does pays for every contact forever.
+//! `settle` is how "does this scene ever sleep" is answered rather than assumed.
 //!
 //! ```text
 //! cargo run -p he3d-bench --bin settle --release               # summary of the reference piles
@@ -35,12 +32,10 @@ const REFERENCE_PILES: [usize; 3] = [200, 500, 2000];
 
 /// Steps the summary runs each pile for, at 1/120 s.
 ///
-/// The window has to be long enough for the shortest pile in the table to finish
-/// settling, or the "Sleeps" column reports "not yet" as "no". Six layers fall asleep
-/// around step 1100, so 2000 leaves margin; a longer window would only let the tall
-/// piles spill further before the settled cost is read.
-/// 窗口必须长到表中最矮的一堆能彻底稳定，否则"是否入睡"一列会把"还没"报成"不"。六层约在
-/// 第 1100 步入睡，因此 2000 留有余量；再长只会让高塔在读取稳态成本前溢出得更远。
+/// The window has to be long enough for the shortest pile in the table to finish settling, or the "Sleeps" column reports "not yet" as "no".
+/// Six layers fall asleep around step 1100, so 2000 leaves margin; a longer window would only let the tall piles spill further before the settled cost is read.
+/// 窗口必须长到表中最矮的一堆能彻底稳定，否则"是否入睡"一列会把"还没"报成"不"。
+/// 六层约在第 1100 步入睡，因此 2000 留有余量；再长只会让高塔在读取稳态成本前溢出得更远。
 const SUMMARY_STEPS: usize = 2000;
 
 /// Steps between trajectory rows.
@@ -146,9 +141,8 @@ fn time_step(world: &mut he3d_physics::World) -> f64 {
    start.elapsed().as_secs_f64() * 1e3
 }
 
-/// The largest linear and angular speed anywhere, and how many Bodies exceed the
-/// sleep threshold on either. A pile that is over the threshold is a pile that
-/// cannot sleep.
+/// The largest linear and angular speed anywhere, and how many Bodies exceed the sleep threshold on either.
+/// A pile that is over the threshold is a pile that cannot sleep.
 fn residual_motion(world: &he3d_physics::World) -> (f32, f32, usize) {
    let mut max_linear: f32 = 0.0;
    let mut max_angular: f32 = 0.0;

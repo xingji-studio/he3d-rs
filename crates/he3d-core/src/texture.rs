@@ -5,10 +5,9 @@ use crate::{ColorRgba8, Error, Rgb};
 
 /// Maximum width or height of a texture.
 ///
-/// It bounds the memory a single texture can claim, so a malformed file header
-/// cannot ask the decoder for an allocation the device cannot serve.
-/// 纹理的最大宽度或高度。它约束单张纹理所占内存，使畸形文件头无法向解码器索要设备提供不了
-/// 的分配。
+/// It bounds the memory a single texture can claim, so a malformed file header cannot ask the decoder for an allocation the device cannot serve.
+/// 纹理的最大宽度或高度。
+/// 它约束单张纹理所占内存，使畸形文件头无法向解码器索要设备提供不了的分配。
 pub const MAX_TEXTURE_DIMENSION: u32 = 8192;
 
 /// A 2D texture owning an RGBA8 pixel buffer, with nearest-neighbor wrap sampling.
@@ -26,8 +25,7 @@ impl Texture {
    ///
    /// # Errors
    /// 尺寸为 0 或超过 `MAX_TEXTURE_DIMENSION`、像素数量与尺寸不符，或尺寸乘积溢出时返回相应错误。
-   /// Returns an error when a dimension is zero or exceeds `MAX_TEXTURE_DIMENSION`,
-   /// when the pixel count does not match the dimensions, or when the product overflows.
+   /// Returns an error when a dimension is zero or exceeds `MAX_TEXTURE_DIMENSION`, when the pixel count does not match the dimensions, or when the product overflows.
    pub fn new(width: u32, height: u32, pixels: Vec<ColorRgba8>) -> Result<Self, Error> {
       if width == 0
          || height == 0
@@ -114,10 +112,8 @@ impl Texture {
 /// Map a wrapped `[0, 1)` coordinate to a texel index in `[0, size)`.
 /// 将环绕后的 `[0, 1)` 坐标映射到 `[0, size)` 范围内的纹素索引。
 //
-// `size` is bounded by MAX_TEXTURE_DIMENSION and `wrapped` is in [0, 1), so the
-// float→i64→usize path below cannot overflow or meaningfully lose precision.
-// `size` 受 MAX_TEXTURE_DIMENSION 约束且 `wrapped` 位于 [0, 1) 内，因此下面的
-// float→i64→usize 路径不会溢出或产生有意义的精度损失。
+// `size` is bounded by MAX_TEXTURE_DIMENSION and `wrapped` is in [0, 1), so the float→i64→usize path below cannot overflow or meaningfully lose precision.
+// `size` 受 MAX_TEXTURE_DIMENSION 约束且 `wrapped` 位于 [0, 1) 内，因此下面的 float→i64→usize 路径不会溢出或产生有意义的精度损失。
 #[expect(
    clippy::cast_possible_truncation,
    clippy::cast_possible_wrap,
@@ -128,23 +124,16 @@ fn sample_axis(coord: f32, size: u32) -> usize {
    let wrapped = wrap_uv(coord);
    let scaled = wrapped * size as f32;
    let index = scaled as i32;
-   // `wrapped` is in `[0, 1)`, so the index is never negative — only the upper
-   // bound needs clamping, because a coordinate just below 1 can round up to
-   // `size` in `f32`.
-   // `wrapped` 位于 `[0, 1)`，索引不会为负——只需钳制上界，因为略小于 1 的坐标在 `f32`
-   // 中可能进位到 `size`。
+   // `wrapped` is in `[0, 1)`, so the index is never negative — only the upper bound needs clamping, because a coordinate just below 1 can round up to `size` in `f32`.
+   // `wrapped` 位于 `[0, 1)`，索引不会为负——只需钳制上界，因为略小于 1 的坐标在 `f32` 中可能进位到 `size`。
    index.min(size as i32 - 1) as usize
 }
 
-/// Return the fractional part of `x` in `[0, 1)`, wrapping upward for negative
-/// input so a texture tiles on both sides of the origin.
+/// Return the fractional part of `x` in `[0, 1)`, wrapping upward for negative input so a texture tiles on both sides of the origin.
 /// 返回 `x` 在 `[0, 1)` 范围内的小数部分；负输入向正方向环绕，因此纹理在原点两侧都能平铺。
 ///
-/// `x - floor(x)` already lies in `[0, 1)` for every finite `x` (and is `NaN` for
-/// an infinity, which the index cast maps to 0), so no negative correction is
-/// needed.
-/// 对每个有限的 `x`，`x - floor(x)` 本就落在 `[0, 1)` 内（无穷时为 `NaN`，索引转换会
-/// 将其映射为 0），因此无需负数修正。
+/// `x - floor(x)` already lies in `[0, 1)` for every finite `x` (and is `NaN` for an infinity, which the index cast maps to 0), so no negative correction is needed.
+/// 对每个有限的 `x`，`x - floor(x)` 本就落在 `[0, 1)` 内（无穷时为 `NaN`，索引转换会将其映射为 0），因此无需负数修正。
 #[inline]
 fn wrap_uv(x: f32) -> f32 {
    x - floor(x)

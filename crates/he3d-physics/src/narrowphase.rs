@@ -6,45 +6,35 @@ use crate::contact::{MAX_MANIFOLD_POINTS, Manifold, ManifoldPoint};
 /// The maximum number of vertices a clipped polygon can have.
 /// 裁剪后的多边形最多拥有的顶点数。
 ///
-/// Clipping a convex `n`-gon by one half-plane yields at most `n + 1` vertices, and
-/// the largest thing ever clipped here is a four-corner box face against four side
-/// planes, so eight is the exact bound rather than a guess. It matters because
-/// [`Polygon::push`] silently drops anything past it: a bound that was too small
-/// would cost contact points and let a Body sink, with nothing to report it.
-/// 用一个半平面裁剪凸 `n` 边形最多得到 `n + 1` 个顶点，而这里被裁剪的最大对象是四角的盒
-/// 面被四个侧面裁剪，因此 8 是精确上界而非估计。这一点重要，是因为 [`Polygon::push`] 会
-/// 静默丢弃超出上限的部分：上界过小会丢失接触点、让 Body 下沉，而且没有任何地方会报告它。
+/// Clipping a convex `n`-gon by one half-plane yields at most `n + 1` vertices, and the largest thing ever clipped here is a four-corner box face against four side planes, so eight is the exact bound rather than a guess.
+/// It matters because [`Polygon::push`] silently drops anything past it: a bound that was too small would cost contact points and let a Body sink, with nothing to report it.
+/// 用一个半平面裁剪凸 `n` 边形最多得到 `n + 1` 个顶点，而这里被裁剪的最大对象是四角的盒面被四个侧面裁剪，因此 8 是精确上界而非估计。
+/// 这一点重要，是因为 [`Polygon::push`] 会静默丢弃超出上限的部分：上界过小会丢失接触点、让 Body 下沉，而且没有任何地方会报告它。
 const MAX_POLYGON_POINTS: usize = 8;
 
 /// How many corners the polygon a clip starts from can have.
 /// 交给裁剪的多边形最多有多少个角。
 ///
-/// It is a box face or a triangle, so four covers both, and the count is what keeps a
-/// clipped vertex's identity clear of the corners it was cut from.
-/// 它要么是盒的一个面，要么是三角形，因此四个足以覆盖两者；这个数目正是让被裁顶点的身份
-/// 不会与它来源的角相撞的保证。
+/// It is a box face or a triangle, so four covers both, and the count is what keeps a clipped vertex's identity clear of the corners it was cut from.
+/// 它要么是盒的一个面，要么是三角形，因此四个足以覆盖两者；这个数目正是让被裁顶点的身份不会与它来源的角相撞的保证。
 const POLYGON_CORNER_COUNT: u32 = 4;
 
 /// How many distinct clip planes a polygon is ever cut by.
 /// 一个多边形最多会被多少条不同的裁剪平面切割。
 ///
-/// Box-versus-box cuts against the reference face's two side axes, each in both
-/// directions; box-versus-triangle cuts against the triangle's three edges. Four
-/// covers both.
-/// 盒对盒按参考面的两条侧轴各切两个方向；盒对三角形按三角形的三条棱各切一次。四个足以
-/// 覆盖两者。
+/// Box-versus-box cuts against the reference face's two side axes, each in both directions; box-versus-triangle cuts against the triangle's three edges.
+/// Four covers both.
+/// 盒对盒按参考面的两条侧轴各切两个方向；盒对三角形按三角形的三条棱各切一次。
+/// 四个足以覆盖两者。
 const CLIP_PLANE_COUNT: u32 = 4;
 
 /// Where a feature id records which shape supplied the polygon it was cut from.
 /// 特征 id 中记录"这个点由哪一方的多边形裁出"的那一段的起始位。
 ///
-/// Two shapes both number their own corners from zero, and both sides of a box pair can
-/// be the reference. Tagging the id with the supplying shape turns a point that merely
-/// shares an index with last step's point into a miss, instead of a warm start applied
-/// to geometry that never earned it.
-/// 两个形状都从零给自己的角编号，而盒对的两个面都可能是参考面。用提供多边形的形状给 id 打
-/// 上标记，就能把"只是下标与上一步某点相同"变成一次未命中，而不是把 warm start 用到一块
-/// 从未挣得它的几何上。
+/// Two shapes both number their own corners from zero, and both sides of a box pair can be the reference.
+/// Tagging the id with the supplying shape turns a point that merely shares an index with last step's point into a miss, instead of a warm start applied to geometry that never earned it.
+/// 两个形状都从零给自己的角编号，而盒对的两个面都可能是参考面。
+/// 用提供多边形的形状给 id 打上标记，就能把"只是下标与上一步某点相同"变成一次未命中，而不是把 warm start 用到一块从未挣得它的几何上。
 const INCIDENT_SIDE_SHIFT: u32 = 16;
 
 /// The side tag for a polygon cut from a box's face.
@@ -55,62 +45,53 @@ const BOX_FACE_SIDE: u32 = 0;
 /// 由三角形裁出的多边形所用的侧标记。
 const TRIANGLE_SIDE: u32 = 1;
 
-/// Attach the supplying shape to a feature id. See [`INCIDENT_SIDE_SHIFT`].
-/// 把提供方附加到特征 id 上。见 [`INCIDENT_SIDE_SHIFT`]。
+/// Attach the supplying shape to a feature id.
+/// See [`INCIDENT_SIDE_SHIFT`].
+/// 把提供方附加到特征 id 上。
+/// 见 [`INCIDENT_SIDE_SHIFT`]。
 fn tagged(feature: u32, side: u32) -> u32 {
    feature | (side << INCIDENT_SIDE_SHIFT)
 }
 
 /// Handicap applied to a box's edge axis when both shapes are boxes.
 ///
-/// The axis contest takes the smallest least translation, so an inflation is a
-/// deliberate handicap: a resting face contact must not lose to a nearly-parallel
-/// cross product whose least translation happens to be a hair smaller. Faces carry
-/// no handicap here because a face axis is the trustworthy one.
+/// The axis contest takes the smallest least translation, so an inflation is a deliberate handicap: a resting face contact must not lose to a nearly-parallel cross product whose least translation happens to be a hair smaller.
+/// Faces carry no handicap here because a face axis is the trustworthy one.
 /// 当两个形状都是盒时，施加于盒棱轴的劣势系数。
-/// 轴选择取最小的最小平移量，因此放大是一种刻意的劣势：静止的面接触绝不能输给一个几乎
-/// 平行的叉积——后者的最小平移量恰好小了一丁点。这里面对轴不加劣势，因为面轴才是可信的。
+/// 轴选择取最小的最小平移量，因此放大是一种刻意的劣势：静止的面接触绝不能输给一个几乎平行的叉积——后者的最小平移量恰好小了一丁点。
+/// 这里面对轴不加劣势，因为面轴才是可信的。
 const BOX_BOX_EDGE_BIAS: f32 = 1.02;
 
 /// Handicap applied to a box's face axis in the box-versus-triangle contest.
 ///
-/// This contest is only reached when the box does *not* straddle the triangle's
-/// plane, because the straddling case returns the triangle's face outright. What is
-/// left is a boundary hit, where the box's own face is the more trusted axis — more
-/// trusted than an edge, but still handicapped so it cannot outrank the triangle's
-/// face if that ever re-enters the contest.
+/// This contest is only reached when the box does *not* straddle the triangle's plane, because the straddling case returns the triangle's face outright.
+/// What is left is a boundary hit, where the box's own face is the more trusted axis — more trusted than an edge, but still handicapped so it cannot outrank the triangle's face if that ever re-enters the contest.
 /// 盒对三角形时施加于盒面轴的劣势系数。
-/// 只有在盒**没有**跨过三角形所在平面时才会走到这个选择，因为跨过的情况会直接返回三角形
-/// 的面。剩下的是一次边界命中，此时盒自身的面是更可信的轴——比棱可信，但仍带劣势，以免在
-/// 三角形面重新参与选择时压过它。
+/// 只有在盒**没有**跨过三角形所在平面时才会走到这个选择，因为跨过的情况会直接返回三角形的面。
+/// 剩下的是一次边界命中，此时盒自身的面是更可信的轴——比棱可信，但仍带劣势，以免在三角形面重新参与选择时压过它。
 const BOX_TRIANGLE_FACE_BIAS: f32 = 1.02;
 
 /// Handicap applied to a box's edge axis in the box-versus-triangle contest.
 ///
-/// Larger than [`BOX_TRIANGLE_FACE_BIAS`] because an edge axis comes from crossing
-/// two nearly-parallel directions and is the least trustworthy of the three.
+/// Larger than [`BOX_TRIANGLE_FACE_BIAS`] because an edge axis comes from crossing two nearly-parallel directions and is the least trustworthy of the three.
 /// 盒对三角形时施加于盒棱轴的劣势系数。
-/// 比 [`BOX_TRIANGLE_FACE_BIAS`] 更大，因为棱轴来自两个几乎平行方向的叉积，是三者中最
-/// 不可信的。
+/// 比 [`BOX_TRIANGLE_FACE_BIAS`] 更大，因为棱轴来自两个几乎平行方向的叉积，是三者中最不可信的。
 const BOX_TRIANGLE_EDGE_BIAS: f32 = 1.05;
 
 /// Absolute slack added to every handicapped axis.
 ///
-/// It is a world length added to a world length, so it is not scale-invariant: for a
-/// Body much smaller than this the slack exceeds the overlaps being compared and the
-/// axis choice becomes arbitrary. At ordinary scene scale it only breaks ties.
+/// It is a world length added to a world length, so it is not scale-invariant: for a Body much smaller than this the slack exceeds the overlaps being compared and the axis choice becomes arbitrary.
+/// At ordinary scene scale it only breaks ties.
 /// 加到每个带劣势轴上的绝对余量。
-/// 它是长度加到长度上，因此不具尺度不变性：对远小于此值的 Body，该余量会超过被比较的重叠
-/// 量，轴的选择就变成任意的。在常规场景尺度下它只用来打破平局。
+/// 它是长度加到长度上，因此不具尺度不变性：对远小于此值的 Body，该余量会超过被比较的重叠量，轴的选择就变成任意的。
+/// 在常规场景尺度下它只用来打破平局。
 const AXIS_BIAS_SLACK: f32 = 1e-4;
 
 /// A clipped vertex this far outside the reference face still counts as touching.
 ///
-/// Without the tolerance a point whose separation hovers around zero blinks in and
-/// out of the manifold between steps, which throws away the warm-start impulse
-/// every time it disappears and leaves a resting stack permanently jittering.
-/// 超出参考面不超过此距离的裁剪顶点仍算作接触。若没有这个容差，分离量在零附近波动的点会
-/// 在步与步之间反复出现与消失，每次消失都会丢掉 warm-start 冲量，使静止堆叠永远抖动。
+/// Without the tolerance a point whose separation hovers around zero blinks in and out of the manifold between steps, which throws away the warm-start impulse every time it disappears and leaves a resting stack permanently jittering.
+/// 超出参考面不超过此距离的裁剪顶点仍算作接触。
+/// 若没有这个容差，分离量在零附近波动的点会在步与步之间反复出现与消失，每次消失都会丢掉 warm-start 冲量，使静止堆叠永远抖动。
 const CONTACT_TOLERANCE: f32 = 1e-3;
 
 /// How close to an endpoint a clipping crossing may land before it counts as one.
@@ -121,11 +102,8 @@ const CLIP_ENDPOINT_MARGIN: f32 = 1e-4;
 /// 两个裁剪后顶点距离小于此值时视为同一个接触点。
 const VERTEX_WELD_DISTANCE: f32 = 1e-4;
 
-/// Side planes are pushed out by this much so that two exactly aligned faces —
-/// where the incident corners land precisely on the reference face's edges — are
-/// kept rather than decided by floating-point noise.
-/// 侧面外扩此距离，使两个完全对齐的面（入射角点恰好落在参考面的边上）被保留，而不是由
-/// 浮点噪声决定去留。
+/// Side planes are pushed out by this much so that two exactly aligned faces — where the incident corners land precisely on the reference face's edges — are kept rather than decided by floating-point noise.
+/// 侧面外扩此距离，使两个完全对齐的面（入射角点恰好落在参考面的边上）被保留，而不是由浮点噪声决定去留。
 const CLIP_PLANE_MARGIN: f32 = 1e-4;
 
 /// A box's world-space frame: where it is and which way its local axes point.
@@ -153,8 +131,7 @@ impl BoxFrame {
 
    /// Half the box's extent when projected onto a unit `axis`.
    ///
-   /// This is `sum_j |dot(axis, local_axis_j)| * half_j`, which is exactly the SAT
-   /// projection radius of a box.
+   /// This is `sum_j |dot(axis, local_axis_j)| * half_j`, which is exactly the SAT projection radius of a box.
    /// 这是 `sum_j |dot(axis, local_axis_j)| * half_j`，正是长方体在 SAT 中的投影半径。
    fn radius(&self, axis: Vec3) -> f32 {
       self.axes[0].dot(axis).abs() * self.half.x
@@ -162,8 +139,7 @@ impl BoxFrame {
          + self.axes[2].dot(axis).abs() * self.half.z
    }
 
-   /// The four corners of the face whose outward normal is `sign * axes[axis]`,
-   /// wound consistently around the face.
+   /// The four corners of the face whose outward normal is `sign * axes[axis]`, wound consistently around the face.
    /// 外法线为 `sign * axes[axis]` 的那个面的四个角点，按一致方向绕面排列。
    fn face(&self, axis: usize, sign: f32) -> [Vec3; 4] {
       let normal = axis_of(self.axes, axis) * sign;
@@ -197,8 +173,8 @@ impl BoxFrame {
 /// A small fixed-capacity polygon used while clipping.
 /// 裁剪过程中使用的小型定容多边形。
 ///
-/// Every vertex carries the identity of the geometry it came from, which is what warm
-/// starting matches a point against across steps. See [`clipped_feature`].
+/// Every vertex carries the identity of the geometry it came from, which is what warm starting matches a point against across steps.
+/// See [`clipped_feature`].
 /// 每个顶点都带着它所来自的那块几何的身份；warm starting 正是靠它在步与步之间匹配接触点。
 /// 见 [`clipped_feature`]。
 #[derive(Clone, Copy, Debug)]
@@ -240,42 +216,29 @@ impl Polygon {
    }
 }
 
-/// The identity a clipped vertex inherits from the vertex it was cut from and the
-/// plane that cut it.
+/// The identity a clipped vertex inherits from the vertex it was cut from and the plane that cut it.
 /// 被裁出的顶点从它的来源顶点与切割它的平面继承到的身份。
 ///
-/// Warm starting matches a point to its own previous step through this value, so it
-/// has to name the geometry a point came from rather than its place in this step's
-/// list. A box rolling onto its edge drops from a four-point manifold to a two-point
-/// one, and an ordinal would relabel the survivors — handing each of them the impulse
-/// a different corner had accumulated.
-/// Warm starting 靠这个值把点匹配到它自己上一步的状态，因此它必须指明点来自哪块几何，而不是
-/// 它在本步列表中的位置。滚到棱上的方块会从四点流形降到两点流形，此时序号会重新标记存活点
-/// ——把另一个角积攒的冲量塞给它们。
+/// Warm starting matches a point to its own previous step through this value, so it has to name the geometry a point came from rather than its place in this step's list.
+/// A box rolling onto its edge drops from a four-point manifold to a two-point one, and an ordinal would relabel the survivors — handing each of them the impulse a different corner had accumulated.
+/// Warm starting 靠这个值把点匹配到它自己上一步的状态，因此它必须指明点来自哪块几何，而不是它在本步列表中的位置。
+/// 滚到棱上的方块会从四点流形降到两点流形，此时序号会重新标记存活点——把另一个角积攒的冲量塞给它们。
 ///
-/// A corner of the source polygon is its own identity, so the corners stay inside
-/// `POLYGON_CORNER_COUNT`; everything above that is a crossing, named by the vertex it
-/// came from and the plane that made it.
-/// 源多边形的一个角就是它自己的身份，因此各角都落在 `POLYGON_CORNER_COUNT` 之内；再往上
-/// 都是裁出的跨越点，由它所来自的顶点与制造它的平面共同命名。
+/// A corner of the source polygon is its own identity, so the corners stay inside `POLYGON_CORNER_COUNT`; everything above that is a crossing, named by the vertex it came from and the plane that made it.
+/// 源多边形的一个角就是它自己的身份，因此各角都落在 `POLYGON_CORNER_COUNT` 之内；再往上都是裁出的跨越点，由它所来自的顶点与制造它的平面共同命名。
 fn clipped_feature(from: u32, plane: u32) -> u32 {
    POLYGON_CORNER_COUNT + from * CLIP_PLANE_COUNT + plane
 }
 
 /// Clip `polygon` against the half-space `dot(normal, p) <= offset`.
 ///
-/// This is Sutherland-Hodgman with a single plane: keep the vertices inside, and
-/// insert a new vertex wherever an edge crosses. A crossing exactly at an endpoint
-/// is not inserted, because a duplicated vertex becomes a duplicated contact point
-/// — which doubles that point's effective mass and makes a resting stack drift.
+/// This is Sutherland-Hodgman with a single plane: keep the vertices inside, and insert a new vertex wherever an edge crosses.
+/// A crossing exactly at an endpoint is not inserted, because a duplicated vertex becomes a duplicated contact point — which doubles that point's effective mass and makes a resting stack drift.
 /// 对单个平面做 Sutherland-Hodgman 裁剪：保留内侧顶点，并在边跨越平面处插入新顶点。
-/// 恰好发生在端点上的跨越不会被插入，因为重复的顶点会变成重复的接触点——那会使该点的
-/// 有效质量翻倍，让静止堆叠漂移。
+/// 恰好发生在端点上的跨越不会被插入，因为重复的顶点会变成重复的接触点——那会使该点的有效质量翻倍，让静止堆叠漂移。
 ///
-/// `plane` names the cut so that an inserted vertex can be identified next step by the
-/// geometry that produced it rather than by its position in the output.
-/// `plane` 为这条切线命名，使插入的顶点下一步能凭产生它的几何、而不是凭它在输出中的位置被
-/// 认出来。
+/// `plane` names the cut so that an inserted vertex can be identified next step by the geometry that produced it rather than by its position in the output.
+/// `plane` 为这条切线命名，使插入的顶点下一步能凭产生它的几何、而不是凭它在输出中的位置被认出来。
 fn clip_polygon(polygon: &Polygon, normal: Vec3, offset: f32, plane: u32) -> Polygon {
    let mut output = Polygon {
       points: [Vec3::ZERO; MAX_POLYGON_POINTS],
@@ -300,8 +263,7 @@ fn clip_polygon(polygon: &Polygon, normal: Vec3, offset: f32, plane: u32) -> Pol
          let span = current_distance - next_distance;
          if span.abs() > f32::EPSILON {
             let t = current_distance / span;
-            // Skip crossings that land on an endpoint; those vertices are already
-            // being emitted on one side or the other.
+            // Skip crossings that land on an endpoint; those vertices are already being emitted on one side or the other.
             // 跳过落在端点上的跨越；那些顶点已经在某一侧被输出。
             if t > CLIP_ENDPOINT_MARGIN && t < 1.0 - CLIP_ENDPOINT_MARGIN {
                output.push(
@@ -336,8 +298,7 @@ struct Best {
 
 /// The result of testing one separating axis.
 ///
-/// A face axis wins ties against an edge axis, because face contact is the
-/// trustworthy case and edge axes are the numerically fragile one.
+/// A face axis wins ties against an edge axis, because face contact is the trustworthy case and edge axes are the numerically fragile one.
 /// 面轴在与棱轴打平时胜出，因为面接触是可信情形，而棱轴在数值上最脆弱。
 enum AxisOutcome {
    Separated,
@@ -363,8 +324,7 @@ fn test_axis(
    if overlap <= 0.0 {
       return AxisOutcome::Separated;
    }
-   // Edge axes are biased slightly upward so that a resting face contact is not
-   // stolen by a nearly-parallel cross product.
+   // Edge axes are biased slightly upward so that a resting face contact is not stolen by a nearly-parallel cross product.
    // 棱轴被略微上调，以免静止的面接触被一个几乎平行的叉积抢走。
    let biased = if is_edge {
       overlap * BOX_BOX_EDGE_BIAS + AXIS_BIAS_SLACK
@@ -481,8 +441,7 @@ fn build_manifold(a: &BoxFrame, b: &BoxFrame, delta: Vec3, axis: SatAxis) -> Man
          face_manifold(a, index, sign, b, false)
       }
       SatAxis::FaceB(index) => {
-         // Reference the second box's face, then flip the normal so it still
-         // points from A toward B.
+         // Reference the second box's face, then flip the normal so it still points from A toward B.
          // 以第二个盒的面为参考面，随后翻转法线，使其仍由 A 指向 B。
          let sign = sign_of(delta.dot(b.axes[index]));
          face_manifold(b, index, -sign, a, true)
@@ -502,14 +461,11 @@ fn face_manifold(
    let reference_normal = axis_of(reference.axes, reference_axis) * reference_sign;
    let reference_face = reference.face(reference_axis, reference_sign);
 
-   // The incident face is the one whose outward normal is most anti-parallel to
-   // the reference normal. That is the axis with the largest *absolute* alignment,
-   // taken against the reference normal — searching the signed alignment instead
-   // picks an orthogonal axis whenever two boxes are exactly axis-aligned, which
-   // selects a side face and leaves only two contact points.
-   // 入射面是其外法线与参考法线最反向的那个面。即 |对齐度| 最大的轴，方向与参考法线相反。
-   // 若改用带符号的对齐度搜索，两个完全轴对齐的箱子会选到正交轴，从而选中一张侧面，
-   // 只留下两个接触点。
+   // The incident face is the one whose outward normal is most anti-parallel to the reference normal.
+   // That is the axis with the largest *absolute* alignment, taken against the reference normal — searching the signed alignment instead picks an orthogonal axis whenever two boxes are exactly axis-aligned, which selects a side face and leaves only two contact points.
+   // 入射面是其外法线与参考法线最反向的那个面。
+   // 即 |对齐度| 最大的轴，方向与参考法线相反。
+   // 若改用带符号的对齐度搜索，两个完全轴对齐的箱子会选到正交轴，从而选中一张侧面，只留下两个接触点。
    let mut incident_axis = 0;
    let mut largest = -1.0_f32;
    for index in 0..3 {
@@ -522,11 +478,10 @@ fn face_manifold(
    let incident_sign = -sign_of(axis_of(incident.axes, incident_axis).dot(reference_normal));
    let incident_face = incident.face(incident_axis, incident_sign);
 
-   // Clip the incident face against the four side planes of the reference face. Each
-   // cut is named by its side axis and direction, so a vertex it inserts can be
-   // identified next step by the geometry that made it.
-   // 用参考面的四条侧平面裁剪入射面。每条切线由它的侧轴与方向命名，使插入的顶点下一步能凭
-   // 产生它的几何被认出来。
+   // Clip the incident face against the four side planes of the reference face.
+   // Each cut is named by its side axis and direction, so a vertex it inserts can be identified next step by the geometry that made it.
+   // 用参考面的四条侧平面裁剪入射面。
+   // 每条切线由它的侧轴与方向命名，使插入的顶点下一步能凭产生它的几何被认出来。
    let mut polygon = Polygon::new(&incident_face);
    for step in 1..3 {
       let side_axis = (reference_axis + step) % 3;
@@ -575,14 +530,10 @@ fn face_manifold(
       count += 1;
    }
 
-   // The points are ordered by position, but that order is only the solver's sweep
-   // order: identity comes from `feature`, which the clipping already attached. Which
-   // box supplies the reference face flips with numerical noise between steps and
-   // clipping order flips with it, so a positional order is the one stable thing to
-   // sweep in.
+   // The points are ordered by position, but that order is only the solver's sweep order: identity comes from `feature`, which the clipping already attached.
+   // Which box supplies the reference face flips with numerical noise between steps and clipping order flips with it, so a positional order is the one stable thing to sweep in.
    // 各点按位置排序，但这个顺序只是求解器的扫描顺序：身份来自裁剪时已经附上的 `feature`。
-   // 哪一方提供参考面会随数值噪声在步间翻转，裁剪顺序也随之翻转，因此按位置排序是唯一稳定
-   // 的扫描顺序。
+   // 哪一方提供参考面会随数值噪声在步间翻转，裁剪顺序也随之翻转，因此按位置排序是唯一稳定的扫描顺序。
    collected[..count].sort_unstable_by(|left, right| {
       left
          .position
@@ -646,8 +597,7 @@ fn edge_manifold(
 
 /// The closest pair of points on two segments.
 ///
-/// The standard clamped-parameter solution; degenerate and parallel cases are
-/// handled explicitly rather than by producing a `NaN`.
+/// The standard clamped-parameter solution; degenerate and parallel cases are handled explicitly rather than by producing a `NaN`.
 /// 标准的参数钳制解法；退化与平行情形被显式处理，而不是产生 `NaN`。
 fn closest_points(first: [Vec3; 2], second: [Vec3; 2]) -> (Vec3, Vec3) {
    let first_delta = first[1] - first[0];
@@ -682,10 +632,8 @@ fn closest_points(first: [Vec3; 2], second: [Vec3; 2]) -> (Vec3, Vec3) {
       (cross_projection * along_first + second_projection) / second_length_squared
    };
 
-   // Clamp `along_second`, then re-solve `along_first` against the clamped value so
-   // the result stays on both segments instead of only approximating.
-   // 钳制 `along_second`，再针对钳制后的值重新求 `along_first`，使结果确实落在两段之上
-   // 而非只是近似。
+   // Clamp `along_second`, then re-solve `along_first` against the clamped value so the result stays on both segments instead of only approximating.
+   // 钳制 `along_second`，再针对钳制后的值重新求 `along_first`，使结果确实落在两段之上而非只是近似。
    if along_second < 0.0 {
       along_second = 0.0;
       along_first = (-first_projection / first_length_squared).clamp(0.0, 1.0);
@@ -739,8 +687,7 @@ fn sphere_box(
       (normal, sphere_radius + best)
    };
 
-   // `local_normal` is the direction that leaves the box, i.e. from the box toward
-   // the sphere, expressed in world space.
+   // `local_normal` is the direction that leaves the box, i.e. from the box toward the sphere, expressed in world space.
    // `local_normal` 是离开盒子的方向，即由盒指向球，已转换到世界空间。
    let outward = box_frame.axes[0] * local_normal.x
       + box_frame.axes[1] * local_normal.y
@@ -795,9 +742,10 @@ fn sphere_sphere(center_a: Vec3, radius_a: f32, center_b: Vec3, radius_b: f32) -
 
 /// Generate the contact manifold between two shapes.
 ///
-/// `shape_a` is the first shape and the returned normal points from it toward
-/// `shape_b`. Shapes are taken by value because every one of them is `Copy`.
-/// 生成两个形状之间的接触流形。`shape_a` 是第一个形状，返回的法线由它指向 `shape_b`。
+/// `shape_a` is the first shape and the returned normal points from it toward `shape_b`.
+/// Shapes are taken by value because every one of them is `Copy`.
+/// 生成两个形状之间的接触流形。
+/// `shape_a` 是第一个形状，返回的法线由它指向 `shape_b`。
 /// 形状按值传入，因为它们全都是 `Copy`。
 pub(crate) fn collide(
    shape_a: crate::shape::Shape,
@@ -872,8 +820,7 @@ fn sign_of(value: f32) -> f32 {
 
 /// Pack the identifying indices of a manifold point into one value.
 ///
-/// Warm starting matches points between steps by this value, so every point of a
-/// manifold must get a distinct one.
+/// Warm starting matches points between steps by this value, so every point of a manifold must get a distinct one.
 /// Warm starting 通过该值在步与步之间匹配接触点，因此同一流形的每个点都必须得到不同的值。
 fn feature_id(kind: u32, first: usize, second: usize, index: usize) -> u32 {
    let first = u32::try_from(first).unwrap_or(0) & 7;
@@ -886,15 +833,14 @@ fn feature_id(kind: u32, first: usize, second: usize, index: usize) -> u32 {
 /// 压在三角形上的盒，或与之接触的盒。
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TriangleHit {
-   /// The contact points, with the normal pointing from the box toward the
-   /// triangle.
+   /// The contact points, with the normal pointing from the box toward the triangle.
    /// 接触点，法线由盒指向三角形。
    pub manifold: Manifold,
    /// When the least-penetrating axis was a triangle edge, that edge's index.
    ///
    /// The caller discards the hit when that edge turns out to be an Internal edge.
-   /// 当最小穿透轴是一条三角形棱时，该棱的索引。若该棱被判定为 Internal edge，调用方
-   /// 会丢弃这次命中。
+   /// 当最小穿透轴是一条三角形棱时，该棱的索引。
+   /// 若该棱被判定为 Internal edge，调用方会丢弃这次命中。
    pub source_edge: Option<usize>,
 }
 
@@ -904,19 +850,17 @@ pub(crate) struct TriangleHit {
 enum TriangleAxis {
    /// A face of the box.
    BoxFace(usize),
-   /// A box axis crossed with a triangle edge, naming the edge and carrying the
-   /// unit axis.
+   /// A box axis crossed with a triangle edge, naming the edge and carrying the unit axis.
    Edge(usize, Vec3),
 }
 
 /// Generate the contact manifold between a box and one triangle.
 ///
-/// The triangle is treated as a degenerate convex shape: a two-sided flat face
-/// with three adjacent edges. The returned normal points from the box toward the
-/// triangle, matching the convention that a Contact's normal runs from the first
-/// side to the second.
-/// 生成盒与单个三角形之间的接触流形。三角形被视为退化的凸形状：一张双面平面加三条相邻
-/// 棱。返回的法线由盒指向三角形，与"Contact 法线由第一侧指向第二侧"的约定一致。
+/// The triangle is treated as a degenerate convex shape: a two-sided flat face with three adjacent edges.
+/// The returned normal points from the box toward the triangle, matching the convention that a Contact's normal runs from the first side to the second.
+/// 生成盒与单个三角形之间的接触流形。
+/// 三角形被视为退化的凸形状：一张双面平面加三条相邻棱。
+/// 返回的法线由盒指向三角形，与"Contact 法线由第一侧指向第二侧"的约定一致。
 pub(crate) fn box_triangle(box_frame: &BoxFrame, triangle: [Vec3; 3]) -> Option<TriangleHit> {
    let edges = [
       triangle[1] - triangle[0],
@@ -932,19 +876,13 @@ pub(crate) fn box_triangle(box_frame: &BoxFrame, triangle: [Vec3; 3]) -> Option<
    }
    let triangle_normal = raw_normal / normal_length;
 
-   // If the box straddles the triangle's plane, the triangle's own face is the
-   // reference, and it wins outright rather than competing on least translation.
+   // If the box straddles the triangle's plane, the triangle's own face is the reference, and it wins outright rather than competing on least translation.
    //
-   // Competing is wrong here: when a box slides across a triangulated surface its
-   // leading face is exactly flush with the boundary of the triangle it is leaving,
-   // so a box axis has a least translation of zero. That zero-depth contact would
-   // win the axis contest and then cancel the box's sideways velocity, which is
-   // precisely the "catching on a seam" a Body must not do.
-   // 若盒跨过三角形所在平面，则以三角形自身的面为参考面，并直接取胜，而不参与最小平移量
-   // 的竞争。
-   // 竞争在这里是错的：当盒滑过三角化表面时，其前侧面恰好与将要离开的那个三角形的边界齐平，
-   // 于是某个盒轴的最小平移量为零。这个零深度接触会赢得轴选择，随后抵消盒的侧向速度——而这
-   // 正是 Body 绝不该发生的"卡在接缝上"。
+   // Competing is wrong here: when a box slides across a triangulated surface its leading face is exactly flush with the boundary of the triangle it is leaving, so a box axis has a least translation of zero.
+   // That zero-depth contact would win the axis contest and then cancel the box's sideways velocity, which is precisely the "catching on a seam" a Body must not do.
+   // 若盒跨过三角形所在平面，则以三角形自身的面为参考面，并直接取胜，而不参与最小平移量的竞争。
+   // 竞争在这里是错的：当盒滑过三角化表面时，其前侧面恰好与将要离开的那个三角形的边界齐平，于是某个盒轴的最小平移量为零。
+   // 这个零深度接触会赢得轴选择，随后抵消盒的侧向速度——而这正是 Body 绝不该发生的"卡在接缝上"。
    let face_overlap = triangle_overlap(box_frame, &triangle, triangle_normal);
    if face_overlap < 0.0 {
       // The triangle's own normal already separates them.
@@ -1013,16 +951,13 @@ pub(crate) fn box_triangle(box_frame: &BoxFrame, triangle: [Vec3; 3]) -> Option<
    })
 }
 
-/// How far apart a box and a triangle are when projected onto a unit `axis`,
-/// negated: a positive result is the least translation that would separate them.
+/// How far apart a box and a triangle are when projected onto a unit `axis`, negated: a positive result is the least translation that would separate them.
 ///
-/// This is the minimum-translation form rather than the length of the interval
-/// intersection. The two agree for solid shapes, but a triangle has no thickness:
-/// its projection onto its own normal is a single point, where the intersection
-/// length collapses to zero and would report every touch as a separation.
+/// This is the minimum-translation form rather than the length of the interval intersection.
+/// The two agree for solid shapes, but a triangle has no thickness: its projection onto its own normal is a single point, where the intersection length collapses to zero and would report every touch as a separation.
 /// 盒与三角形投影到单位 `axis` 上时的分离量的相反数：正值即便可将两者分开的最小平移量。
-/// 这里用最小平移形式而非区间交集长度。对实心形状两者一致，但三角形没有厚度：它在其自身
-/// 法线上的投影是一个点，交集长度会塌缩为零，从而把每次接触都报成分离。
+/// 这里用最小平移形式而非区间交集长度。
+/// 对实心形状两者一致，但三角形没有厚度：它在其自身法线上的投影是一个点，交集长度会塌缩为零，从而把每次接触都报成分离。
 fn triangle_overlap(box_frame: &BoxFrame, triangle: &[Vec3; 3], axis: Vec3) -> f32 {
    let box_center = box_frame.center.dot(axis);
    let box_radius = box_frame.radius(axis);
@@ -1036,10 +971,8 @@ fn triangle_overlap(box_frame: &BoxFrame, triangle: &[Vec3; 3], axis: Vec3) -> f
    (box_center + box_radius - triangle_min).min(triangle_max - (box_center - box_radius))
 }
 
-/// The three inward half-spaces of a triangle's edges, as `(normal, offset)` pairs
-/// keeping `dot(normal, p) <= offset`.
-/// 三角形三条边的三个内侧半空间，表示为 `(法线, 偏移)` 对，保持
-/// `dot(normal, p) <= offset`。
+/// The three inward half-spaces of a triangle's edges, as `(normal, offset)` pairs keeping `dot(normal, p) <= offset`.
+/// 三角形三条边的三个内侧半空间，表示为 `(法线, 偏移)` 对，保持 `dot(normal, p) <= offset`。
 fn triangle_edge_planes(triangle: &[Vec3; 3], normal: Vec3) -> [(Vec3, f32); 3] {
    let centroid = (triangle[0] + triangle[1] + triangle[2]) / 3.0;
    let mut planes = [(Vec3::ZERO, 0.0); 3];
@@ -1054,8 +987,7 @@ fn triangle_edge_planes(triangle: &[Vec3; 3], normal: Vec3) -> [(Vec3, f32); 3] 
          Vec3::ZERO
       };
       let mut offset = plane_normal.dot(first);
-      // Keep whichever side the triangle's own centroid is on, so the result does
-      // not depend on the winding order.
+      // Keep whichever side the triangle's own centroid is on, so the result does not depend on the winding order.
       // 保留三角形自身重心所在的那一侧，因此结果不依赖绕序。
       if plane_normal.dot(centroid) > offset {
          plane_normal = -plane_normal;
@@ -1066,16 +998,11 @@ fn triangle_edge_planes(triangle: &[Vec3; 3], normal: Vec3) -> [(Vec3, f32); 3] 
    planes
 }
 
-/// Collect kept points into a manifold, welding duplicates and ordering the
-/// survivors by position so the solver's sweep order survives a change of reference.
-/// 把保留的点收集成流形，焊接重复点，并按位置给存活点排序，使求解器的扫描顺序在参考面
-/// 改变时仍然保持。
+/// Collect kept points into a manifold, welding duplicates and ordering the survivors by position so the solver's sweep order survives a change of reference.
+/// 把保留的点收集成流形，焊接重复点，并按位置给存活点排序，使求解器的扫描顺序在参考面改变时仍然保持。
 ///
-/// The order is the sweep order and nothing else: each point keeps the `feature` it was
-/// given when it was produced, so warm-start identity names the geometry rather than a
-/// place in this step's list.
-/// 这个顺序只是扫描顺序，别无其他：每个点保留它被产生时得到的 `feature`，因此 warm-start
-/// 身份命名的是几何，而不是它在本步列表中的位置。
+/// The order is the sweep order and nothing else: each point keeps the `feature` it was given when it was produced, so warm-start identity names the geometry rather than a place in this step's list.
+/// 这个顺序只是扫描顺序，别无其他：每个点保留它被产生时得到的 `feature`，因此 warm-start 身份命名的是几何，而不是它在本步列表中的位置。
 fn manifold_from(
    mut points: [ManifoldPoint; MAX_MANIFOLD_POINTS],
    count: usize,
@@ -1115,8 +1042,7 @@ fn triangle_face_manifold(
    triangle_normal: Vec3,
 ) -> Manifold {
    let triangle_center = (triangle[0] + triangle[1] + triangle[2]) / 3.0;
-   // Point the plane normal from the triangle toward the box, so the manifold
-   // normal ends up pointing the other way, from the box toward the triangle.
+   // Point the plane normal from the triangle toward the box, so the manifold normal ends up pointing the other way, from the box toward the triangle.
    // 让平面法线由三角形指向盒，于是流形法线指向相反方向，即由盒指向三角形。
    let up = if triangle_normal.dot(box_frame.center - triangle_center) < 0.0 {
       -triangle_normal
@@ -1237,8 +1163,7 @@ fn edge_triangle_manifold(
       axis
    };
 
-   // The box edge that runs against the triangle edge is the one on its supporting
-   // corner, along the box axis that is least parallel to the triangle edge.
+   // The box edge that runs against the triangle edge is the one on its supporting corner, along the box axis that is least parallel to the triangle edge.
    // 与三角形棱相对的盒棱位于盒的支撑角上，沿与三角形棱最不平行的盒轴延伸。
    let edge_direction = triangle[(edge_index + 1) % 3] - triangle[edge_index];
    let mut best_box_axis = 0;
@@ -1273,7 +1198,8 @@ fn edge_triangle_manifold(
 /// Generate the contact manifold between a sphere and one triangle.
 ///
 /// The returned normal points from the sphere toward the triangle.
-/// 生成球与单个三角形之间的接触流形。返回的法线由球指向三角形。
+/// 生成球与单个三角形之间的接触流形。
+/// 返回的法线由球指向三角形。
 pub(crate) fn sphere_triangle(centre: Vec3, radius: f32, triangle: [Vec3; 3]) -> Option<Manifold> {
    let closest = closest_point_on_triangle(centre, triangle[0], triangle[1], triangle[2]);
    let offset = centre - closest;
@@ -1282,8 +1208,7 @@ pub(crate) fn sphere_triangle(centre: Vec3, radius: f32, triangle: [Vec3; 3]) ->
       return None;
    }
    let distance = sqrt(distance_squared);
-   // `toward_sphere` points from the triangle out to the sphere, so the manifold
-   // normal points the other way.
+   // `toward_sphere` points from the triangle out to the sphere, so the manifold normal points the other way.
    // `toward_sphere` 由三角形指向球，因此流形法线指向相反方向。
    let toward_sphere = if distance > 1e-6 {
       offset / distance
@@ -1315,10 +1240,9 @@ pub(crate) fn sphere_triangle(centre: Vec3, radius: f32, triangle: [Vec3; 3]) ->
 
 /// The point of a triangle closest to `point`.
 ///
-/// The standard Voronoi-region walk: the three vertex regions, then the three edge
-/// regions, then the interior.
-/// 三角形上离 `point` 最近的点。标准的 Voronoi 区域遍历：三个顶点区域、三条棱区域，
-/// 最后是内部。
+/// The standard Voronoi-region walk: the three vertex regions, then the three edge regions, then the interior.
+/// 三角形上离 `point` 最近的点。
+/// 标准的 Voronoi 区域遍历：三个顶点区域、三条棱区域，最后是内部。
 #[expect(clippy::similar_names)]
 fn closest_point_on_triangle(point: Vec3, first: Vec3, second: Vec3, third: Vec3) -> Vec3 {
    let edge_ab = second - first;
@@ -1523,8 +1447,7 @@ mod tests {
 
    #[test]
    fn a_box_resting_on_a_triangle_reports_a_face_contact() {
-      // A triangle wide enough to contain the box's whole footprint; the right
-      // triangle used elsewhere would clip one corner away.
+      // A triangle wide enough to contain the box's whole footprint; the right triangle used elsewhere would clip one corner away.
       // 一个足够宽、能容下盒整个投影的三角形；别处用的直角三角形会裁掉一个角。
       let triangle = [
          Vec3::new(-10.0, 0.0, -10.0),
@@ -1573,8 +1496,7 @@ mod tests {
 
    #[test]
    fn a_box_baulks_on_a_small_triangle_beneath_it() {
-      // The triangle is much smaller than the box face, so the contact comes from
-      // the box's own face rather than the triangle's plane.
+      // The triangle is much smaller than the box face, so the contact comes from the box's own face rather than the triangle's plane.
       let triangle = [
          Vec3::new(-0.1, 0.0, -0.1),
          Vec3::new(-0.1, 0.0, 0.1),
@@ -1620,12 +1542,10 @@ mod tests {
 
    #[test]
    fn a_cut_vertex_is_named_by_the_geometry_that_made_it() {
-      // Warm starting matches a point to its own previous step by this value, so two
-      // vertices of one manifold must never share it. The corners of the source
-      // polygon take the low values, and every crossing above them is named by the
-      // vertex it was cut from and the plane that cut it.
-      // Warm starting 靠这个值把点匹配到它自己上一步的状态，因此同一流形的两个顶点绝不能共用
-      // 它。源多边形的各角占用低位的值，其上的每个跨越点由它的来源顶点与切割它的平面命名。
+      // Warm starting matches a point to its own previous step by this value, so two vertices of one manifold must never share it.
+      // The corners of the source polygon take the low values, and every crossing above them is named by the vertex it was cut from and the plane that cut it.
+      // Warm starting 靠这个值把点匹配到它自己上一步的状态，因此同一流形的两个顶点绝不能共用它。
+      // 源多边形的各角占用低位的值，其上的每个跨越点由它的来源顶点与切割它的平面命名。
       let mut seen = [false; 64];
       for corner in 0..POLYGON_CORNER_COUNT {
          seen[corner as usize] = true;
@@ -1649,13 +1569,11 @@ mod tests {
 
    /// A cube tilted `angle` about z and pressed `penetration` into a slab.
    ///
-   /// A tilt spreads the cube's bottom corners apart in height by `sin(angle)`, so
-   /// the four corners only all reach the slab while that spread stays inside the
-   /// contact tolerance. The height is measured from whichever corner is lowest,
-   /// which is at -x for one sign of the tilt and at +x for the other.
-   /// 一个绕 z 轴倾斜 `angle`、压入板中 `penetration` 的方块。倾斜使方块底面的各个角在高度上
-   /// 拉开 `sin(angle)`，因此只有当这一差值仍在接触容差之内时，四个角才都能碰到板面。高度从
-   /// 最低的那个角量起，而该角在一个倾斜方向上位于 -x，在另一个方向上位于 +x。
+   /// A tilt spreads the cube's bottom corners apart in height by `sin(angle)`, so the four corners only all reach the slab while that spread stays inside the contact tolerance.
+   /// The height is measured from whichever corner is lowest, which is at -x for one sign of the tilt and at +x for the other.
+   /// 一个绕 z 轴倾斜 `angle`、压入板中 `penetration` 的方块。
+   /// 倾斜使方块底面的各个角在高度上拉开 `sin(angle)`，因此只有当这一差值仍在接触容差之内时，四个角才都能碰到板面。
+   /// 高度从最低的那个角量起，而该角在一个倾斜方向上位于 -x，在另一个方向上位于 +x。
    fn tilted_cube_on_slab(angle: f32, penetration: f32) -> crate::contact::Manifold {
       let slab_top = 0.5;
       let center = slab_top + 0.5 * cos(angle) + 0.5 * sin(angle).abs() - penetration;
@@ -1672,11 +1590,9 @@ mod tests {
 
    /// How far apart two points are, ignoring height.
    ///
-   /// Tilting the cube about z slides its corners sideways as well, so matching a
-   /// point across two tilts compares where the corner is on the slab, not how deep
-   /// it is pressed in.
-   /// 两点相距多远，忽略高度。让方块绕 z 轴倾斜也会把各个角横向挪动，因此在两个倾角之间匹配
-   /// 一个点，比较的是该角在板面上的位置，而不是它压进去的深度。
+   /// Tilting the cube about z slides its corners sideways as well, so matching a point across two tilts compares where the corner is on the slab, not how deep it is pressed in.
+   /// 两点相距多远，忽略高度。
+   /// 让方块绕 z 轴倾斜也会把各个角横向挪动，因此在两个倾角之间匹配一个点，比较的是该角在板面上的位置，而不是它压进去的深度。
    fn sideways(
       first: &crate::contact::ManifoldPoint,
       second: &crate::contact::ManifoldPoint,
@@ -1688,17 +1604,12 @@ mod tests {
 
    #[test]
    fn a_contact_corner_keeps_its_identity_when_the_manifold_shrinks() {
-      // A cube rolled onto its edge takes its contact from four points down to two,
-      // and the two survivors must keep the features they had while all four were
-      // still down. Naming a point by where it sorts in the list instead hands each
-      // survivor the impulse a different corner had accumulated, which is a warm
-      // start applied half a metre from where it belongs.
-      // 滚到棱上的方块，接触会从四个点减到两个，而两个存活点必须保住四点在时的 feature。若改用
-      // 点在列表中的排序来命名，就会把另一个角积攒的冲量塞给每个存活点——那是一记落在半米之外
-      // 的 warm start。
+      // A cube rolled onto its edge takes its contact from four points down to two, and the two survivors must keep the features they had while all four were still down.
+      // Naming a point by where it sorts in the list instead hands each survivor the impulse a different corner had accumulated, which is a warm start applied half a metre from where it belongs.
+      // 滚到棱上的方块，接触会从四个点减到两个，而两个存活点必须保住四点在时的 feature。
+      // 若改用点在列表中的排序来命名，就会把另一个角积攒的冲量塞给每个存活点——那是一记落在半米之外的 warm start。
       //
-      // Both directions are walked, because they shrink the manifold from opposite
-      // ends of the positional order and only one of them used to renumber.
+      // Both directions are walked, because they shrink the manifold from opposite ends of the positional order and only one of them used to renumber.
       // 两个方向都走一遍，因为它们从位置顺序的两端缩减流形，而其中只有一个方向以前会重新编号。
       for tilt in [0.002_f32, -0.002] {
          let flat = tilted_cube_on_slab(tilt, 0.005);

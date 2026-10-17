@@ -1,17 +1,9 @@
 //! Software-renderer benchmarks.
 //!
-//! Rendering is steady state by nature: `Renderer::render` reuses its framebuffers
-//! and never mutates the `Scene`, so a plain repeated call measures the frame cost
-//! without drift (TAA keeps history across frames, which is the intended per-frame
-//! behaviour, not an artifact).
+//! Rendering is steady state by nature: `Renderer::render` reuses its framebuffers and never mutates the `Scene`, so a plain repeated call measures the frame cost without drift (TAA keeps history across frames, which is the intended per-frame behaviour, not an artifact).
 //!
-//! The sweeps separate the drivers of frame cost instead of varying them together:
-//! triangle/object counts run at a fixed 64x36, resolution runs a fixed small scene,
-//! and an empty scene at each resolution isolates the fixed per-frame cost — clearing
-//! the colour and inverse-depth buffers and presenting — from the cost of geometry.
-//! A screen-filling quad holds geometry constant at two triangles, so its cost minus
-//! the empty-scene cost is the per-fragment (fill) cost, with `solid` and `tex`
-//! separating the constant-texture fast path from sampling a real texture.
+//! The sweeps separate the drivers of frame cost instead of varying them together: triangle/object counts run at a fixed 64x36, resolution runs a fixed small scene, and an empty scene at each resolution isolates the fixed per-frame cost — clearing the colour and inverse-depth buffers and presenting — from the cost of geometry.
+//! A screen-filling quad holds geometry constant at two triangles, so its cost minus the empty-scene cost is the per-fragment (fill) cost, with `solid` and `tex` separating the constant-texture fast path from sampling a real texture.
 
 #![allow(clippy::pedantic)]
 
@@ -23,9 +15,8 @@ use std::hint::black_box;
 
 const CLEAR: Rgb = Rgb::new(0.05, 0.06, 0.08);
 
-/// A config for `width`x`height` with the given AA mode. The struct is
-/// `#[non_exhaustive]`, so the field is set after construction rather than in a
-/// literal.
+/// A config for `width`x`height` with the given AA mode.
+/// The struct is `#[non_exhaustive]`, so the field is set after construction rather than in a literal.
 fn config(width: u32, height: u32, aa: AntiAliasing) -> RendererConfig {
    let mut config = RendererConfig::new(width, height);
    config.anti_aliasing = aa;
@@ -89,9 +80,8 @@ fn renderer(c: &mut Criterion) {
       });
    }
 
-   // Fill-rate sweep: one screen-filling quad, so frame cost is the fixed clear
-   // plus one per-fragment cost for every pixel. Triangle/object counts are held
-   // constant at two triangles, which is what separates fill from geometry.
+   // Fill-rate sweep: one screen-filling quad, so frame cost is the fixed clear plus one per-fragment cost for every pixel.
+   // Triangle/object counts are held constant at two triangles, which is what separates fill from geometry.
    for (w, h) in [(320u32, 180u32), (1280, 720)] {
       for (label, textured) in [("solid", false), ("tex", true)] {
          let mut r = Renderer::new(RendererConfig::new(w, h)).expect("renderer");

@@ -1,8 +1,7 @@
 //! Core/math micro-benchmarks.
 //!
-//! These cover the operations the rest of the engine leans on hardest. `glam`
-//! inlines them aggressively, so the absolute times are tiny; they exist to catch a
-//! regression that a change of representation (or a lost `#[inline]`) would cause.
+//! These cover the operations the rest of the engine leans on hardest.
+//! `glam` inlines them aggressively, so the absolute times are tiny; they exist to catch a regression that a change of representation (or a lost `#[inline]`) would cause.
 
 #![allow(clippy::pedantic)]
 

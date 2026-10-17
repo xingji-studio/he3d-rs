@@ -1,11 +1,10 @@
 //! `PhysicsTest` demo: a controllable dynamic cube over a static floor.
 //! 物理测试示例：静态地板上一个可操控的动态方块。
 //!
-//! The engine owns the cube's `BodyId`; this application owns the link between
-//! that Body and the `RenderObject` that draws it, including the per-frame copy of
-//! the Body's placement into the render transform. See `docs/adr/0001`.
-//! 引擎拥有方块的 `BodyId`；Body 与绘制它的 `RenderObject` 之间的联系、以及每帧把 Body
-//! 摆放复制进渲染变换的动作，都由本应用拥有。见 `docs/adr/0001`。
+//! The engine owns the cube's `BodyId`; this application owns the link between that Body and the `RenderObject` that draws it, including the per-frame copy of the Body's placement into the render transform.
+//! See `docs/adr/0001`.
+//! 引擎拥有方块的 `BodyId`；Body 与绘制它的 `RenderObject` 之间的联系、以及每帧把 Body 摆放复制进渲染变换的动作，都由本应用拥有。
+//! 见 `docs/adr/0001`。
 use he3d::{
    BackendConfig, BodyDesc, BodyId, Camera, ColorRgba8, ContactPhase, Event, KEY_ESCAPE, KeyCode,
    Material, Mesh, ObjectId, Platform, Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene,
@@ -58,8 +57,7 @@ fn main() {
    };
 
    let mut scene = Scene::new();
-   // A gentle key light from just behind and above the camera, so the cube and the
-   // floor read with some depth instead of blowing out to white.
+   // A gentle key light from just behind and above the camera, so the cube and the floor read with some depth instead of blowing out to white.
    // 从相机正后方稍上方打一束柔和的主光，使立方体与地面有立体感，又不至于过曝成白色。
    scene.light.direction = Vec3::new(0.0, 0.5, -1.0).normalize();
    scene.light.color = Rgb::new(0.9, 0.9, 0.9);
@@ -95,12 +93,10 @@ fn main() {
    let camera = Camera::new(Vec3::new(0.0, 1.4, -5.0), Quat::IDENTITY, 50.0);
 
    let mut world = World::new();
-   // The floor is a static box: the mesh it draws is exactly this cuboid, so the
-   // collider and the picture agree by construction.
+   // The floor is a static box: the mesh it draws is exactly this cuboid, so the collider and the picture agree by construction.
    // 地面是静态盒：它绘制的网格正是这个长方体，因此碰撞体与画面在构造上一致。
    let floor_body = world.add_body(BodyDesc::stationary(Shape::cuboid(FLOOR_HALF)).at(FLOOR_POS));
-   // Friction low enough to slide when pushed, restitution high enough that a drop
-   // visibly bounces, and light damping so a held key does not accelerate forever.
+   // Friction low enough to slide when pushed, restitution high enough that a drop visibly bounces, and light damping so a held key does not accelerate forever.
    // 摩擦低到能被推得滑动，弹性高到落地有可见回弹，阻尼轻到按住方向键不会无限加速。
    let cube_body = world.add_body(
       BodyDesc::dynamic(Shape::cuboid(Vec3::splat(CUBE_HALF)), 1.0)
@@ -109,14 +105,12 @@ fn main() {
          .with_restitution(0.5)
          .with_damping(0.05, 0.05),
    );
-   // The cube starts at rest. It used to be launched at 1 m/s along +x, which is
-   // why it landed 0.77 m right of centre — the fall is long enough to carry it
-   // there, and the velocity then dies against friction. That was inherited from a
-   // demo this file no longer has any reason to mirror, so the spawn is a plain
-   // vertical drop onto the middle of the floor.
-   // 方块自静止开始。它曾被以 1 m/s 沿 +x 抛出，这正是它落点偏离中心右侧 0.77 米的原因——
-   // 下落时间足够把它带到那里，随后速度被摩擦耗尽。那个做法继承自一个本文件已无任何理由
-   // 去效仿的演示，因此现在就是在底板正中垂直落下。
+   // The cube starts at rest.
+   // It used to be launched at 1 m/s along +x, which is why it landed 0.77 m right of centre — the fall is long enough to carry it there, and the velocity then dies against friction.
+   // That was inherited from a demo this file no longer has any reason to mirror, so the spawn is a plain vertical drop onto the middle of the floor.
+   // 方块自静止开始。
+   // 它曾被以 1 m/s 沿 +x 抛出，这正是它落点偏离中心右侧 0.77 米的原因——下落时间足够把它带到那里，随后速度被摩擦耗尽。
+   // 那个做法继承自一个本文件已无任何理由去效仿的演示，因此现在就是在底板正中垂直落下。
    let _ = floor_body;
 
    let mut keys = [false; 256];
@@ -161,9 +155,10 @@ fn main() {
       let frame_delta = now - last_time;
       last_time = now;
 
-      // Drive physics from a fixed clock. The engine exposes only a fixed-step
-      // entry point, so the accumulator and the per-frame cap live here.
-      // 使用固定物理时钟。引擎只暴露固定步长入口，因此累加器与每帧步数上限都在这里。
+      // Drive physics from a fixed clock.
+      // The engine exposes only a fixed-step entry point, so the accumulator and the per-frame cap live here.
+      // 使用固定物理时钟。
+      // 引擎只暴露固定步长入口，因此累加器与每帧步数上限都在这里。
       let frame_delta = if frame_delta.is_finite() {
          frame_delta.clamp(0.0, 0.25)
       } else {
@@ -217,8 +212,7 @@ fn main() {
          .present(renderer.width(), renderer.height(), renderer.pixels())
          .expect("present frame");
       frame += 1;
-      // No frame-rate lock: render as fast as the software rasterizer can;
-      // simulation time is kept independent by the fixed-step accumulator.
+      // No frame-rate lock: render as fast as the software rasterizer can; simulation time is kept independent by the fixed-step accumulator.
       // 不限制帧率：以软件光栅化器所能达到的最快速度渲染；模拟时间由固定步长累加器独立维持。
    }
 }
@@ -226,8 +220,7 @@ fn main() {
 /// Copy a Body's placement into the render object that draws it.
 /// 将 Body 的摆放复制进绘制它的渲染对象。
 ///
-/// The engine deliberately provides no binding layer, so this is where the
-/// association between the two halves of the scene is honoured.
+/// The engine deliberately provides no binding layer, so this is where the association between the two halves of the scene is honoured.
 /// 引擎刻意不提供绑定层，因此场景两半之间的关联在这里被兑现。
 fn sync_pose(world: &World, scene: &mut Scene, object: ObjectId, body: BodyId) {
    let (Some(position), Some(orientation)) = (world.position(body), world.orientation(body)) else {
@@ -284,11 +277,8 @@ fn apply_input(
 /// Return the cube to its starting pose, at rest.
 /// 将方块恢复到起始位姿，且处于静止。
 ///
-/// A reset means "as if the demo had just started", so it must not hand the cube a
-/// velocity the spawn does not: doing that made pressing `R` look like the engine
-/// was shoving the cube sideways.
-/// 重置意味着"就像演示刚刚启动"，因此不能给方块一个 spawn 时没有的速度：那样做会让按下
-/// `R` 看起来像是引擎在把方块往侧面推。
+/// A reset means "as if the demo had just started", so it must not hand the cube a velocity the spawn does not: doing that made pressing `R` look like the engine was shoving the cube sideways.
+/// 重置意味着"就像演示刚刚启动"，因此不能给方块一个 spawn 时没有的速度：那样做会让按下 `R` 看起来像是引擎在把方块往侧面推。
 fn reset_cube(world: &mut World, cube: BodyId) {
    world.set_pose(cube, CUBE_RESET_POS, Quat::IDENTITY);
    world.set_velocity(cube, Vec3::ZERO);
@@ -298,10 +288,10 @@ fn reset_cube(world: &mut World, cube: BodyId) {
 /// Whether the cube is touching anything right now.
 /// 方块当前是否与任何东西接触。
 ///
-/// This is the whole answer: a live Contact involving the cube, straight from the
-/// step that just ran. No geometry is recomputed and no tolerance is tuned.
-/// 这就是全部答案：刚跑完的那一步产出的、涉及方块的一个存活 Contact。无需重算几何，
-/// 也无需调参任何容差。
+/// This is the whole answer: a live Contact involving the cube, straight from the step that just ran.
+/// No geometry is recomputed and no tolerance is tuned.
+/// 这就是全部答案：刚跑完的那一步产出的、涉及方块的一个存活 Contact。
+/// 无需重算几何，也无需调参任何容差。
 fn is_grounded(world: &World, cube: BodyId) -> bool {
    world
       .contacts()

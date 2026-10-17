@@ -1,9 +1,7 @@
 //! Scene builders shared by the criterion benchmarks and the `memreport` binary.
 //!
-//! Every builder is deterministic: the same arguments produce the same scene, so a
-//! number measured today can be compared with one measured tomorrow. Where a scene
-//! mirrors a documented claim (`docs/physics-spec.md` §12) the shape of the scene is
-//! stated on the builder, because the claim is only as good as its reproduction.
+//! Every builder is deterministic: the same arguments produce the same scene, so a number measured today can be compared with one measured tomorrow.
+//! Where a scene mirrors a documented claim (`docs/physics-spec.md` §12) the shape of the scene is stated on the builder, because the claim is only as good as its reproduction.
 
 use he3d_core::{Camera, ColorRgba8, Material, Mesh, RenderObject, Rgb, Scene, Texture, Transform};
 use he3d_math::scalar::tan;
@@ -26,7 +24,8 @@ const SETTLE_STEPS: usize = 1200;
 // Physics
 // ---------------------------------------------------------------------------
 
-/// An empty [`World`]. Measures the fixed per-step overhead with nothing to do.
+/// An empty [`World`].
+/// Measures the fixed per-step overhead with nothing to do.
 #[must_use]
 pub fn world_empty() -> World {
    World::new()
@@ -34,11 +33,8 @@ pub fn world_empty() -> World {
 
 /// `n` spheres on a sparse 3D grid, so none ever touches another.
 ///
-/// This isolates integration and the broadphase: every Body is simulated every
-/// step, but the narrowphase and solver stay idle because no contact ever forms.
-/// The grid spacing exceeds the default broadphase cell size, so each cell holds
-/// one Body and the cost is expected to scale linearly — this is the floor that a
-/// contact-loaded scene is measured against.
+/// This isolates integration and the broadphase: every Body is simulated every step, but the narrowphase and solver stay idle because no contact ever forms.
+/// The grid spacing exceeds the default broadphase cell size, so each cell holds one Body and the cost is expected to scale linearly — this is the floor that a contact-loaded scene is measured against.
 #[must_use]
 pub fn world_freefall(n: usize) -> World {
    let mut world = World::new();
@@ -66,11 +62,8 @@ fn lattice_dims(n: usize) -> (usize, usize, usize) {
 
 /// How many vertical layers [`world_lattice_on_slab`] stacks `n` cubes into.
 ///
-/// A pile only sleeps if the solver converges it, and taller piles are harder to
-/// converge (see the tall-stack limitation in `docs/physics-spec.md`), so the layer
-/// count is the number to quote beside a pile's behaviour.
-/// 堆叠越大越难收敛（见 `docs/physics-spec.md` 中的高塔限制），因此这个层数是与一堆物体的
-/// 行为并列给出的数字。
+/// A pile only sleeps if the solver converges it, and taller piles are harder to converge (see the tall-stack limitation in `docs/physics-spec.md`), so the layer count is the number to quote beside a pile's behaviour.
+/// 堆叠越大越难收敛（见 `docs/physics-spec.md` 中的高塔限制），因此这个层数是与一堆物体的行为并列给出的数字。
 #[must_use]
 pub fn lattice_layers(n: usize) -> usize {
    lattice_dims(n).1
@@ -78,10 +71,8 @@ pub fn lattice_layers(n: usize) -> usize {
 
 /// A lattice of `n` unit cubes resting on a slab, fully awake at step zero.
 ///
-/// This is the `docs/physics-spec.md` §12 scenario: a block of touching unit cubes
-/// sitting on a slab, every one of them in contact, so the broadphase, narrowphase,
-/// and solver are all loaded. The slab is sized to hold the lattice's footprint, so
-/// no cube falls off the edge.
+/// This is the `docs/physics-spec.md` §12 scenario: a block of touching unit cubes sitting on a slab, every one of them in contact, so the broadphase, narrowphase, and solver are all loaded.
+/// The slab is sized to hold the lattice's footprint, so no cube falls off the edge.
 #[must_use]
 pub fn world_lattice_on_slab(n: usize) -> World {
    let (sx, sy, sz) = lattice_dims(n);
@@ -121,10 +112,8 @@ pub fn world_lattice_on_slab(n: usize) -> World {
 
 /// `n` unit cubes in a single layer on a slab, each dropped by a hair.
 ///
-/// A single layer, not a tower: a tall packed stack is limited by the solver's
-/// iteration count (see `docs/physics-spec.md` §14 risk 7) and never settles, so it
-/// cannot answer "what do resting Bodies cost". Spaced a full unit apart, these
-/// cubes touch only the slab, settle quickly, and go to sleep.
+/// A single layer, not a tower: a tall packed stack is limited by the solver's iteration count (see `docs/physics-spec.md` §14 risk 7) and never settles, so it cannot answer "what do resting Bodies cost".
+/// Spaced a full unit apart, these cubes touch only the slab, settle quickly, and go to sleep.
 #[must_use]
 pub fn world_resting_on_slab(n: usize) -> World {
    let side = ((n.max(1) as f64).sqrt().ceil() as usize).max(1);
@@ -158,9 +147,7 @@ pub fn world_resting_on_slab(n: usize) -> World {
 
 /// [`world_resting_on_slab`], stepped until it has had time to settle and sleep.
 ///
-/// The steady state is what "resting Bodies cost nothing" is about: if the solver
-/// and broadphase are doing their jobs, these Bodies are asleep and the per-step
-/// cost collapses toward [`world_empty`].
+/// The steady state is what "resting Bodies cost nothing" is about: if the solver and broadphase are doing their jobs, these Bodies are asleep and the per-step cost collapses toward [`world_empty`].
 #[must_use]
 pub fn world_settled_asleep(n: usize) -> World {
    let mut world = world_resting_on_slab(n);
@@ -186,8 +173,8 @@ fn terrain_side(tris: usize) -> usize {
 
 /// A flat triangle grid on the XZ plane, `tris` triangles (rounded up to even).
 ///
-/// Wound so every normal points up (+Y). The layout is what
-/// [`World::add_static_mesh`] expects: three consecutive positions per triangle.
+/// Wound so every normal points up (+Y).
+/// The layout is what [`World::add_static_mesh`] expects: three consecutive positions per triangle.
 #[must_use]
 pub fn static_terrain_positions(tris: usize) -> Vec<Vec3> {
    let quads = tris.div_ceil(2).max(1);
@@ -207,8 +194,7 @@ pub fn static_terrain_positions(tris: usize) -> Vec<Vec3> {
 
 /// A static triangle terrain plus `bodies` spheres resting on it.
 ///
-/// Isolates the cost a large *static* mesh adds: the terrain never moves, but every
-/// Body on it must be tested against the triangles beneath it.
+/// Isolates the cost a large *static* mesh adds: the terrain never moves, but every Body on it must be tested against the triangles beneath it.
 #[must_use]
 pub fn world_static_terrain(tris: usize, bodies: usize) -> World {
    let mut world = World::new();
@@ -251,8 +237,7 @@ pub fn default_camera() -> Camera {
 
 /// A triangle-soup mesh of exactly `2 * ceil(tris/2)` triangles in the XY plane.
 ///
-/// Faceted toward the camera (the renderer back-face culls), so the triangles the
-/// mesh contains are the triangles actually rasterized.
+/// Faceted toward the camera (the renderer back-face culls), so the triangles the mesh contains are the triangles actually rasterized.
 #[must_use]
 pub fn triangle_soup(tris: usize) -> Mesh {
    let quads = tris.div_ceil(2).max(1);
@@ -321,20 +306,15 @@ pub fn render_scene_small() -> (Scene, Camera) {
    render_scene_objects(8)
 }
 
-/// A single quad that fills the whole viewport exactly, seen from the
-/// [`default_camera`] distance of 3 units.
+/// A single quad that fills the whole viewport exactly, seen from the [`default_camera`] distance of 3 units.
 ///
-/// Fill-rate benchmarks use this to make every pixel pay the per-fragment cost
-/// once: two triangles cover the framebuffer with no overdraw and no bounding-box
-/// waste, so the frame cost is the fixed clear plus `pixels * per-fragment cost`,
-/// independent of triangle count.
+/// Fill-rate benchmarks use this to make every pixel pay the per-fragment cost once: two triangles cover the framebuffer with no overdraw and no bounding-box waste, so the frame cost is the fixed clear plus `pixels * per-fragment cost`, independent of triangle count.
 #[must_use]
 pub fn screen_fill_quad(width: u32, height: u32) -> Mesh {
    let distance = 3.0_f32;
    let half_h = distance * tan(conv::deg_to_rad(60.0) * 0.5);
    let half_w = half_h * (width as f32 / height as f32);
-   // Clockwise winding leaves the face normal pointing at -Z, i.e. at the camera,
-   // so the renderer's back-face cull keeps it.
+   // Clockwise winding leaves the face normal pointing at -Z, i.e. at the camera, so the renderer's back-face cull keeps it.
    Mesh::from_vertices(vec![
       Vec3::new(-half_w, -half_h, distance),
       Vec3::new(-half_w, half_h, distance),
@@ -348,9 +328,8 @@ pub fn screen_fill_quad(width: u32, height: u32) -> Mesh {
 
 /// A scene with one screen-filling quad.
 ///
-/// `textured` picks a 256x256 texture; otherwise the quad uses a 1x1 colour, which
-/// exercises the renderer's constant-texture fast path. The pair separates the
-/// cost of sampling a real texture from the depth test and colour write.
+/// `textured` picks a 256x256 texture; otherwise the quad uses a 1x1 colour, which exercises the renderer's constant-texture fast path.
+/// The pair separates the cost of sampling a real texture from the depth test and colour write.
 #[must_use]
 pub fn render_scene_screen_fill(width: u32, height: u32, textured: bool) -> (Scene, Camera) {
    let mut scene = Scene::new();
@@ -399,8 +378,7 @@ pub fn biplane_bmp_bytes() -> &'static [u8] {
 
 /// A synthetic OBJ with `tris` detached triangles, as bytes.
 ///
-/// Detached triangles exercise the parser's vertex/face handling without relying on
-/// any file on disk, which makes the scaling arm of the asset benchmarks stable.
+/// Detached triangles exercise the parser's vertex/face handling without relying on any file on disk, which makes the scaling arm of the asset benchmarks stable.
 #[must_use]
 pub fn synthetic_obj(tris: usize) -> Vec<u8> {
    use core::fmt::Write as _;
