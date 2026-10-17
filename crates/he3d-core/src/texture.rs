@@ -128,7 +128,12 @@ fn sample_axis(coord: f32, size: u32) -> usize {
    let wrapped = wrap_uv(coord);
    let scaled = wrapped * size as f32;
    let index = scaled as i32;
-   index.clamp(0, size as i32 - 1) as usize
+   // `wrapped` is in `[0, 1)`, so the index is never negative — only the upper
+   // bound needs clamping, because a coordinate just below 1 can round up to
+   // `size` in `f32`.
+   // `wrapped` 位于 `[0, 1)`，索引不会为负——只需钳制上界，因为略小于 1 的坐标在 `f32`
+   // 中可能进位到 `size`。
+   index.min(size as i32 - 1) as usize
 }
 
 /// Return the fractional part of `x` in `[0, 1)`, wrapping upward for negative

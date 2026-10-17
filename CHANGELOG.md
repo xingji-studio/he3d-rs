@@ -39,8 +39,16 @@ All notable changes to the HE3D workspace crates are documented here.
 - `he3d-core`: `Texture::sample` drops a branch that `x - floor(x)` can never take
   (the fraction is in `[0, 1)` for every finite coordinate) and indexes with 32-bit
   arithmetic. A full-screen 256x256-textured quad at 1280x720 went from 7.81 ms to
-  7.45 ms. Sampling remains ~¾ of a full-screen textured frame, which is now the
-  largest single cost in the renderer.
+  7.45 ms.
+- `he3d-core`/`he3d-renderer`: the per-fragment path drops two clamp lower bounds
+  that cannot be reached — a texel index is never negative because the wrapped
+  coordinate is in `[0, 1)`, and a shaded channel is never negative because the light
+  is clamped to `0..=512`. The same textured quad fell from 7.45 ms to 7.17 ms.
+  Replacing `floor` with a truncation-based wrap was tried and rejected: it was ~25%
+  slower end-to-end (9.70 ms), because the `f32 → i32 → f32` round trip costs more
+  than the `floor` the compiler inlines. With that, `sample` plus `shade` is
+  throughput-bound — measured, sampling is ~4.0 ms of the 7.17 ms and shading ~1.8 ms
+  — so the sampler is no longer the lever on a textured frame.
 - `docs/physics-spec.md` §12 now carries numbers measured by that suite, replacing
   the earlier unmeasured figures, and distinguishes a packed scene's **peak** step
   from its **settled** one. §14 risk 7's tall-stack limit is measured rather than

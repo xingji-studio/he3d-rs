@@ -985,12 +985,17 @@ fn apply_ssaa(
 /// fractional bits, so a light of 256 leaves the texel untouched.
 /// 用定点光照给纹素着色：`(texel * light) >> 8` 抵消那 8 位小数，因此光照为 256 时纹素
 /// 原样保留。
-#[expect(clippy::cast_sign_loss)]
+#[expect(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn shade(texel: ColorRgba8, lr: i32, lg: i32, lb: i32) -> ColorRgba8 {
    ColorRgba8::from_rgba(
-      (((i32::from(texel.r) * lr) >> 8).clamp(0, 255)) as u8,
-      (((i32::from(texel.g) * lg) >> 8).clamp(0, 255)) as u8,
-      (((i32::from(texel.b) * lb) >> 8).clamp(0, 255)) as u8,
+      // `lr`/`lg`/`lb` are non-negative (the caller clamps them to `0..=512`) and a
+      // texel channel is a `u8`, so the product is never negative and only the
+      // upper bound needs clamping.
+      // `lr`/`lg`/`lb` 非负（调用方将其钳制在 `0..=512`），纹素通道又是 `u8`，因此乘积
+      // 不会为负，只需钳制上界。
+      (((i32::from(texel.r) * lr) >> 8).min(255)) as u8,
+      (((i32::from(texel.g) * lg) >> 8).min(255)) as u8,
+      (((i32::from(texel.b) * lb) >> 8).min(255)) as u8,
       255,
    )
 }

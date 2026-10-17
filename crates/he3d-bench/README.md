@@ -92,17 +92,18 @@ above; the scenes are defined in `src/workloads.rs`.
   and `settled_asleep` did not move, which is the point — the win is where the contacts
   are, and nowhere else.
 - **A renderer frame is pixels, and the hard floor is the clear.** An empty 720p
-  frame — clearing colour + inverse depth, ~7.4 MB — costs 82.4 µs, which is
+  frame — clearing colour + inverse depth, ~7.4 MB — costs 82.5 µs, which is
   0.089 ns per pixel at 64x36, 320x180, and 1280x720 alike. Drawing the 8-cube scene
-  raises the 720p frame to 738 µs; the 656 µs difference is pixel fill (16x the
+  raises the 720p frame to 709 µs; the 626 µs difference is pixel fill (16x the
   pixels from 320x180 buys 12x the fill). Geometry *count* is not the driver: 1000
   objects still cost only 391 µs at 64x36, because their triangles are small.
 - **Textured fill is texture sampling, not the depth test.** A single quad covering
-  the 1280x720 framebuffer costs 7.45 ms when textured and 1.93 ms when its texture is
-  a 1x1 constant — two triangles either way, so the 5.5 ms difference is
-  `Texture::sample` plus shading, about 6 ns per pixel. Roughly three quarters of a
-  full-screen textured frame is spent in the sampler; the depth test, the
-  perspective divide, and the colour and depth writes are the other quarter.
+  the 1280x720 framebuffer costs 7.17 ms when textured and 1.90 ms when its texture is
+  a 1x1 constant — two triangles either way, so the 5.3 ms difference is
+  `Texture::sample` plus shading, about 5.7 ns per pixel (measured split: ~4.0 ms
+  sampling, ~1.8 ms shading). Both are throughput-bound scalar code, so most of a
+  full-screen textured frame is spent there; the depth test, the perspective divide,
+  and the colour and depth writes are the rest.
 - **`Renderer::new` pays page faults, once.** Allocating the 720p buffers costs
   797 µs — nearly ten times the 83.6 µs it takes to clear those same buffers
   afterwards — because fresh pages are faulted in on first touch. The per-frame cost
