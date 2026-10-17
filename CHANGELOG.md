@@ -80,8 +80,10 @@ All notable changes to the HE3D workspace crates are documented here.
   impossible to violate rather than merely observed.
 - `examples/physics-test`: the controls separate translation from rotation, which the
   `A`/`D` keys used to couple. `A`/`D` now apply only force, and the left and right
-  arrows apply only torque; space still jumps and `R` still resets. The arrows are SDL
-  keycodes, so they are tracked apart from the ASCII `keys` array.
+  arrows apply only torque (6.0 about the horizontal Z axis, up from 4.0); space still
+  jumps and `R` still resets. A cube at rest resists a roll until the torque exceeds
+  `m·g·half_side ≈ 4.9`, which is why 4.0 could not turn it on its own. The arrows are
+  SDL keycodes, so they are tracked apart from the ASCII `keys` array.
 
 ### Removed
 - The tutorial documentation and the `he3d-docs` crate.

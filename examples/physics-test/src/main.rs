@@ -21,11 +21,19 @@ const FLOOR_HALF: Vec3 = Vec3::new(3.5, 0.1, 3.5);
 const CUBE_RESET_POS: Vec3 = Vec3::new(0.0, 3.0, 4.0);
 const CUBE_HALF: f32 = 0.5;
 
-/// The left and right arrow, as the SDL3 backend delivers them: SDL keycodes,
-/// passed through unchanged. They do not fit the 256-entry `keys` array below,
-/// which covers ASCII only, so the arrows are tracked on their own.
-/// 左右方向键，按 SDL3 后端投递的形式：SDL 键码，原样传递。它们放不进下面只覆盖 ASCII 的
-/// 256 项 `keys` 数组，因此方向键单独跟踪。
+/// Torque the arrow keys apply, about the horizontal Z axis.
+/// 方向键施加的力矩，绕水平的 Z 轴。
+///
+/// A cube resting on the floor resists a roll until the torque exceeds `m·g·half_side`, here `1 × 9.81 × 0.5 ≈ 4.9`; below that it cannot turn at all, which is why the old 4.0 did nothing on its own.
+/// 静置在地板上的方块要克服 `m·g·半边长`（此处 `1 × 9.81 × 0.5 ≈ 4.9`）才会翻滚；低于它根本转不动——这正是原先 4.0 单独施加时毫无反应的原因。
+/// 6.0 leaves margin and starts the roll within a fraction of a second.
+/// 6.0 留有余量，零点几秒内就开始翻滚。
+const ARROW_TORQUE: f32 = 6.0;
+
+/// The left and right arrows arrive as SDL keycodes, passed through unchanged.
+/// They do not fit the 256-entry ASCII-only `keys` array below, so they are tracked separately.
+/// 左右方向键以 SDL 键码的形式到达，原样传递。
+/// 它们放不下下面只覆盖 ASCII 的 256 项 `keys` 数组，因此单独跟踪。
 const KEY_LEFT: KeyCode = 0x4000_0050;
 const KEY_RIGHT: KeyCode = 0x4000_004f;
 
@@ -97,7 +105,7 @@ fn main() {
    let cube_body = world.add_body(
       BodyDesc::dynamic(Shape::cuboid(Vec3::splat(CUBE_HALF)), 1.0)
          .at(CUBE_RESET_POS)
-         .with_friction(0.45)
+         .with_friction(1.0)
          .with_restitution(0.5)
          .with_damping(0.05, 0.05),
    );
@@ -211,8 +219,7 @@ fn main() {
       frame += 1;
       // No frame-rate lock: render as fast as the software rasterizer can;
       // simulation time is kept independent by the fixed-step accumulator.
-      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染；模拟时间由固定步长累加器独立
-      // 维持。
+      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染；模拟时间由固定步长累加器独立维持。
    }
 }
 
@@ -237,14 +244,16 @@ fn sync_pose(world: &World, scene: &mut Scene, object: ObjectId, body: BodyId) {
 /// Apply one step of player input.
 /// 应用一步玩家输入。
 ///
-/// `A`/`D` push the cube sideways and deliberately impart no spin; the left and
-/// right arrows spin it and push nothing. The two axes are separate knobs, so
-/// nudging the cube across the floor no longer rolls it. `turn` is `-1` for the
-/// left arrow, `+1` for the right, `0` for neither, and the torque signs match
-/// what `A`/`D` used to impart so the cube still turns the way it always did.
-/// `A`/`D` 把方块往左右推，且刻意不施加自转；左右箭头使其自转、不施加推力。两个轴互不
-/// 干扰，因此把方块推过地板时它不会再翻滚。`turn` 为 `-1`（左箭头）、`+1`（右箭头）或
-/// `0`（都没按）；扭矩符号与原先 `A`/`D` 施加的一致，方块的转向因此与以往相同。
+/// `A`/`D` push the cube sideways and impart no spin.
+/// The left and right arrows roll it about the horizontal Z axis and push nothing.
+/// The two axes are separate knobs, so sliding the cube no longer rolls it.
+/// `turn` is `-1` for the left arrow, `+1` for the right, and `0` for neither.
+/// Its signs match what `A`/`D` used to impart, so the cube rolls the way it always did.
+/// `A`/`D` 把方块往左右推，不施加自转。
+/// 左右箭头绕水平的 Z 轴使其翻滚、不施加推力。
+/// 两个轴互不干扰，因此把方块推过地板时它不会再翻滚。
+/// `turn` 为 `-1`（左箭头）、`+1`（右箭头）或 `0`（都没按）。
+/// 其符号与原先 `A`/`D` 施加的一致，方块的滚动方向与以往相同。
 fn apply_input(
    world: &mut World,
    cube: BodyId,
@@ -260,9 +269,9 @@ fn apply_input(
       world.apply_force(cube, Vec3::new(14.0, 0.0, 0.0));
    }
    if turn < 0 {
-      world.apply_torque(cube, Vec3::new(0.0, 0.0, 4.0));
+      world.apply_torque(cube, Vec3::new(0.0, 0.0, ARROW_TORQUE));
    } else if turn > 0 {
-      world.apply_torque(cube, Vec3::new(0.0, 0.0, -4.0));
+      world.apply_torque(cube, Vec3::new(0.0, 0.0, -ARROW_TORQUE));
    }
 
    let jump_down = keys[b' ' as usize];
