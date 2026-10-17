@@ -4,6 +4,24 @@ All notable changes to the HE3D workspace crates are documented here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-17
+
+### Breaking
+- **Physics results differ from 0.3.0, so a scene does not replay identically across
+  the two.** Two solver defects were fixed and both change the trajectory of anything
+  with two-point contacts; the engine stays deterministic, but only within a version.
+  A Body pivoting on an edge no longer picks up a spin about that edge — a 2-point
+  manifold's two normal constraints are solved as one 2×2 block instead of in sequence
+  (2.04e-4 rad/s → 4.2e-7 at the default 12 iterations) — and warm starting now matches
+  a contact point by the geometry that produced it rather than by its rank in the
+  manifold, so a point inherits the impulse it earned instead of one a different corner
+  had accumulated. The second fix reaches `Contact::phase` as well, because phases are
+  derived from that same match: which contacts report `Persist` rather than
+  `Begin`/`End` differs. Measured on the benchmark workloads, the packed 2000-Body
+  lattice peaks at 19 ms instead of 17 ms and settles to 6.3 ms instead of 5.5 ms, and
+  the eight-layer pile's convergence is no longer non-monotone in the iteration count.
+  The two `he3d-physics` entries under **Changed** carry the full measurements.
+
 ### Added
 - `crates/he3d-bench`: a criterion benchmark suite (physics, renderer, assets,
   core/math) and a `memreport` binary that counts heap allocations through a
