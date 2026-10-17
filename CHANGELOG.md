@@ -15,6 +15,17 @@ All notable changes to the HE3D workspace crates are documented here.
   out, the three candidates left unmeasured (scanline rasterization, an interleaved
   colour/depth buffer, hoisting the per-frame constants out of `draw_mesh`), the
   PhysicsTest demo's constant torque, and where the §5 comment migration stands.
+- `he3d-core`: the four primitive constructors' docs now say what they build rather
+  than only which plane they lie in. `Mesh::triangle` is an isosceles triangle whose
+  base spans `width` at `y = -height / 2` and whose apex sits at `(0, height / 2)`,
+  so the bounding box is centred on the origin while the centroid sits a sixth of the
+  height below it; its flat normal is `-Z` and its UVs are that bounding box's
+  corners. `Mesh::plane` is centred on the origin with a `+Y` normal, and its two
+  triangles' UVs tile the unit square once. `Mesh::cube` and `Mesh::sphere` are
+  centred on the origin with outward normals, the cube giving each face one unit
+  square of UVs and the sphere using longitude and latitude. The rest of `mesh.rs`'s
+  comments are unwrapped to one sentence per line, which `AGENTS.md` §5 asks of a
+  file being touched. No code changed.
 
 ## [0.4.0] - 2026-10-17
 

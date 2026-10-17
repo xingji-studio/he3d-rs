@@ -14,8 +14,8 @@ pub const MAX_VERTEX_COUNT: usize = 16_777_216;
 ///
 /// Storage is a flat vertex list where every three consecutive vertices form a triangle (no index buffer).
 /// 存储是一个扁平的顶点列表，每三个连续顶点构成一个三角形（没有索引缓冲）。
-/// `uvs.len() == vertices.len()` and `triangle_normals.len() == vertices.len()
-/// 3` are invariants maintained by [`Mesh::new`]. / `uvs.len() == vertices.len()` 与 `triangle_normals.len() == vertices.len() / 3` 是由 [`Mesh::new`] 维持的不变式。
+/// `uvs.len() == vertices.len()` and `triangle_normals.len() == vertices.len() / 3` are invariants maintained by [`Mesh::new`].
+/// `uvs.len() == vertices.len()` 与 `triangle_normals.len() == vertices.len() / 3` 是由 [`Mesh::new`] 维持的不变式。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Mesh {
    vertices: Vec<Vec3>,
@@ -29,9 +29,7 @@ impl Mesh {
    ///
    /// # Errors
    /// 顶点列表为空、超过 [`MAX_VERTEX_COUNT`]、顶点数不是 3 的倍数，或 UV 数量与顶点数不符时返回相应错误。
-   /// Returns an error when the vertex list is empty or exceeds [`MAX_VERTEX_COUNT`],
-   /// when the vertex count is not a multiple of three, or when the UV count
-   /// does not match the vertex count.
+   /// Returns an error when the vertex list is empty or exceeds [`MAX_VERTEX_COUNT`], when the vertex count is not a multiple of three, or when the UV count does not match the vertex count.
    pub fn new(vertices: Vec<Vec3>, uvs: Vec<Vec2>) -> Result<Self, Error> {
       if vertices.is_empty() || vertices.len() > MAX_VERTEX_COUNT {
          return Err(Error::InvalidSize);
@@ -56,8 +54,7 @@ impl Mesh {
    ///
    /// # Errors
    /// 顶点列表为空、超过 [`MAX_VERTEX_COUNT`]，或顶点数不是 3 的倍数时返回相应错误。
-   /// Returns an error when the vertex list is empty or exceeds [`MAX_VERTEX_COUNT`],
-   /// or when the vertex count is not a multiple of three.
+   /// Returns an error when the vertex list is empty or exceeds [`MAX_VERTEX_COUNT`], or when the vertex count is not a multiple of three.
    pub fn from_vertices(vertices: Vec<Vec3>) -> Result<Self, Error> {
       let count = vertices.len();
       if count == 0 || count > MAX_VERTEX_COUNT {
@@ -124,8 +121,16 @@ impl Mesh {
       }
    }
 
-   /// A single triangle lying in the XY plane.
-   /// 一个位于 XY 平面上的三角形。
+   /// An isosceles triangle in the XY plane.
+   /// The base runs along x for `width` at `y = -height / 2`, and the apex sits at `(0, height / 2)`.
+   /// The bounding box is centred on the origin, but the centroid sits a sixth of the height below it.
+   /// The flat normal is `-Z`, so a camera looking along `+Z`, which is this renderer's convention, sees the front face.
+   /// The UVs are the corners of that bounding box, `(0, 0)`, `(0.5, 1)` and `(1, 0)`, so a texture maps onto the triangle one-to-one.
+   /// 一个位于 XY 平面上的等腰三角形。
+   /// 底边沿 x 方向横跨 `width`，位于 `y = -height / 2`，顶点在 `(0, height / 2)`。
+   /// 包围盒以原点为心，而质心在原点下方六分之一高度处。
+   /// 平面法线为 `-Z`，因此沿 `+Z` 看的相机（本渲染器的约定）看到的是正面。
+   /// UV 即该包围盒的角点 `(0, 0)`、`(0.5, 1)`、`(1, 0)`，贴图与三角形一一对应。
    ///
    /// # Errors
    /// `width` 或 `height` 不是正有限数时返回 [`Error::InvalidSize`]。
@@ -149,8 +154,14 @@ impl Mesh {
       Self::new(vertices, uvs)
    }
 
-   /// A flat quad on the XZ plane (two triangles).
-   /// XZ 平面上的一个平面四边形（两个三角形）。
+   /// Two triangles forming a flat quad in the XZ plane.
+   /// The quad is centred on the origin, spanning `width` along x and `depth` along z.
+   /// The flat normal is `+Y`, so a camera above looking down sees the front face.
+   /// The UVs of the two triangles tile the unit square exactly once.
+   /// 两个三角形组成的 XZ 平面上的平面四边形。
+   /// 四边形以原点为心，沿 x 方向横跨 `width`，沿 z 方向横跨 `depth`。
+   /// 平面法线为 `+Y`，因此从上方下视的相机看到的是正面。
+   /// 两个三角形的 UV 恰好铺满单位正方形一次。
    ///
    /// # Errors
    /// `width` 或 `depth` 不是正有限数时返回 [`Error::InvalidSize`]。
@@ -180,8 +191,14 @@ impl Mesh {
       Self::new(vertices, uvs)
    }
 
-   /// An axis-aligned cube (12 triangles, 36 vertices).
-   /// 一个轴对齐的立方体（12 个三角形，36 个顶点）。
+   /// An axis-aligned cube centred on the origin, twelve triangles over six faces.
+   /// Its extents are `±width / 2`, `±height / 2` and `±depth / 2`.
+   /// Every flat normal points outward, so the cube is front-facing from outside and back-facing from inside.
+   /// Each face's UVs tile the unit square exactly once.
+   /// 一个以原点为心的轴对齐立方体，六个面共十二个三角形。
+   /// 它的范围是 `±width / 2`、`±height / 2`、`±depth / 2`。
+   /// 所有平面法线都朝外，因此立方体从外部看是正面，从内部看是背面。
+   /// 每个面的 UV 恰好铺满单位正方形一次。
    ///
    /// # Errors
    /// 任一尺寸不是正有限数时返回 [`Error::InvalidSize`]。
@@ -231,21 +248,23 @@ impl Mesh {
       Self::new(vertices, uvs)
    }
 
-   /// A UV sphere tessellated into `segments` × `rings` quads.
-   /// 一个被细分为 `segments` × `rings` 个四边形的 UV 球体。
+   /// A UV sphere centred on the origin.
+   /// The surface is `segments` × `rings` quads, each split into two triangles, so the mesh holds `6 * segments * rings` vertices.
+   /// Every flat normal points outward, so the sphere is front-facing from outside.
+   /// The UVs are longitude and latitude: `u` runs once around the equator, `v` from the south pole to the north pole.
+   /// 一个以原点为心的 UV 球体。
+   /// 表面是 `segments` × `rings` 个四边形，每个分成两个三角形，因此网格共有 `6 * segments * rings` 个顶点。
+   /// 所有平面法线都朝外，因此球体从外部看是正面。
+   /// UV 即经度与纬度：`u` 沿赤道绕行一周，`v` 从南极到北极。
    ///
    /// Sizing is checked: the total vertex count must fit within [`MAX_VERTEX_COUNT`] without overflowing.
    /// 尺寸经过校验：顶点总数必须在不溢出的前提下落在 [`MAX_VERTEX_COUNT`] 之内。
    ///
    /// # Errors
    /// `radius` 不是正有限数、总顶点数超过 [`MAX_VERTEX_COUNT`]，或计算过程溢出时返回相应错误。
-   /// Returns an error when `radius` is not a positive finite number, when the total
-   /// vertex count exceeds [`MAX_VERTEX_COUNT`], or when the computation overflows.
-   // UV coordinates are built from loop indices bounded by `segments`/`rings`; the
-   // f32 mantissa is far larger than any realistic tessellation count, so the
-   // conversion cannot meaningfully lose precision here.
-   // UV 坐标由受 `segments`/`rings` 约束的循环索引构造；f32 的有效数字远大于任何
-   // 现实的细分数量，因此这里的转换不会产生有意义的精度损失。
+   /// Returns an error when `radius` is not a positive finite number, when the total vertex count exceeds [`MAX_VERTEX_COUNT`], or when the computation overflows.
+   // UV coordinates are built from loop indices bounded by `segments`/`rings`; the f32 mantissa is far larger than any realistic tessellation count, so the conversion cannot meaningfully lose precision here.
+   // UV 坐标由受 `segments`/`rings` 约束的循环索引构造；f32 的有效数字远大于任何现实的细分数量，因此这里的转换不会产生有意义的精度损失。
    #[expect(clippy::cast_precision_loss)]
    pub fn sphere(radius: f32, segments: u32, rings: u32) -> Result<Self, Error> {
       if !positive_finite(radius) {
