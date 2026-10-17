@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "PhysicsTest demo: a controllable dynamic cube over a static floor (WASD/space/R) in an SDL3 window"
+description = "PhysicsTest demo: a controllable dynamic cube over a static floor (A/D push, left/right arrows spin, space to jump, R to reset) in an SDL3 window"
 
 [[bin]]
 name = "physics-test"

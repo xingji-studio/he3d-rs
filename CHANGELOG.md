@@ -78,6 +78,10 @@ All notable changes to the HE3D workspace crates are documented here.
   lattice puts the two within run-to-run noise, because the loop is arithmetic-bound
   — so this is a structural change: the win is that the resolve-once invariant is now
   impossible to violate rather than merely observed.
+- `examples/physics-test`: the controls separate translation from rotation, which the
+  `A`/`D` keys used to couple. `A`/`D` now apply only force, and the left and right
+  arrows apply only torque; space still jumps and `R` still resets. The arrows are SDL
+  keycodes, so they are tracked apart from the ASCII `keys` array.
 
 ### Removed
 - The tutorial documentation and the `he3d-docs` crate.

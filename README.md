@@ -32,7 +32,7 @@ Every library crate is `no_std + alloc` when built without `std`, and the option
 
 ```sh
 cargo run -p he3d-triangle                    # SDL3 window
-cargo run -p he3d-physics-test                # SDL3 window, WASD / space / R
+cargo run -p he3d-physics-test                # SDL3 window, A/D push / arrows spin / space / R
 cargo run -p he3d-biplane                     # SDL3 window, loads OBJ + BMP
 cargo run -p he3d-flight-simulator            # SDL3 window, streamed terrain
 ```

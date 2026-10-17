@@ -7,9 +7,9 @@
 //! 引擎拥有方块的 `BodyId`；Body 与绘制它的 `RenderObject` 之间的联系、以及每帧把 Body
 //! 摆放复制进渲染变换的动作，都由本应用拥有。见 `docs/adr/0001`。
 use he3d::{
-   BackendConfig, BodyDesc, BodyId, Camera, ColorRgba8, ContactPhase, Event, KEY_ESCAPE, Material,
-   Mesh, ObjectId, Platform, Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene, Shape,
-   Texture, Transform, Vec3, World,
+   BackendConfig, BodyDesc, BodyId, Camera, ColorRgba8, ContactPhase, Event, KEY_ESCAPE, KeyCode,
+   Material, Mesh, ObjectId, Platform, Quat, RenderObject, Renderer, RendererConfig, Rgb, Scene,
+   Shape, Texture, Transform, Vec3, World,
 };
 use he3d_platform_sdl3::SdlBackend;
 
@@ -20,6 +20,14 @@ const FLOOR_POS: Vec3 = Vec3::new(0.0, -0.6, 4.0);
 const FLOOR_HALF: Vec3 = Vec3::new(3.5, 0.1, 3.5);
 const CUBE_RESET_POS: Vec3 = Vec3::new(0.0, 3.0, 4.0);
 const CUBE_HALF: f32 = 0.5;
+
+/// The left and right arrow, as the SDL3 backend delivers them: SDL keycodes,
+/// passed through unchanged. They do not fit the 256-entry `keys` array below,
+/// which covers ASCII only, so the arrows are tracked on their own.
+/// 左右方向键，按 SDL3 后端投递的形式：SDL 键码，原样传递。它们放不进下面只覆盖 ASCII 的
+/// 256 项 `keys` 数组，因此方向键单独跟踪。
+const KEY_LEFT: KeyCode = 0x4000_0050;
+const KEY_RIGHT: KeyCode = 0x4000_004f;
 
 fn main() {
    let frames = parse_frames(std::env::args());
@@ -104,6 +112,8 @@ fn main() {
    let _ = floor_body;
 
    let mut keys = [false; 256];
+   let mut turn_left = false;
+   let mut turn_right = false;
    let mut jump_was_down = false;
    let mut grounded = false;
    let mut last_time = backend.time_seconds();
@@ -116,6 +126,12 @@ fn main() {
       for event in backend.poll_events() {
          match event {
             Event::KeyDown(KEY_ESCAPE) => backend.request_close(),
+            Event::KeyDown(KEY_LEFT) | Event::KeyUp(KEY_LEFT) => {
+               turn_left = matches!(event, Event::KeyDown(_));
+            }
+            Event::KeyDown(KEY_RIGHT) | Event::KeyUp(KEY_RIGHT) => {
+               turn_right = matches!(event, Event::KeyDown(_));
+            }
             Event::KeyDown(code) | Event::KeyUp(code)
                if (0..keys.len()).contains(&(code as usize)) =>
             {
@@ -154,7 +170,14 @@ fn main() {
 
       let mut physics_steps = 0;
       while accumulator >= PHYSICS_STEP && physics_steps < MAX_PHYSICS_STEPS_PER_FRAME {
-         apply_input(&mut world, cube_body, &keys, grounded, &mut jump_was_down);
+         apply_input(
+            &mut world,
+            cube_body,
+            &keys,
+            i32::from(turn_right) - i32::from(turn_left),
+            grounded,
+            &mut jump_was_down,
+         );
          world.step(PHYSICS_STEP as f32);
          accumulator -= PHYSICS_STEP;
          physics_steps += 1;
@@ -211,19 +234,34 @@ fn sync_pose(world: &World, scene: &mut Scene, object: ObjectId, body: BodyId) {
    }
 }
 
+/// Apply one step of player input.
+/// 应用一步玩家输入。
+///
+/// `A`/`D` push the cube sideways and deliberately impart no spin; the left and
+/// right arrows spin it and push nothing. The two axes are separate knobs, so
+/// nudging the cube across the floor no longer rolls it. `turn` is `-1` for the
+/// left arrow, `+1` for the right, `0` for neither, and the torque signs match
+/// what `A`/`D` used to impart so the cube still turns the way it always did.
+/// `A`/`D` 把方块往左右推，且刻意不施加自转；左右箭头使其自转、不施加推力。两个轴互不
+/// 干扰，因此把方块推过地板时它不会再翻滚。`turn` 为 `-1`（左箭头）、`+1`（右箭头）或
+/// `0`（都没按）；扭矩符号与原先 `A`/`D` 施加的一致，方块的转向因此与以往相同。
 fn apply_input(
    world: &mut World,
    cube: BodyId,
    keys: &[bool; 256],
+   turn: i32,
    grounded: bool,
    jump_was_down: &mut bool,
 ) {
    if keys[b'a' as usize] {
       world.apply_force(cube, Vec3::new(-14.0, 0.0, 0.0));
-      world.apply_torque(cube, Vec3::new(0.0, 0.0, 4.0));
    }
    if keys[b'd' as usize] {
       world.apply_force(cube, Vec3::new(14.0, 0.0, 0.0));
+   }
+   if turn < 0 {
+      world.apply_torque(cube, Vec3::new(0.0, 0.0, 4.0));
+   } else if turn > 0 {
       world.apply_torque(cube, Vec3::new(0.0, 0.0, -4.0));
    }
 
