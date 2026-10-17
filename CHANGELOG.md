@@ -9,6 +9,12 @@ All notable changes to the HE3D workspace crates are documented here.
   run from this repository, and each names an SDL3 backend, so publishing one would make
   SDL3 a build requirement for anyone who merely resolved it. `cargo publish --workspace`
   now skips them instead of sweeping them in.
+- `CONTEXT.md` gains an **Open work** section, the one part of that file which is not
+  vocabulary, and its charter sentence now says so. It carries the renderer's landed
+  optimizations and their measurements, the `floor`-to-truncation attempt that was ruled
+  out, the three candidates left unmeasured (scanline rasterization, an interleaved
+  colour/depth buffer, hoisting the per-frame constants out of `draw_mesh`), the
+  PhysicsTest demo's constant torque, and where the §5 comment migration stands.
 
 ## [0.4.0] - 2026-10-17
 
