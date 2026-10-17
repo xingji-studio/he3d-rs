@@ -85,6 +85,27 @@ What must not regress:
 
 ---
 
+## 5. One comment line, one sentence
+
+A sentence in a comment occupies exactly one line. Do not wrap a sentence onto a
+second line, and do not put two sentences on one line.
+
+Comments in this repository are bilingual, English first and Chinese second. The
+Chinese line is a translation of the English one rather than an independent remark,
+so the two blocks have the same sentences in the same order.
+
+This rule governs comments: Rust `//` and `///`, `#` in manifests and scripts, and
+the same in any other language this repository grows. Markdown documents
+(`README.md`, `CHANGELOG.md`, `docs/`) are prose and keep their normal wrapping.
+
+`rustfmt.toml` sets `wrap_comments = false`, so `cargo fmt` will not rewrap a comment
+and undo this. A long sentence stays long on purpose.
+
+The comments already in the tree predate this rule and are wrapped. Unwrap a file's
+comments when you next touch that file; do not sweep the tree for it.
+
+---
+
 ## Repository facts worth knowing
 
 - **The build was once silently broken by a corrupted dependency cache.** A tool
