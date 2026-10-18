@@ -167,16 +167,23 @@ Ruled out:
 - Replacing `floor` with a truncation-based wrap in `sample`. Measured about 25%
   slower end to end (9.70 ms), because the `f32 → i32 → f32` round trip costs more
   than the `floor` the compiler inlines.
+- **Scanline rasterization.** The per-fragment sign test is the drain only on large,
+  strongly slanted triangles. Skipping it entirely — which shades each triangle's whole
+  bounding box, so it is a ceiling on what edge culling could ever recover, not a
+  like-for-like comparison — costs about 19% of `render/fill/tex/1280x720` and 8% of
+  `render/scene8/1280x720`, but only 1.7% of `render/tris/10000`, where the triangles
+  are small and nearly fill their boxes. Iterating just the per-row x-interval while
+  keeping every pixel identical would still advance the barycentric and
+  depth/texture interpolants column by column to the interval's start, which costs
+  about what the sign test it replaces costs. Re-seeding those interpolants at the
+  interval's start is the cheap version, but it moves every later fragment by a
+  rounding step, and a test pins the whole frame by hash (`fnv1a_pixels`). So the win
+  is real only for the fill-bound arms, and buying it means adopting a different
+  coverage rule and re-baselining that hash.
 
-Candidates, in the order worth trying. Neither has been measured:
+Candidates, in the order worth trying. Not yet measured:
 
-1. **Scanline rasterization.** The inner loop walks the triangle's bounding box and
-   tests `w0 >= 0 && w1 >= 0 && w2 >= 0` per fragment, and the MSAA arm recomputes a
-   per-pixel sample mask. Deriving the covered x range per scanline from the three
-   edges would skip off-triangle fragments outright and take the sign test out of the
-   inner loop. A first read of the code put this at 10-20%, which is an estimate and
-   not a measurement.
-2. **Interleave colour and depth into one buffer.** They are two `Vec`s today, so
+1. **Interleave colour and depth into one buffer.** They are two `Vec`s today, so
    every fragment writes two cache lines; interleaving would halve that. This is not a
    local optimization: `Renderer::pixels` is public and returns the colour buffer, so
    the interleaved layout forces an API decision (a copy, or a strided view) and a

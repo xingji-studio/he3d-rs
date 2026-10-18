@@ -22,6 +22,11 @@ All notable changes to the HE3D workspace crates are documented here.
   renderer arms and within run-to-run noise on the fill-bound ones — small, and not the
   10-20% the earlier estimate guessed — so the change is kept as structural rather than
   for the number. Behaviour is unchanged.
+- `CONTEXT.md`: scanline rasterization is recorded as ruled out, with the ceiling it
+  was measured against. No code changed. The sign test it would skip costs about 19%
+  of the fill-bound arm and 1.7% of the many-small-triangle arm, and removing it
+  without changing a pixel is not possible, so the win is not worth a new coverage
+  rule.
 
 ## [0.5.0] - 2026-10-18
 
