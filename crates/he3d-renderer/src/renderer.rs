@@ -487,16 +487,12 @@ impl Renderer {
       }
    }
 
-   // The casts below are deliberate rasterizer math: screen coordinates are bounded by the framebuffer size, fixed-point lighting works in integers, and the x/y-paired names are idiomatic here.
-   // The single-sample and MSAA paths share a dozen interpolant locals, so splitting them into separate functions would trade the line count for a longer argument list.
-   // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照在整数上运算，x/y 成对命名在此处是惯用法。
-   // 单样本与 MSAA 两条路径共享十来个插值局部变量，把它们拆成独立函数只会用行数换到更长的参数表。
+   // Screen coordinates are floats but the framebuffer is indexed with integers, so the bound and index casts below are deliberate rather than incidental.
+   // 屏幕坐标是浮点数，而帧缓冲用整数索引，因此下面的边界与索引转换是刻意为之，而非顺手写成。
    #[expect(
       clippy::cast_possible_truncation,
       clippy::cast_precision_loss,
-      clippy::cast_sign_loss,
-      clippy::similar_names,
-      clippy::too_many_lines
+      clippy::cast_sign_loss
    )]
    fn rasterize_textured(
       &mut self,
@@ -507,6 +503,11 @@ impl Renderer {
       tex: &Texture,
       perspective: bool,
    ) {
+      let Some(t) = ScreenTriangle::new(view, screen, uvs, perspective) else {
+         return;
+      };
+      let shading = Shading::new(light, tex);
+
       let left_f = screen[0].x.min(screen[1].x).min(screen[2].x);
       let right_f = screen[0].x.max(screen[1].x).max(screen[2].x);
       let top_f = screen[0].y.min(screen[1].y).min(screen[2].y);
@@ -522,22 +523,152 @@ impl Renderer {
          return;
       }
 
+      let msaa = self.anti_aliasing == AntiAliasing::Msaa && self.ensure_msaa_buffers();
+      let stride = self.width as usize;
+      for y in y_start..=y_end {
+         let py = y as f32 + 0.5;
+         let px0 = x_start as f32 + 0.5;
+         let mut w0 = ((t.x1 - px0) * (t.y2 - py) - (t.y1 - py) * (t.x2 - px0)) * t.inv_a;
+         let mut w1 = ((t.x2 - px0) * (t.y0 - py) - (t.y2 - py) * (t.x0 - px0)) * t.inv_a;
+         let mut w2 = 1.0 - w0 - w1;
+         let mut ciz = w0 * t.rz0 + w1 * t.rz1 + w2 * t.rz2;
+         let mut cuz = w0 * t.uz0.x + w1 * t.uz1.x + w2 * t.uz2.x;
+         let mut cvz = w0 * t.uz0.y + w1 * t.uz1.y + w2 * t.uz2.y;
+
+         let row = (y as usize) * stride;
+         for x in x_start..=x_end {
+            if msaa {
+               self.resolve_msaa_pixel(x, y, &t, &shading, tex, perspective);
+            } else {
+               let idx = row + x as usize;
+               if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 && ciz > self.depth_buf[idx] {
+                  self.depth_buf[idx] = ciz;
+                  if let Some(color) = shading.flat {
+                     self.color_buf[idx] = color;
+                  } else {
+                     let inv = if perspective { 1.0 / ciz } else { 1.0 };
+                     self.color_buf[idx] = shading.sample(tex, cuz * inv, cvz * inv);
+                  }
+               }
+            }
+            w0 += t.dw0;
+            w1 += t.dw1;
+            w2 += t.dw2;
+            ciz += t.diz_dx;
+            cuz += t.duz_dx;
+            cvz += t.dvz_dx;
+         }
+      }
+   }
+
+   /// Depth-test and shade the four MSAA samples covering one pixel, then update that pixel's depth.
+   /// 对覆盖单个像素的四个 MSAA 样本做深度测试与着色，然后更新该像素的深度。
+   // The same rasterizer casts as `rasterize_textured`, over the sample position, the view depth, and the texture coordinate.
+   // 与 `rasterize_textured` 相同的栅格化转换，施加在样本位置、视深度与纹理坐标上。
+   #[expect(
+      clippy::cast_possible_truncation,
+      clippy::cast_precision_loss,
+      clippy::cast_sign_loss,
+      clippy::many_single_char_names
+   )]
+   fn resolve_msaa_pixel(
+      &mut self,
+      x: i64,
+      y: i64,
+      t: &ScreenTriangle,
+      shading: &Shading,
+      tex: &Texture,
+      perspective: bool,
+   ) {
+      let idx = y as usize * self.width as usize + x as usize;
+      let mask = triangle_sample_mask4(x, y, t.x0, t.y0, t.x1, t.y1, t.x2, t.y2, t.inv_a);
+      let mut pixel_max_depth = self.depth_buf[idx];
+      for sample in 0..4u32 {
+         if mask & ((1 << sample) as u8) == 0 {
+            continue;
+         }
+         let spx = x as f32 + MSAA_SAMPLE_OFFSETS[sample as usize][0];
+         let spy = y as f32 + MSAA_SAMPLE_OFFSETS[sample as usize][1];
+         let sw0 = ((t.x1 - spx) * (t.y2 - spy) - (t.y1 - spy) * (t.x2 - spx)) * t.inv_a;
+         let sw1 = ((t.x2 - spx) * (t.y0 - spy) - (t.y2 - spy) * (t.x0 - spx)) * t.inv_a;
+         let sw2 = 1.0 - sw0 - sw1;
+         let sample_depth = sw0 * t.rz0 + sw1 * t.rz1 + sw2 * t.rz2;
+         let sample_idx = idx * 4 + sample as usize;
+         if sample_depth > self.msaa_depth_buf[sample_idx] {
+            self.msaa_depth_buf[sample_idx] = sample_depth;
+            let inv_sample = if perspective { 1.0 / sample_depth } else { 1.0 };
+            let u = (sw0 * t.uz0.x + sw1 * t.uz1.x + sw2 * t.uz2.x) * inv_sample;
+            let v = (sw0 * t.uz0.y + sw1 * t.uz1.y + sw2 * t.uz2.y) * inv_sample;
+            self.msaa_color_buf[sample_idx] = shading.sample(tex, u, v);
+            pixel_max_depth = pixel_max_depth.max(sample_depth);
+         }
+      }
+      self.depth_buf[idx] = pixel_max_depth;
+   }
+
+   /// Current TAA sub-pixel jitter in pixels, from the 8-sample Halton(2,3) sequence.
+   /// 当前 TAA 亚像素抖动（像素单位），来自 8 样本 Halton(2,3) 序列。
+   #[must_use]
+   fn current_taa_jitter(&self) -> Vec2 {
+      if self.anti_aliasing != AntiAliasing::Taa || self.width == 0 || self.height == 0 {
+         return Vec2::ZERO;
+      }
+      let sample = (self.taa_frame_index & 7) + 1;
+      let x = halton(sample, 2) - 0.5;
+      let y = halton(sample, 3) - 0.5;
+      Vec2::new(x * 0.5, y * 0.5)
+   }
+}
+
+/// A screen-space triangle, with the edge coefficients and depth and texture interpolants a rasterization pass walks across it.
+/// 屏幕空间三角形，以及光栅化遍历时穿过它的边系数与深度、纹理插值量。
+struct ScreenTriangle {
+   x0: f32,
+   y0: f32,
+   x1: f32,
+   y1: f32,
+   x2: f32,
+   y2: f32,
+   inv_a: f32,
+   dw0: f32,
+   dw1: f32,
+   dw2: f32,
+   rz0: f32,
+   rz1: f32,
+   rz2: f32,
+   uz0: Vec2,
+   uz1: Vec2,
+   uz2: Vec2,
+   diz_dx: f32,
+   duz_dx: f32,
+   dvz_dx: f32,
+}
+
+impl ScreenTriangle {
+   /// Derive the edge and interpolation coefficients, or return `None` when the triangle is degenerate.
+   /// 推导边与插值系数；三角形退化时返回 `None`。
+   fn new(
+      view: &[Vec3; 3],
+      screen: &[Vec2; 3],
+      uvs: &[Vec2; 3],
+      perspective: bool,
+   ) -> Option<Self> {
       let (x0, y0) = (screen[0].x, screen[0].y);
       let (x1, y1) = (screen[1].x, screen[1].y);
       let (x2, y2) = (screen[2].x, screen[2].y);
-
       let area = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
       if area.abs() < 0.0001 {
-         return;
+         return None;
       }
       let inv_a = 1.0 / area;
-
       let dw0 = (y1 - y2) * inv_a;
       let dw1 = (y2 - y0) * inv_a;
       let dw2 = -dw0 - dw1;
       // Depth is keyed on the reciprocal view depth, which is monotonic in both projections.
       // 深度以视深度的倒数作为键，这在两种投影下都是单调的。
-      let (rz0, rz1, rz2) = (1.0 / view[0].z, 1.0 / view[1].z, 1.0 / view[2].z);
+      let rz0 = 1.0 / view[0].z;
+      let rz1 = 1.0 / view[1].z;
+      let rz2 = 1.0 / view[2].z;
       // Texture weights are the reciprocal depth under perspective and a constant under orthographic, so the sample path divides by the interpolated reciprocal depth only under perspective.
       // 纹理权重在透视下是深度倒数，在正交下是常数，因此采样路径仅在透视下用插值的深度倒数做除法。
       let (wz0, wz1, wz2) = if perspective {
@@ -548,10 +679,46 @@ impl Renderer {
       let uz0 = uvs[0] * wz0;
       let uz1 = uvs[1] * wz1;
       let uz2 = uvs[2] * wz2;
-      let diz_dx = dw0 * rz0 + dw1 * rz1 + dw2 * rz2;
-      let duz_dx = dw0 * uz0.x + dw1 * uz1.x + dw2 * uz2.x;
-      let dvz_dx = dw0 * uz0.y + dw1 * uz1.y + dw2 * uz2.y;
+      Some(Self {
+         x0,
+         y0,
+         x1,
+         y1,
+         x2,
+         y2,
+         inv_a,
+         dw0,
+         dw1,
+         dw2,
+         rz0,
+         rz1,
+         rz2,
+         uz0,
+         uz1,
+         uz2,
+         diz_dx: dw0 * rz0 + dw1 * rz1 + dw2 * rz2,
+         duz_dx: dw0 * uz0.x + dw1 * uz1.x + dw2 * uz2.x,
+         dvz_dx: dw0 * uz0.y + dw1 * uz1.y + dw2 * uz2.y,
+      })
+   }
+}
 
+/// Per-triangle shading inputs: fixed-point light intensity, plus a constant texture's pre-shaded colour when there is one.
+/// 逐三角形的着色输入：定点光照强度，以及常量纹理预先着色后的颜色（若有）。
+struct Shading {
+   lr: i32,
+   lg: i32,
+   lb: i32,
+   flat: Option<ColorRgba8>,
+}
+
+impl Shading {
+   /// Fold the light into fixed-point intensity and pre-shade a constant texture.
+   /// 把光照折入定点强度，并预先着色常量纹理。
+   // The float-to-integer cast below is the fixed-point conversion itself.
+   // 下面的浮点转整数转换正是定点转换本身。
+   #[expect(clippy::cast_possible_truncation)]
+   fn new(light: Rgb, tex: &Texture) -> Self {
       // Fixed-point light intensity: 8 fractional bits, so the per-texel shade is one integer multiply and shift instead of three float multiplies.
       // 定点光照强度：8 位小数，因此逐纹素着色只需一次整数乘法与移位，而不是三次浮点乘法。
       let lr = ((light.r * 256.0) as i32).clamp(0, 512);
@@ -567,79 +734,13 @@ impl Renderer {
       } else {
          None
       };
-
-      let msaa = self.anti_aliasing == AntiAliasing::Msaa && self.ensure_msaa_buffers();
-      let stride = self.width as usize;
-      for y in y_start..=y_end {
-         let py = y as f32 + 0.5;
-         let px0 = x_start as f32 + 0.5;
-         let mut w0 = ((x1 - px0) * (y2 - py) - (y1 - py) * (x2 - px0)) * inv_a;
-         let mut w1 = ((x2 - px0) * (y0 - py) - (y2 - py) * (x0 - px0)) * inv_a;
-         let mut w2 = 1.0 - w0 - w1;
-         let mut ciz = w0 * rz0 + w1 * rz1 + w2 * rz2;
-         let mut cuz = w0 * uz0.x + w1 * uz1.x + w2 * uz2.x;
-         let mut cvz = w0 * uz0.y + w1 * uz1.y + w2 * uz2.y;
-
-         let row = (y as usize) * stride;
-         for x in x_start..=x_end {
-            let idx = row + x as usize;
-            if msaa {
-               let mask = triangle_sample_mask4(x, y, x0, y0, x1, y1, x2, y2, inv_a);
-               let mut pixel_max_depth = self.depth_buf[idx];
-               for sample in 0..4u32 {
-                  if mask & ((1 << sample) as u8) == 0 {
-                     continue;
-                  }
-                  let spx = x as f32 + MSAA_SAMPLE_OFFSETS[sample as usize][0];
-                  let spy = y as f32 + MSAA_SAMPLE_OFFSETS[sample as usize][1];
-                  let sw0 = ((x1 - spx) * (y2 - spy) - (y1 - spy) * (x2 - spx)) * inv_a;
-                  let sw1 = ((x2 - spx) * (y0 - spy) - (y2 - spy) * (x0 - spx)) * inv_a;
-                  let sw2 = 1.0 - sw0 - sw1;
-                  let sample_depth = sw0 * rz0 + sw1 * rz1 + sw2 * rz2;
-                  let sample_idx = idx * 4 + sample as usize;
-                  if sample_depth > self.msaa_depth_buf[sample_idx] {
-                     let inv_sample = if perspective { 1.0 / sample_depth } else { 1.0 };
-                     let u = (sw0 * uz0.x + sw1 * uz1.x + sw2 * uz2.x) * inv_sample;
-                     let v = (sw0 * uz0.y + sw1 * uz1.y + sw2 * uz2.y) * inv_sample;
-                     self.msaa_depth_buf[sample_idx] = sample_depth;
-                     self.msaa_color_buf[sample_idx] = match flat {
-                        Some(color) => color,
-                        None => shade(tex.sample(u, v), lr, lg, lb),
-                     };
-                     pixel_max_depth = pixel_max_depth.max(sample_depth);
-                  }
-               }
-               self.depth_buf[idx] = pixel_max_depth;
-            } else if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 && ciz > self.depth_buf[idx] {
-               self.depth_buf[idx] = ciz;
-               if let Some(color) = flat {
-                  self.color_buf[idx] = color;
-               } else {
-                  let inv = if perspective { 1.0 / ciz } else { 1.0 };
-                  self.color_buf[idx] = shade(tex.sample(cuz * inv, cvz * inv), lr, lg, lb);
-               }
-            }
-            w0 += dw0;
-            w1 += dw1;
-            w2 += dw2;
-            ciz += diz_dx;
-            cuz += duz_dx;
-            cvz += dvz_dx;
-         }
-      }
+      Self { lr, lg, lb, flat }
    }
 
-   /// Current TAA sub-pixel jitter in pixels, from the 8-sample Halton(2,3) sequence.
-   /// 当前 TAA 亚像素抖动（像素单位），来自 8 样本 Halton(2,3) 序列。
-   #[must_use]
-   fn current_taa_jitter(&self) -> Vec2 {
-      if self.anti_aliasing != AntiAliasing::Taa || self.width == 0 || self.height == 0 {
-         return Vec2::ZERO;
-      }
-      let sample = (self.taa_frame_index & 7) + 1;
-      let x = halton(sample, 2) - 0.5;
-      let y = halton(sample, 3) - 0.5;
-      Vec2::new(x * 0.5, y * 0.5)
+   /// Sample the texture at `u`/`v` and apply the fixed-point light.
+   /// 在 `u`/`v` 处采样纹理并施加定点光照。
+   fn sample(&self, tex: &Texture, u: f32, v: f32) -> ColorRgba8 {
+      shade(tex.sample(u, v), self.lr, self.lg, self.lb)
    }
 }
 
