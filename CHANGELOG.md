@@ -14,6 +14,15 @@ All notable changes to the HE3D workspace crates are documented here.
   pairs each Body with the object that draws it and exposes the per-frame `sync`. §12's
   frame-budget paragraph and §14 risk 4 now carry the measured numbers.
 
+### Changed
+- `he3d-renderer`: `draw_mesh` no longer recomputes the camera's inverse rotation, the
+  view-space light direction, the pixel scale (with its `tan`), the viewport
+  half-extents, and the near plane for every RenderObject; a private `Frame` computes
+  them once a frame. Measured at roughly 1-3% on the object- and triangle-heavy
+  renderer arms and within run-to-run noise on the fill-bound ones — small, and not the
+  10-20% the earlier estimate guessed — so the change is kept as structural rather than
+  for the number. Behaviour is unchanged.
+
 ## [0.5.0] - 2026-10-18
 
 ### Breaking

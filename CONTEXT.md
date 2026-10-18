@@ -152,6 +152,15 @@ Landed:
 - `Texture::sample` drops a branch that `x - floor(x)` can never take and indexes with
   32-bit arithmetic, and the per-fragment path drops two clamp lower bounds that
   cannot be reached. The textured quad went 7.81 ms → 7.17 ms.
+- `draw_mesh` computes the per-frame invariants once, in a `Frame`, instead of once
+  per RenderObject: the camera's inverse rotation, the view-space light direction, the
+  pixel scale (with its `tan`), the viewport half-extents, and the near plane. The
+  measured effect is small — roughly 1-3% on the object- and triangle-heavy arms
+  (`render/n_objects/1000`, `render/tris/{1000,10000}`) and within run-to-run noise on
+  the fill-bound ones — so this was **not** the 10-20% the estimate below guessed. It
+  is kept as a structural change, the way the timing-neutral resolve-once `ContactPair`
+  was, because the "compute once per frame" invariant is now explicit rather than paid
+  per mesh.
 
 Ruled out:
 
@@ -159,7 +168,7 @@ Ruled out:
   slower end to end (9.70 ms), because the `f32 → i32 → f32` round trip costs more
   than the `floor` the compiler inlines.
 
-Candidates, in the order worth trying. None of the three has been measured:
+Candidates, in the order worth trying. Neither has been measured:
 
 1. **Scanline rasterization.** The inner loop walks the triangle's bounding box and
    tests `w0 >= 0 && w1 >= 0 && w2 >= 0` per fragment, and the MSAA arm recomputes a
@@ -172,9 +181,6 @@ Candidates, in the order worth trying. None of the three has been measured:
    local optimization: `Renderer::pixels` is public and returns the colour buffer, so
    the interleaved layout forces an API decision (a copy, or a strided view) and a
    minor version bump. Also estimated at 10-20%, unmeasured.
-3. **Hoist what does not vary per object out of `draw_mesh`.** `cam_inv_rot` and
-   `light_dir` depend only on the camera and the light, and are recomputed for every
-   RenderObject in a frame.
 
 ### Comment style migration
 

@@ -2,7 +2,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use he3d_core::{Camera, ColorRgba8, Error, Mesh, Projection, RenderObject, Rgb, Scene, Texture};
 use he3d_math::scalar::tan;
-use he3d_math::{Vec2, Vec3, conv};
+use he3d_math::{Quat, Vec2, Vec3, conv};
 
 use crate::{AntiAliasing, MAX_SSAA_SCALE, RendererConfig};
 
@@ -214,6 +214,9 @@ impl Renderer {
          color: scene.light.color,
          ambient: scene.light.ambient,
       };
+      // The camera's inverse rotation, the view-space light direction, the pixel scale, and the viewport half-extents are identical for every object, so a frame computes them once rather than once per mesh.
+      // 相机的逆旋转、视图空间光照方向、像素尺度与视口半尺寸对每个对象都一样，因此每帧只算一次，而非逐网格重算。
+      let frame = Frame::new(camera, light, self.width, self.height);
 
       let jitter = self.current_taa_jitter();
 
@@ -231,7 +234,7 @@ impl Renderer {
             Some(texture) => texture,
             None => &missing,
          };
-         self.draw_mesh(mesh, object, texture, camera, light, jitter);
+         self.draw_mesh(mesh, object, texture, &frame, jitter);
       }
       self.present();
       Ok(())
@@ -371,41 +374,29 @@ impl Renderer {
       );
    }
 
-   // Framebuffer dimensions are bounded by MAX_FRAMEBUFFER_PIXELS, so the u32→f32 conversions in this function cannot meaningfully lose precision.
-   // 帧缓冲尺寸受 MAX_FRAMEBUFFER_PIXELS 约束，因此本函数中的 u32→f32 转换不会产生有意义的精度损失。
-   #[expect(clippy::cast_precision_loss)]
    fn draw_mesh(
       &mut self,
       mesh: &Mesh,
       object: &RenderObject,
       texture: &Texture,
-      camera: &Camera,
-      light: Light,
+      frame: &Frame,
       jitter: Vec2,
    ) {
-      let cam_inv_rot = camera.orientation.inverse();
       let scale = object.transform.scale;
       let tint = object.material.tint;
+      let half_w = frame.half_w;
+      let half_h = frame.half_h;
+      let pixel_scale = frame.pixel_scale;
+      let perspective = frame.perspective;
+      let near = frame.near;
 
       // Fold the object rotation and the world→view rotation into one quaternion, and the translation into one vector, so each vertex costs a single rotation instead of two.
-      // Rotations are norm-preserving, so shading can equally be done in view space with the light direction rotated once here.
+      // Rotations are norm-preserving, so shading can equally be done in view space with the light direction rotated once a frame.
       // 把物体旋转与世界→视图旋转合成同一个四元数，并把平移合成同一个向量，使每个顶点只需一次旋转而非两次。
-      // 旋转保持长度，因此着色同样可以在视图空间完成——只需在此把光照方向旋转一次。
-      let view_rot = cam_inv_rot * object.transform.orientation;
-      let view_trans = cam_inv_rot * (object.transform.position - camera.position);
-      let light_dir = cam_inv_rot * light.direction;
-
-      let half_w = self.width as f32 * 0.5;
-      let half_h = self.height as f32 * 0.5;
-      // Both projections are isotropic in pixels, so one scale serves both axes and the viewport's aspect ratio is handled implicitly.
-      // 两种投影在像素上都是各向同性的，因此一个尺度即可服务两根轴，视口宽高比被隐式处理。
-      let (pixel_scale, perspective) = match camera.projection {
-         Projection::Perspective { fov_y_degrees } => {
-            (half_h / tan(conv::deg_to_rad(fov_y_degrees) * 0.5), true)
-         }
-         Projection::Orthographic { height } => (half_h / (height * 0.5), false),
-      };
-      let near = camera.near;
+      // 旋转保持长度，因此着色同样可以在视图空间完成——只需每帧把光照方向旋转一次。
+      let view_rot = frame.inv_rotation * object.transform.orientation;
+      let view_trans = frame.inv_rotation * (object.transform.position - frame.eye);
+      let light_dir = frame.light_dir;
 
       let vertices = mesh.vertices();
       let uvs = mesh.uvs();
@@ -468,7 +459,7 @@ impl Renderer {
          let inv_scale = scale.recip();
          let n_view = view_rot * (local_normal * inv_scale).normalize_or_zero();
          let diffuse = n_view.dot(light_dir).max(0.0);
-         let lit = tint * light.color * (light.ambient + diffuse);
+         let lit = tint * frame.light_color * (frame.ambient + diffuse);
 
          for k in 1..count - 1 {
             let tri_view = [clipped[0].view, clipped[k].view, clipped[k + 1].view];
@@ -759,6 +750,63 @@ struct Light {
    direction: Vec3,
    color: Rgb,
    ambient: f32,
+}
+
+/// Everything a frame computes once and reuses for every `RenderObject`.
+///
+/// The camera's inverse rotation, the view-space light direction, the pixel scale, and the viewport half-extents depend only on the camera and the light, so hoisting them out of `draw_mesh` keeps a mesh from paying for them.
+struct Frame {
+   /// The camera rotation, inverted to a world→view rotation.
+   inv_rotation: Quat,
+   /// The camera position in world space.
+   eye: Vec3,
+   /// The light direction rotated into view space.
+   light_dir: Vec3,
+   /// The light colour.
+   light_color: Rgb,
+   /// The ambient term of the scene light.
+   ambient: f32,
+   /// Half the framebuffer width, in pixels.
+   half_w: f32,
+   /// Half the framebuffer height, in pixels.
+   half_h: f32,
+   /// Pixels per view-space unit at unit depth.
+   pixel_scale: f32,
+   /// Whether the projection is perspective.
+   perspective: bool,
+   /// The near plane.
+   near: f32,
+}
+
+impl Frame {
+   // Framebuffer dimensions are bounded by MAX_FRAMEBUFFER_PIXELS, so the u32→f32 conversions below cannot meaningfully lose precision.
+   // 帧缓冲尺寸受 MAX_FRAMEBUFFER_PIXELS 约束，因此下面的 u32→f32 转换不会产生有意义的精度损失。
+   #[expect(clippy::cast_precision_loss)]
+   fn new(camera: &Camera, light: Light, width: u32, height: u32) -> Self {
+      let inv_rotation = camera.orientation.inverse();
+      let half_w = width as f32 * 0.5;
+      let half_h = height as f32 * 0.5;
+      // Both projections are isotropic in pixels, so one scale serves both axes and the viewport's aspect ratio is handled implicitly.
+      // 两种投影在像素上都是各向同性的，因此一个尺度即可服务两根轴，视口宽高比被隐式处理。
+      let (pixel_scale, perspective) = match camera.projection {
+         Projection::Perspective { fov_y_degrees } => {
+            (half_h / tan(conv::deg_to_rad(fov_y_degrees) * 0.5), true)
+         }
+         Projection::Orthographic { height } => (half_h / (height * 0.5), false),
+      };
+      Self {
+         inv_rotation,
+         eye: camera.position,
+         light_dir: inv_rotation * light.direction,
+         light_color: light.color,
+         ambient: light.ambient,
+         half_w,
+         half_h,
+         pixel_scale,
+         perspective,
+         near: camera.near,
+      }
+   }
 }
 
 /// Compute the internal render buffer for an output size and SSAA scale, capped by `MAX_FRAMEBUFFER_PIXELS`, or `None` when the request exceeds the budget.
