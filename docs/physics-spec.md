@@ -423,11 +423,16 @@ and settle to 6.3 ms, about a third of one. A scene of two thousand Bodies that
 are moving but largely out of contact — freefall, spreading debris — costs 0.23 ms and
 is comfortably real-time. Contact density, not Body count, decides which regime a
 scene is in, and the tall-stack limitation decides whether the dense regime ever ends.
+Drawing the same Bodies is a second cost that adds to the first: a scene stepped and
+drawn at 1280x720 is 27.3 ms — the step 19.0 ms, the draw 9.0 ms, the pose copy
+0.01 ms — so a frame is the sum of its two halves (§14 risk 4).
 
 **帧预算。** 两千个静止 Body 只花 0.41 ms，几乎不占一帧。两千个塞满接触的 Body 峰值 19 ms
 ——越过 60 Hz 的一帧（16.7 ms）——稳态降到 6.3 ms，约一帧的三分之一。而两千个虽有运动但
 基本不接触的场景（自由落体、散开的碎块）只要 0.23 ms，实时绰绰有余。决定场景落在哪个区间
-的是接触密度而非 Body 数量；而密集区间能否结束，取决于高塔限制。
+的是接触密度而非 Body 数量；而密集区间能否结束，取决于高塔限制。绘制这些 Body 是叠加在第一份
+之上的第二份开销：一个步进并绘制（1280x720）的场景为 27.3 ms——步进 19.0 ms、绘制 9.0 ms、
+位姿拷贝 0.01 ms——因此一帧就是两半之和（§14 风险 4）。
 
 **Broadphase cell size** at 2000 awake Bodies: 0.5 → 25.8 ms, 2.0 → 18.7 ms, 8.0 →
 19.2 ms. The default 2.0 is near-optimal; halving the cell is the only setting that
@@ -497,12 +502,15 @@ Each entry records what would bring it back.
 3. **Six shapes across a hybrid narrowphase** is the widest surface area. The
    curved shapes (cylinder, cone) are the hardest contact-manifold cases and
    should be scheduled last within §5.
-4. **The two-thousand-Body budget is now a measurement, with one gap left.** §12
-   records it: 0.41 ms asleep, 19 ms at the peak of a fully packed pile that settles
-   to 6.3 ms. The gap is the *combination* — physics and the software rasterizer
-   share one CPU and have been profiled only separately, never in the same frame. A
-   scene that both simulates and draws two thousand Bodies needs the two costs added
-   before any frame rate is promised.
+4. **The two-thousand-Body frame is measured whole, and the two halves add.** The
+   former gap — physics and the software rasterizer profiled only separately — is
+   closed by `benches/frame.rs`, which steps and draws one scene of two thousand
+   Bodies in the same frame: **27.3 ms** at 1280x720, against a step of 19.0 ms, a
+   draw of 9.0 ms, and an application-owned pose copy of 0.01 ms. The parts sum to
+   28.0 ms, so running the two on one CPU costs what the two cost apart — additive,
+   with no cache penalty — and a scene that both simulates and draws two thousand
+   Bodies is about 37 fps at the physics peak. The number to plan against is still
+   §12's, now with the draw folded in.
 5. **No CCD means tunnelling.** The flight simulator is the concrete case: direct
    `set_velocity`, heavy gravity, and terrain cells twelve metres apart. Either
    add CCD, thicken the terrain, or cap speed — decide with a measurement.
@@ -564,10 +572,12 @@ Each entry records what would bring it back.
    邻接关系、按世界位置建立索引，并在静态网格增删时维护它。
 3. **六种形状 × 混合窄相位**是最宽的工作面。曲面形状（圆柱、圆锥）是最难的接触流形
    情形，应排在 §5 的最后。
-4. **两千个 Body 的预算现在是实测，但还差一块。** §12 已记录：睡眠 0.41 ms，塞满接触的堆叠
-   峰值 19 ms、稳态 6.3 ms。缺的是**两者叠加**——物理与软件光栅化器抢同一批 CPU，目前只
-   分别测过，从未在同一帧里一起量。既模拟又绘制两千个 Body 的场景，需要先把两份开销相加，
-   再谈帧率。
+4. **两千个 Body 的整帧已整体实测，两半相加即可。** 原先的缺口——物理与软件光栅化器只分别
+   测过——由 `benches/frame.rs` 补上：它在同一帧里既步进又绘制一个两千 Body 的场景，1280x720
+   下为 **27.3 ms**，对应步进 19.0 ms、绘制 9.0 ms、应用持有的位姿拷贝 0.01 ms。各部分之和
+   为 28.0 ms，因此在同一颗 CPU 上跑这两件事，代价就是两者分开的代价之和——相加、无缓存
+   惩罚——一个既模拟又绘制两千 Body 的场景在物理峰值处约为 37 fps。作为预算依据的仍是 §12
+   的数字，只是现在把绘制一并算进去了。
 5. **没有 CCD 意味着隧穿。** flight simulator 就是具体案例：直接 `set_velocity`、
    大重力、地形格子间距十二米。要么加 CCD，要么加厚地形，要么限制速度——用实测决定。
 6. **没有碰撞过滤。** 对当前功能集是正确的，但一旦触发器或自碰撞出现就变成刚需。

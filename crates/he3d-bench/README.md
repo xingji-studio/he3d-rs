@@ -34,6 +34,7 @@ cargo bench -p he3d-bench --bench physics
 |---|---|
 | `benches/physics.rs` | `World::step` across freefall, a packed lattice, a settled sleeping scene, static terrain, and broadphase cell sizes; plus `add_body` and construction |
 | `benches/renderer.rs` | `Renderer::new`, resolution / triangle-count / object-count sweeps, per-fragment fill (a screen-filling quad, textured and constant-colour), and each anti-aliasing mode |
+| `benches/frame.rs` | One frame of two thousand Bodies stepped and drawn together, plus the draw alone and the pose copy alone: `docs/physics-spec.md` §14 risk 4 |
 | `benches/assets.rs` | `parse_obj` and `decode_image` on the shipped `biplane` fixtures, plus a scaling synthetic OBJ |
 | `benches/core_math.rs` | The `glam`/`Transform` operations the engine leans on |
 
@@ -76,6 +77,12 @@ above; the scenes are defined in `src/workloads.rs`.
 - **Physics cost tracks contacts, not Bodies.** 2000 Bodies out of contact step in
   0.23 ms; the same 2000 packed in contact peak at 19 ms and settle to 6.3 ms.
   Recorded in `docs/physics-spec.md` §12.
+- **Simulating and drawing share a CPU additively.** One frame of two thousand Bodies
+  stepped and drawn at 1280x720 is 27.3 ms — a 19.0 ms step, a 9.0 ms draw, and a
+  0.01 ms pose copy — against a 28.0 ms sum of the parts. Geometry and physics were
+  profiled separately until `benches/frame.rs` put them in one frame; doing so costs no
+  more than the two apart, and about 37 fps is the ceiling at the packed peak. This is
+  `docs/physics-spec.md` §14 risk 4, measured.
 - **Sleep is decided by convergence, and convergence fails with height.** `settle`
   pokes at a lattice of unit cubes layered on a slab. Six layers settle around step
   1100, sleep, and then cost 0.05 ms for the whole pile. Eight layers sit on the edge:

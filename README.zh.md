@@ -64,7 +64,7 @@ cargo check -p he3d-math -p he3d-core -p he3d-renderer \
 性能数字是量出来的，不是断言的。`crates/he3d-bench` 存放 criterion 基准套件与堆报告；它 `publish = false`、不依赖任何后端 crate，可无头构建与运行。
 
 ```sh
-cargo bench -p he3d-bench                  # 完整运行：physics、renderer、assets、core/math
+cargo bench -p he3d-bench                  # 完整运行：physics、renderer、frame、assets、core/math
 cargo bench -p he3d-bench -- --test        # 冒烟：每个用例跑一次（CI 运行的就是这个）
 cargo run  -p he3d-bench --bin memreport   # 堆分配 + size_of 表
 cargo run  -p he3d-bench --bin settle      # 成本随步数的变化，以及睡眠状态

@@ -6,8 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 description = "Performance benchmarks and heap accounting for HE3D; not published"
 publish = false
-# Bench targets are declared explicitly below with `harness = false` (criterion
-# supplies `main`), which conflicts with default discovery.
+# Bench targets are declared explicitly below with `harness = false` (criterion supplies `main`), which conflicts with default discovery.
 autobenches = false
 
 [dependencies]
@@ -18,8 +17,7 @@ he3d-renderer = { workspace = true, features = ["std"] }
 he3d-assets = { workspace = true, default-features = false, features = ["std", "bmp"] }
 
 [dev-dependencies]
-# Trimmed criterion: no plotters, no rayon, no HTML reports. The HTML report is
-# opt-in via `--features criterion/html_reports` when charts are wanted.
+# Trimmed criterion: no plotters, no rayon, no HTML reports. The HTML report is opt-in via `--features criterion/html_reports` when charts are wanted.
 criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 
 [[bench]]
@@ -28,6 +26,10 @@ harness = false
 
 [[bench]]
 name = "renderer"
+harness = false
+
+[[bench]]
+name = "frame"
 harness = false
 
 [[bench]]

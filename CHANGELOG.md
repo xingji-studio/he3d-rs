@@ -2,6 +2,18 @@
 
 All notable changes to the HE3D workspace crates are documented here.
 
+## [Unreleased]
+
+### Added
+- `crates/he3d-bench`: a `frame` criterion target that steps and draws one scene of
+  two thousand Bodies in the same frame, closing `docs/physics-spec.md` §14 risk 4 —
+  physics and the software rasterizer had only ever been profiled separately. The
+  combined frame is 27.3 ms at 1280x720: a 19.0 ms step, a 9.0 ms draw, and a 0.01 ms
+  application-owned pose copy, against a 28.0 ms sum of the parts, so the two share one
+  CPU additively rather than for worse. `workloads.rs` gains `sim_render_scene`, which
+  pairs each Body with the object that draws it and exposes the per-frame `sync`. §12's
+  frame-budget paragraph and §14 risk 4 now carry the measured numbers.
+
 ## [0.5.0] - 2026-10-18
 
 ### Breaking

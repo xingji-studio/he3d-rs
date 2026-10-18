@@ -3,10 +3,12 @@
 //! Every builder is deterministic: the same arguments produce the same scene, so a number measured today can be compared with one measured tomorrow.
 //! Where a scene mirrors a documented claim (`docs/physics-spec.md` §12) the shape of the scene is stated on the builder, because the claim is only as good as its reproduction.
 
-use he3d_core::{Camera, ColorRgba8, Material, Mesh, RenderObject, Rgb, Scene, Texture, Transform};
+use he3d_core::{
+   Camera, ColorRgba8, Material, Mesh, ObjectId, RenderObject, Rgb, Scene, Texture, Transform,
+};
 use he3d_math::scalar::tan;
 use he3d_math::{Quat, Vec3, conv};
-use he3d_physics::{BodyDesc, Shape, World};
+use he3d_physics::{BodyDesc, BodyId, MotionType, Shape, World};
 
 /// The fixed simulation step every physics workload uses: 1/120 s.
 pub const STEP: f32 = 1.0 / 120.0;
@@ -409,4 +411,83 @@ pub fn synthetic_obj(tris: usize) -> Vec<u8> {
       let _ = writeln!(text, "f {} {} {}", base + 1, base + 2, base + 3);
    }
    text.into_bytes()
+}
+
+// ---------------------------------------------------------------------------
+// Simulation and rendering in one frame
+// ---------------------------------------------------------------------------
+
+/// A [`World`], the [`Scene`] that draws its Bodies, and the links between them.
+///
+/// The association is application-owned: `docs/adr/0001` keeps the physics crate from seeing a `Scene`, an `ObjectId`, or a `Transform`, so a frame copies each Body's pose into its object by hand.
+/// This struct carries that copy and the pairing it needs.
+pub struct SimRenderScene {
+   /// The World whose Bodies are drawn.
+   pub world: World,
+   /// The Scene that draws them.
+   pub scene: Scene,
+   /// The camera framing the pile.
+   pub camera: Camera,
+   /// Body-to-object pairs, in spawn order.
+   pub links: Vec<(BodyId, ObjectId)>,
+}
+
+impl SimRenderScene {
+   /// Copy every Body's pose into the object that draws it.
+   ///
+   /// This is the per-frame cost `docs/adr/0001` pushes onto the application, and it is part of a frame a combined benchmark must pay.
+   pub fn sync(&mut self) {
+      for &(body, object) in &self.links {
+         let Some(position) = self.world.position(body) else {
+            continue;
+         };
+         let Some(orientation) = self.world.orientation(body) else {
+            continue;
+         };
+         let Some(rendered) = self.scene.objects.get_mut(object) else {
+            continue;
+         };
+         rendered.transform.position = position;
+         rendered.transform.orientation = orientation;
+      }
+   }
+}
+
+/// The `docs/physics-spec.md` §14 risk 4 scene: `n` Bodies that are both simulated and drawn.
+///
+/// [`world_lattice_on_slab`] supplies the simulation, and every dynamic Body gets one unit-cube object sharing a single mesh.
+/// The separate physics and renderer benchmarks each measured one side of this frame and never the two together.
+#[must_use]
+pub fn sim_render_scene(n: usize) -> SimRenderScene {
+   let world = world_lattice_on_slab(n);
+   let mut scene = Scene::new();
+   let mesh = scene
+      .meshes
+      .insert(Mesh::cube(1.0, 1.0, 1.0).expect("unit cube mesh is valid"));
+
+   let mut links = Vec::new();
+   for body in world.ids() {
+      if world.motion(body) != Some(MotionType::Dynamic) {
+         continue;
+      }
+      let object = scene.spawn(RenderObject {
+         mesh,
+         texture: None,
+         transform: Transform::default(),
+         material: Material::new(Rgb::WHITE),
+         visible: true,
+      });
+      links.push((body, object));
+   }
+
+   // The lattice rests on a slab centred at the origin, spanning y in [0, 12], so the camera stands back along -Z and looks +Z at it under the default field of view.
+   let camera = Camera::perspective(Vec3::new(0.0, 6.0, -28.0), Quat::IDENTITY, 60.0);
+   let mut sim = SimRenderScene {
+      world,
+      scene,
+      camera,
+      links,
+   };
+   sim.sync();
+   sim
 }

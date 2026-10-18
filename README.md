@@ -80,7 +80,7 @@ criterion suite and a heap report; it is `publish = false`, depends on no backen
 crate, and so builds and runs headless.
 
 ```sh
-cargo bench -p he3d-bench                  # full run: physics, renderer, assets, core/math
+cargo bench -p he3d-bench                  # full run: physics, renderer, frame, assets, core/math
 cargo bench -p he3d-bench -- --test        # smoke: every case once (what CI runs)
 cargo run  -p he3d-bench --bin memreport   # heap allocation + size_of tables
 cargo run  -p he3d-bench --bin settle      # cost vs step index, and sleep state
