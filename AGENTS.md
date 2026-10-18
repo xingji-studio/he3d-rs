@@ -106,6 +106,19 @@ comments when you next touch that file; do not sweep the tree for it.
 
 ---
 
+## 6. Push when the work is done
+
+Finishing a task includes publishing it. Once the work is complete and its commits are
+made, push them: leave nothing on this machine that the remote does not have. An
+unpushed branch is invisible to everyone else, and a later rebase, reset, or disk loss
+can drop it without warning.
+
+The gates in `README.md`'s **Build & test** section run before the commit leaves, not
+after. A commit that fails them is not finished, and pushing it only moves the breakage
+to whoever pulls next.
+
+---
+
 ## Repository facts worth knowing
 
 - **The build was once silently broken by a corrupted dependency cache.** A tool
