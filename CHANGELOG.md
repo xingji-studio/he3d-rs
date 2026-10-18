@@ -61,11 +61,14 @@ All notable changes to the HE3D workspace crates are documented here.
   sentences are joined, sentences sharing a line are split, and a paragraph's Chinese
   sentences now follow its English ones. The English text and the Chinese text are each
   preserved character for character.
+- Standard rustdoc section headings — `# Examples`, `# Errors`, `# Panics` — stay
+  English-only, and a Chinese line beneath one is that heading's translation rather
+  than a second heading. Only the facade crate's custom headings (`# Where the code
+  is`, `# The binary chooses the backend`) are bilingual, because they are prose
+  headings with no rustdoc keyword. This reverses the previous cycle's `# 示例`, which
+  promoted the Chinese translation to a heading of its own in six files.
 
 ### Fixed
-- `# Examples` is translated as `# 示例` in the six files that carry the heading; the `#`
-  had gone missing, so the Chinese line rendered as body text under an English-only
-  heading.
 - `examples/physics-test`: a held arrow no longer flings the cube off the platform. The
   control applied its 6 N·m torque on every step and relied on 0.05 angular damping to
   bound the spin, whose balance sits in the hundreds of radians per second; it now drives

@@ -32,7 +32,7 @@ const MAX_IMAGE_DIMENSION: u32 = 8192;
 /// 数据无法被任何已启用的解码器识别，或对应的解码器被编译掉时返回 [`Error::UnsupportedFormat`]；具体格式的解析错误由各解码器返回。
 ///
 /// # Examples
-/// # 示例
+/// 示例
 /// ```
 /// use he3d_assets::decode_image;
 ///
