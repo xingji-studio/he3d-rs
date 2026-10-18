@@ -24,8 +24,8 @@ impl Texture {
    /// 构造一个纹理，校验尺寸和缓冲长度。
    ///
    /// # Errors
-   /// 尺寸为 0 或超过 `MAX_TEXTURE_DIMENSION`、像素数量与尺寸不符，或尺寸乘积溢出时返回相应错误。
    /// Returns an error when a dimension is zero or exceeds `MAX_TEXTURE_DIMENSION`, when the pixel count does not match the dimensions, or when the product overflows.
+   /// 尺寸为 0 或超过 `MAX_TEXTURE_DIMENSION`、像素数量与尺寸不符，或尺寸乘积溢出时返回相应错误。
    pub fn new(width: u32, height: u32, pixels: Vec<ColorRgba8>) -> Result<Self, Error> {
       if width == 0
          || height == 0
@@ -51,8 +51,8 @@ impl Texture {
    /// 从借用的像素切片构造一个纹理。
    ///
    /// # Errors
-   /// 与 [`Texture::new`] 相同。
    /// Same errors as [`Texture::new`].
+   /// 与 [`Texture::new`] 相同。
    pub fn from_pixels(width: u32, height: u32, pixels: &[ColorRgba8]) -> Result<Self, Error> {
       Self::new(width, height, pixels.to_vec())
    }

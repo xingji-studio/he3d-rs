@@ -110,12 +110,12 @@ impl Renderer {
    /// ```
    ///
    /// # Errors
-   /// 尺寸为 0、超过 `MAX_FRAMEBUFFER_PIXELS` 预算，或尺寸乘积溢出时返回相应错误。
    /// Returns an error when a dimension is zero, when the pixel budget exceeds `MAX_FRAMEBUFFER_PIXELS`, or when the product overflows.
+   /// 尺寸为 0、超过 `MAX_FRAMEBUFFER_PIXELS` 预算，或尺寸乘积溢出时返回相应错误。
    ///
    /// # Panics
-   /// 内建 2×2 回退棋盘纹理构造失败时 panic（静态上不可能发生）。
    /// Panics only if the built-in 2×2 fallback texture cannot be constructed, which is statically impossible.
+   /// 内建 2×2 回退棋盘纹理构造失败时 panic（静态上不可能发生）。
    pub fn new(config: RendererConfig) -> Result<Self, Error> {
       if config.width == 0 || config.height == 0 {
          return Err(Error::InvalidSize);
@@ -194,8 +194,8 @@ impl Renderer {
    /// 将场景绘制到帧缓冲中。
    ///
    /// # Errors
-   /// `camera.near` 或投影参数（透视的 `fov_y_degrees`、正交的 `height`）不是有限正数时返回 [`Error::InvalidSize`]。
    /// Returns [`Error::InvalidSize`] when `camera.near` or the projection's parameter (the perspective `fov_y_degrees` or the orthographic `height`) is not a positive finite number.
+   /// `camera.near` 或投影参数（透视的 `fov_y_degrees`、正交的 `height`）不是有限正数时返回 [`Error::InvalidSize`]。
    pub fn render(&mut self, scene: &Scene, camera: &Camera, clear_color: Rgb) -> Result<(), Error> {
       if !camera.near.is_finite() || camera.near <= 0.0 {
          return Err(Error::InvalidSize);
