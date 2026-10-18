@@ -111,6 +111,18 @@ pub(crate) fn cast_ray(
             half_extents,
             nearest,
          ),
+         Shape::Capsule {
+            half_height,
+            radius,
+         } => ray_capsule(
+            ray.origin,
+            direction,
+            body.position,
+            body.orientation,
+            half_height,
+            radius,
+            nearest,
+         ),
       };
       let Some((distance, normal)) = hit else {
          continue;
@@ -277,6 +289,95 @@ fn box_face_normal(local_hit: Vec3, half_extents: Vec3, orientation: Quat) -> Ve
    } else {
       world
    }
+}
+
+/// Where a ray meets a capsule, if it does within `max_distance`.
+/// 射线在 `max_distance` 内与胶囊相交的位置（若有）。
+///
+/// The capsule is a segment swept by a sphere, so its surface is the finite cylinder around the segment plus the two hemispherical caps.
+/// The nearest accepted hit across those three features is the entry point, or the exit point when the origin starts inside.
+/// 胶囊是一条线段被球扫掠而成，因此其表面是线段周围的有限圆柱加上两个半球端帽。
+/// 这三个特征中最小的被接受命中即为入射点；当起点在内部时则是出射点。
+fn ray_capsule(
+   origin: Vec3,
+   direction: Vec3,
+   center: Vec3,
+   orientation: Quat,
+   half_height: f32,
+   radius: f32,
+   max_distance: f32,
+) -> Option<(f32, Vec3)> {
+   let inverse = orientation.inverse();
+   let local_origin = inverse * (origin - center);
+   let local_direction = inverse * direction;
+   let mut distance = f32::INFINITY;
+
+   // The cylindrical middle: a circle in the XZ plane, kept only between the two caps.
+   // 圆柱中部：XZ 平面上的一个圆，只在两个端帽之间保留。
+   let axial = local_direction.x * local_direction.x + local_direction.z * local_direction.z;
+   if axial > f32::EPSILON {
+      let b = 2.0 * (local_origin.x * local_direction.x + local_origin.z * local_direction.z);
+      let c = local_origin.x * local_origin.x + local_origin.z * local_origin.z - radius * radius;
+      let discriminant = b * b - 4.0 * axial * c;
+      if discriminant >= 0.0 {
+         let root = sqrt(discriminant);
+         for candidate in [(-b - root) / (2.0 * axial), (-b + root) / (2.0 * axial)] {
+            if candidate >= 0.0 && candidate <= max_distance {
+               let along_axis = local_origin.y + candidate * local_direction.y;
+               if along_axis.abs() <= half_height + f32::EPSILON {
+                  distance = distance.min(candidate);
+               }
+            }
+         }
+      }
+   }
+
+   // The two caps: a sphere at each end, kept only on its own side of the middle.
+   // 两个端帽：每端一颗球，只保留在各自一侧的部分。
+   for cap in [half_height, -half_height] {
+      let cap_centre = Vec3::new(0.0, cap, 0.0);
+      let to_origin = local_origin - cap_centre;
+      let b = to_origin.dot(local_direction);
+      let c = to_origin.length_squared() - radius * radius;
+      let discriminant = b * b - c;
+      if discriminant < 0.0 {
+         continue;
+      }
+      let root = sqrt(discriminant);
+      for candidate in [-b - root, -b + root] {
+         if candidate < 0.0 || candidate > max_distance {
+            continue;
+         }
+         let along_axis = local_origin.y + candidate * local_direction.y;
+         let on_cap = if cap >= 0.0 {
+            along_axis >= half_height - f32::EPSILON
+         } else {
+            along_axis <= -half_height + f32::EPSILON
+         };
+         if on_cap {
+            distance = distance.min(candidate);
+         }
+      }
+   }
+
+   if !distance.is_finite() {
+      return None;
+   }
+   let local_hit = local_origin + local_direction * distance;
+   let local_foot = Vec3::new(0.0, local_hit.y.clamp(-half_height, half_height), 0.0);
+   let offset = local_hit - local_foot;
+   let local_normal = if offset.length_squared() > 0.0 {
+      offset / sqrt(offset.length_squared())
+   } else {
+      -local_direction
+   };
+   let world = orientation * local_normal;
+   let normal = if world.length_squared() > 0.0 {
+      world / sqrt(world.length_squared())
+   } else {
+      -direction
+   };
+   Some((distance, normal))
 }
 
 /// Where a ray meets a triangle, if it does within `max_distance`.
@@ -520,5 +621,78 @@ mod tests {
          .expect("something is hit");
       assert_eq!(hit.target, RayTarget::Body(ball));
       assert!((hit.distance - 6.0).abs() < 1e-4, "got {}", hit.distance);
+   }
+
+   #[test]
+   fn a_ray_meets_a_capsule_along_its_side() {
+      let mut world = World::new();
+      let pill = world.add_body(BodyDesc::stationary(Shape::capsule(1.0, 0.5)));
+      let hit = world
+         .cast_ray(
+            Ray::new(Vec3::new(5.0, 0.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)),
+            100.0,
+         )
+         .expect("the ray meets the capsule side");
+      assert_eq!(hit.target, RayTarget::Body(pill));
+      assert!((hit.distance - 4.5).abs() < 1e-4, "got {}", hit.distance);
+      assert!(
+         (hit.normal - Vec3::X).length() < 1e-4,
+         "got {:?}",
+         hit.normal
+      );
+   }
+
+   #[test]
+   fn a_ray_meets_a_capsule_at_its_cap() {
+      let mut world = World::new();
+      world.add_body(BodyDesc::stationary(Shape::capsule(1.0, 0.5)));
+      let hit = world
+         .cast_ray(
+            Ray::new(Vec3::new(0.0, 5.0, 0.0), Vec3::new(0.0, -1.0, 0.0)),
+            100.0,
+         )
+         .expect("the ray meets the top cap");
+      assert!((hit.distance - 3.5).abs() < 1e-4, "got {}", hit.distance);
+      assert!(
+         (hit.normal - Vec3::Y).length() < 1e-4,
+         "got {:?}",
+         hit.normal
+      );
+   }
+
+   #[test]
+   fn a_ray_past_a_capsule_cap_returns_nothing() {
+      let mut world = World::new();
+      world.add_body(BodyDesc::stationary(Shape::capsule(1.0, 0.5)));
+      assert!(
+         world
+            .cast_ray(
+               Ray::new(Vec3::new(5.0, 3.0, 0.0), Vec3::new(-1.0, 0.0, 0.0)),
+               100.0
+            )
+            .is_none(),
+         "the ray passes above the capsule"
+      );
+   }
+
+   #[test]
+   fn a_ray_meets_a_rotated_capsule() {
+      let mut world = World::new();
+      world.add_body(BodyDesc::stationary(Shape::capsule(1.0, 0.5)).oriented(
+         he3d_math::Quat::from_rotation_z(core::f32::consts::FRAC_PI_2),
+      ));
+      // Rotated 90 degrees about Z, the capsule lies along X, so a ray down the Y axis meets its side at y = 0.5.
+      let hit = world
+         .cast_ray(
+            Ray::new(Vec3::new(0.0, 5.0, 0.0), Vec3::new(0.0, -1.0, 0.0)),
+            100.0,
+         )
+         .expect("the ray meets the rotated capsule");
+      assert!((hit.distance - 4.5).abs() < 1e-4, "got {}", hit.distance);
+      assert!(
+         (hit.normal - Vec3::Y).length() < 1e-4,
+         "got {:?}",
+         hit.normal
+      );
    }
 }

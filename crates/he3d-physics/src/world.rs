@@ -1281,6 +1281,19 @@ fn detect_static_contacts(
                      }
                   })
                }
+               Shape::Capsule {
+                  half_height,
+                  radius,
+               } => {
+                  let (start, end) =
+                     narrowphase::capsule_segment(body.position, body.orientation, half_height);
+                  narrowphase::capsule_triangle(start, end, radius, triangle).map(|manifold| {
+                     narrowphase::TriangleHit {
+                        manifold,
+                        source_edge: None,
+                     }
+                  })
+               }
             };
             let Some(hit) = hit else {
                continue;
@@ -2285,6 +2298,34 @@ mod tests {
          world.position(ball).expect("ball exists").y < 0.0,
          "a sphere whose centre is past the edge must fall"
       );
+   }
+
+   #[test]
+   fn a_capsule_comes_to_rest_on_static_geometry() {
+      // The capsule stands on its bottom cap, so the world reaches it through the capsule-versus-triangle path.
+      // 胶囊以底帽站立，因此 World 通过胶囊-三角形路径访问它。
+      let mut world = World::new();
+      let mesh = [
+         Vec3::new(-5.0, 0.0, -5.0),
+         Vec3::new(5.0, 0.0, -5.0),
+         Vec3::new(5.0, 0.0, 5.0),
+         Vec3::new(-5.0, 0.0, -5.0),
+         Vec3::new(5.0, 0.0, 5.0),
+         Vec3::new(-5.0, 0.0, 5.0),
+      ];
+      world.add_static_mesh(&mesh).expect("a flat quad");
+      let pill = world.add_body(
+         BodyDesc::dynamic(Shape::capsule(1.0, 0.5), 1.0)
+            .at(Vec3::new(0.0, 2.5, 0.0))
+            .with_friction(0.6),
+      );
+      for _ in 0..600 {
+         world.step(1.0 / 120.0);
+      }
+      let y = world.position(pill).expect("pill exists").y;
+      // The ground is at 0, and the cap adds half_height + radius below the centre.
+      assert!((y - 1.5).abs() < 0.03, "got y={y}");
+      assert_eq!(world.is_sleeping(pill), Some(true));
    }
 
    #[test]

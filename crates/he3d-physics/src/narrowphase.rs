@@ -740,6 +740,182 @@ fn sphere_sphere(center_a: Vec3, radius_a: f32, center_b: Vec3, radius_b: f32) -
    Some(manifold)
 }
 
+/// Below this squared length, a segment is treated as a point when finding the closest pair.
+/// 平方长度低于此值时，在求最近点对时把线段视为一个点。
+const SEGMENT_EPSILON: f32 = 1e-12;
+
+/// The two world-space endpoints of a capsule's central segment.
+/// 胶囊中央线段的两个世界空间端点。
+pub(crate) fn capsule_segment(position: Vec3, orientation: Quat, half_height: f32) -> (Vec3, Vec3) {
+   let axis = orientation * Vec3::Y * half_height;
+   (position - axis, position + axis)
+}
+
+/// The point of the segment `[start, end]` closest to `point`.
+/// 线段 `[start, end]` 上离 `point` 最近的点。
+fn closest_point_on_segment(point: Vec3, start: Vec3, end: Vec3) -> Vec3 {
+   let edge = end - start;
+   let length_squared = edge.length_squared();
+   if length_squared <= SEGMENT_EPSILON {
+      return start;
+   }
+   let along = ((point - start).dot(edge) / length_squared).clamp(0.0, 1.0);
+   start + edge * along
+}
+
+/// The closest pair of points between two segments.
+/// 两条线段之间最近的一对点。
+///
+/// The clamped solve: find the closest points of the two infinite lines, then walk a parameter back onto its own segment whenever it leaves `[0, 1]`, which is where the true closest point sits when the lines' feet fall outside.
+/// 钳制求解：先求两条无限直线的最近点，当一个参数越出 `[0, 1]` 时把它退回到自己的线段上——当两直线的垂足落在线段之外时，真正的最近点就在那里。
+fn closest_points_between_segments(
+   first_start: Vec3,
+   first_end: Vec3,
+   second_start: Vec3,
+   second_end: Vec3,
+) -> (Vec3, Vec3) {
+   let edge_first = first_end - first_start;
+   let edge_second = second_end - second_start;
+   let offset = first_start - second_start;
+   let length_first = edge_first.dot(edge_first);
+   let length_second = edge_second.dot(edge_second);
+   let projected_second = edge_second.dot(offset);
+   if length_first <= SEGMENT_EPSILON && length_second <= SEGMENT_EPSILON {
+      return (first_start, second_start);
+   }
+   let along_first;
+   let along_second;
+   if length_first <= SEGMENT_EPSILON {
+      along_first = 0.0;
+      along_second = (projected_second / length_second).clamp(0.0, 1.0);
+   } else {
+      let projected_first = edge_first.dot(offset);
+      if length_second <= SEGMENT_EPSILON {
+         along_second = 0.0;
+         along_first = (-projected_first / length_first).clamp(0.0, 1.0);
+      } else {
+         let cross = edge_first.dot(edge_second);
+         let denominator = length_first * length_second - cross * cross;
+         let mut probe_first = if denominator > SEGMENT_EPSILON {
+            (cross * projected_second - projected_first * length_second) / denominator
+         } else {
+            0.0
+         };
+         probe_first = probe_first.clamp(0.0, 1.0);
+         let mut probe_second = (cross * probe_first + projected_second) / length_second;
+         if probe_second < 0.0 {
+            probe_second = 0.0;
+            probe_first = (-projected_first / length_first).clamp(0.0, 1.0);
+         } else if probe_second > 1.0 {
+            probe_second = 1.0;
+            probe_first = ((cross - projected_first) / length_first).clamp(0.0, 1.0);
+         }
+         along_first = probe_first;
+         along_second = probe_second;
+      }
+   }
+   (
+      first_start + edge_first * along_first,
+      second_start + edge_second * along_second,
+   )
+}
+
+/// The parameter in `[0, 1]` minimizing a convex cost, by ternary search.
+/// 在 `[0, 1]` 上最小化一个凸代价的参数，由三分搜索求得。
+///
+/// Each pass removes a third of the interval, so forty-eight passes leave it finer than f32 can resolve.
+/// 每一轮去掉区间的三分之一，因此四十八轮后区间已细于 f32 能分辨的程度。
+fn minimize_on_segment(mut cost: impl FnMut(f32) -> f32) -> f32 {
+   let mut low = 0.0_f32;
+   let mut high = 1.0_f32;
+   for _ in 0..48 {
+      let third = (high - low) / 3.0;
+      let left = low + third;
+      let right = high - third;
+      if cost(left) <= cost(right) {
+         high = right;
+      } else {
+         low = left;
+      }
+   }
+   low.midpoint(high)
+}
+
+/// The squared distance from `point` to the box `[-half, half]`, in box-local space.
+/// `point` 到盒 `[-half, half]` 的平方距离，在盒局部空间内。
+fn distance_squared_to_box(point: Vec3, half: Vec3) -> f32 {
+   let clamped = point.clamp(-half, half);
+   (point - clamped).length_squared()
+}
+
+/// The point of the segment `[start, end]` closest to a box.
+/// 线段 `[start, end]` 上离某个盒最近的点。
+///
+/// The squared distance from a moving point to a convex box is itself convex in the segment parameter, so the ternary search finds its single minimum without a piecewise closed form.
+/// 移动点到凸盒的平方距离关于线段参数同样是凸的，因此三分搜索即可找到唯一极小，无需分段闭式解。
+fn closest_point_on_segment_to_box(start: Vec3, end: Vec3, box_frame: &BoxFrame) -> Vec3 {
+   let orientation = quat_from_axes(box_frame.axes);
+   let inverse = orientation.inverse();
+   let local_start = inverse * (start - box_frame.center);
+   let local_end = inverse * (end - box_frame.center);
+   let local = minimize_on_segment(|t| {
+      distance_squared_to_box(local_start + (local_end - local_start) * t, box_frame.half)
+   });
+   start + (end - start) * local
+}
+
+/// Generate the contact manifold between a capsule and a sphere.
+/// 生成胶囊与球之间的接触流形。
+///
+/// The capsule reduces to the sphere sitting at the point of its segment closest to the sphere's centre.
+/// 胶囊化为其线段上离球心最近处的那颗球。
+fn capsule_sphere(
+   segment_start: Vec3,
+   segment_end: Vec3,
+   capsule_radius: f32,
+   sphere_centre: Vec3,
+   sphere_radius: f32,
+   capsule_first: bool,
+) -> Option<Manifold> {
+   let closest = closest_point_on_segment(sphere_centre, segment_start, segment_end);
+   if capsule_first {
+      sphere_sphere(closest, capsule_radius, sphere_centre, sphere_radius)
+   } else {
+      sphere_sphere(sphere_centre, sphere_radius, closest, capsule_radius)
+   }
+}
+
+/// Generate the contact manifold between two capsules.
+/// 生成两个胶囊之间的接触流形。
+fn capsule_capsule(
+   first_start: Vec3,
+   first_end: Vec3,
+   first_radius: f32,
+   second_start: Vec3,
+   second_end: Vec3,
+   second_radius: f32,
+) -> Option<Manifold> {
+   let (closest_first, closest_second) =
+      closest_points_between_segments(first_start, first_end, second_start, second_end);
+   sphere_sphere(closest_first, first_radius, closest_second, second_radius)
+}
+
+/// Generate the contact manifold between a capsule and a box.
+/// 生成胶囊与盒之间的接触流形。
+///
+/// The capsule reduces to the sphere at the point of its segment closest to the box.
+/// 胶囊化为其线段上离盒最近处的那颗球。
+fn capsule_box(
+   segment_start: Vec3,
+   segment_end: Vec3,
+   radius: f32,
+   box_frame: &BoxFrame,
+   capsule_first: bool,
+) -> Option<Manifold> {
+   let closest = closest_point_on_segment_to_box(segment_start, segment_end, box_frame);
+   sphere_box(closest, radius, box_frame, capsule_first)
+}
+
 /// Generate the contact manifold between two shapes.
 ///
 /// `shape_a` is the first shape and the returned normal points from it toward `shape_b`.
@@ -779,6 +955,69 @@ pub(crate) fn collide(
          let frame_a = BoxFrame::new(position_a, orientation_a, half_a);
          let frame_b = BoxFrame::new(position_b, orientation_b, half_b);
          box_box(&frame_a, &frame_b)
+      }
+      (
+         Shape::Sphere { radius },
+         Shape::Capsule {
+            half_height,
+            radius: capsule_radius,
+         },
+      ) => {
+         let (start, end) = capsule_segment(position_b, orientation_b, half_height);
+         capsule_sphere(start, end, capsule_radius, position_a, radius, false)
+      }
+      (
+         Shape::Capsule {
+            half_height,
+            radius: capsule_radius,
+         },
+         Shape::Sphere { radius },
+      ) => {
+         let (start, end) = capsule_segment(position_a, orientation_a, half_height);
+         capsule_sphere(start, end, capsule_radius, position_b, radius, true)
+      }
+      (
+         Shape::Box { half_extents },
+         Shape::Capsule {
+            half_height,
+            radius: capsule_radius,
+         },
+      ) => {
+         let (start, end) = capsule_segment(position_b, orientation_b, half_height);
+         let frame = BoxFrame::new(position_a, orientation_a, half_extents);
+         capsule_box(start, end, capsule_radius, &frame, false)
+      }
+      (
+         Shape::Capsule {
+            half_height,
+            radius: capsule_radius,
+         },
+         Shape::Box { half_extents },
+      ) => {
+         let (start, end) = capsule_segment(position_a, orientation_a, half_height);
+         let frame = BoxFrame::new(position_b, orientation_b, half_extents);
+         capsule_box(start, end, capsule_radius, &frame, true)
+      }
+      (
+         Shape::Capsule {
+            half_height: half_a,
+            radius: radius_a,
+         },
+         Shape::Capsule {
+            half_height: half_b,
+            radius: radius_b,
+         },
+      ) => {
+         let (first_start, first_end) = capsule_segment(position_a, orientation_a, half_a);
+         let (second_start, second_end) = capsule_segment(position_b, orientation_b, half_b);
+         capsule_capsule(
+            first_start,
+            first_end,
+            radius_a,
+            second_start,
+            second_end,
+            radius_b,
+         )
       }
    }
 }
@@ -1238,6 +1477,32 @@ pub(crate) fn sphere_triangle(centre: Vec3, radius: f32, triangle: [Vec3; 3]) ->
    Some(manifold)
 }
 
+/// The point of the segment `[start, end]` closest to a triangle.
+/// 线段 `[start, end]` 上离某个三角形最近的点。
+fn closest_point_on_segment_to_triangle(start: Vec3, end: Vec3, triangle: [Vec3; 3]) -> Vec3 {
+   let local = minimize_on_segment(|t| {
+      let point = start + (end - start) * t;
+      let closest = closest_point_on_triangle(point, triangle[0], triangle[1], triangle[2]);
+      (point - closest).length_squared()
+   });
+   start + (end - start) * local
+}
+
+/// Generate the contact manifold between a capsule and one triangle.
+/// 生成胶囊与单个三角形之间的接触流形。
+///
+/// The capsule reduces to the sphere at the point of its segment closest to the triangle, so the returned normal points from the capsule toward the triangle, matching [`sphere_triangle`].
+/// 胶囊化为其线段上离三角形最近处的那颗球，因此返回的法线由胶囊指向三角形，与 [`sphere_triangle`] 一致。
+pub(crate) fn capsule_triangle(
+   segment_start: Vec3,
+   segment_end: Vec3,
+   radius: f32,
+   triangle: [Vec3; 3],
+) -> Option<Manifold> {
+   let point = closest_point_on_segment_to_triangle(segment_start, segment_end, triangle);
+   sphere_triangle(point, radius, triangle)
+}
+
 /// The point of a triangle closest to `point`.
 ///
 /// The standard Voronoi-region walk: the three vertex regions, then the three edge regions, then the interior.
@@ -1640,5 +1905,169 @@ mod tests {
             );
          }
       }
+   }
+
+   fn capsule(half_height: f32, radius: f32) -> Shape {
+      Shape::capsule(half_height, radius)
+   }
+
+   #[test]
+   fn a_sphere_meets_a_capsule_along_its_side() {
+      let manifold = collide(
+         capsule(1.0, 0.5),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+         Shape::sphere(0.5),
+         Vec3::new(0.9, 0.0, 0.0),
+         Quat::IDENTITY,
+      )
+      .expect("the sphere overlaps the capsule side");
+      // The normal points from the capsule toward the sphere: +X.
+      assert!(
+         (manifold.normal.x - 1.0).abs() < 1e-4,
+         "got {:?}",
+         manifold.normal
+      );
+      assert!((manifold.points[0].depth - 0.1).abs() < 1e-4);
+   }
+
+   #[test]
+   fn a_sphere_beyond_a_capsule_end_uses_the_cap() {
+      // The sphere is above the top cap centre, so the closest point is the segment's top endpoint.
+      let manifold = collide(
+         capsule(1.0, 0.5),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+         Shape::sphere(0.5),
+         Vec3::new(0.0, 1.9, 0.0),
+         Quat::IDENTITY,
+      )
+      .expect("the sphere overlaps the top cap");
+      assert!(manifold.normal.y > 0.9, "got {:?}", manifold.normal);
+      assert!((manifold.points[0].depth - 0.1).abs() < 1e-4);
+   }
+
+   #[test]
+   fn two_parallel_capsules_touch_along_their_length() {
+      let manifold = collide(
+         capsule(1.0, 0.5),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+         capsule(1.0, 0.5),
+         Vec3::new(0.9, 0.0, 0.0),
+         Quat::IDENTITY,
+      )
+      .expect("the capsules overlap");
+      assert!(
+         (manifold.normal.x - 1.0).abs() < 1e-4,
+         "got {:?}",
+         manifold.normal
+      );
+      assert!((manifold.points[0].depth - 0.1).abs() < 1e-4);
+   }
+
+   #[test]
+   fn crossed_capsules_collide_at_their_closest_points() {
+      // One upright along Y, one along X, crossing near the origin.
+      let manifold = collide(
+         capsule(1.0, 0.5),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+         capsule(1.0, 0.5),
+         Vec3::new(0.0, 0.0, 0.0),
+         Quat::from_rotation_z(core::f32::consts::FRAC_PI_2),
+      )
+      .expect("crossed capsules with a 0.5 reach overlap");
+      assert!(
+         manifold.points[0].depth > 0.9,
+         "got {}",
+         manifold.points[0].depth
+      );
+   }
+
+   #[test]
+   fn a_capsule_resting_across_a_box_reports_a_contact() {
+      // The capsule lies along X at height 1.4 over a box whose top is at 1.0, so the gap is 0.4 and the reach 0.5.
+      let manifold = collide(
+         capsule(1.0, 0.5),
+         Vec3::new(0.0, 1.4, 0.0),
+         Quat::from_rotation_z(core::f32::consts::FRAC_PI_2),
+         boxed(Vec3::new(2.0, 1.0, 2.0)),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+      )
+      .expect("the capsule overlaps the box top");
+      // The normal points from the capsule toward the box: downward.
+      assert!(manifold.normal.y < -0.9, "got {:?}", manifold.normal);
+      assert!(
+         (manifold.points[0].depth - 0.1).abs() < 1e-3,
+         "got {}",
+         manifold.points[0].depth
+      );
+   }
+
+   #[test]
+   fn a_capsule_above_a_box_does_not_collide() {
+      let result = collide(
+         capsule(1.0, 0.5),
+         Vec3::new(0.0, 2.0, 0.0),
+         Quat::from_rotation_z(core::f32::consts::FRAC_PI_2),
+         boxed(Vec3::new(2.0, 1.0, 2.0)),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+      );
+      assert!(result.is_none());
+   }
+
+   #[test]
+   fn a_capsule_pressing_into_a_box_escapes_through_the_nearest_face() {
+      // The whole segment sits inside the box, so the sphere reduction resolves along the least-penetrated face.
+      let manifold = collide(
+         capsule(0.2, 0.2),
+         Vec3::new(0.0, 0.9, 0.0),
+         Quat::IDENTITY,
+         boxed(Vec3::splat(1.0)),
+         Vec3::ZERO,
+         Quat::IDENTITY,
+      )
+      .expect("the capsule is inside the box");
+      assert!(manifold.normal.y < 0.0, "got {:?}", manifold.normal);
+      assert!(manifold.points[0].depth > 0.0);
+   }
+
+   #[test]
+   fn a_capsule_resting_on_a_triangle_reports_a_contact() {
+      let triangle = [
+         Vec3::new(-10.0, 0.0, -10.0),
+         Vec3::new(10.0, 0.0, -10.0),
+         Vec3::new(0.0, 0.0, 10.0),
+      ];
+      // The capsule lies along X at height 0.4, so the gap to the plane is 0.4 and the reach 0.5.
+      // 胶囊沿 X 躺在高度 0.4 处，因此到平面的间隙为 0.4，作用距离为 0.5。
+      let (start, end) = super::capsule_segment(
+         Vec3::new(0.0, 0.4, 0.0),
+         Quat::from_rotation_z(core::f32::consts::FRAC_PI_2),
+         1.0,
+      );
+      let manifold = super::capsule_triangle(start, end, 0.5, triangle)
+         .expect("the capsule overlaps the triangle");
+      // The normal points from the capsule toward the triangle: downward.
+      assert!(manifold.normal.y < -0.9, "got {:?}", manifold.normal);
+      assert!(
+         (manifold.points[0].depth - 0.1).abs() < 1e-3,
+         "got {}",
+         manifold.points[0].depth
+      );
+   }
+
+   #[test]
+   fn a_capsule_beside_a_triangle_does_not_collide() {
+      let triangle = [
+         Vec3::new(-1.0, 0.0, -1.0),
+         Vec3::new(-1.0, 0.0, 1.0),
+         Vec3::new(1.0, 0.0, -1.0),
+      ];
+      let (start, end) = super::capsule_segment(Vec3::new(20.0, 0.0, 0.0), Quat::IDENTITY, 1.0);
+      assert!(super::capsule_triangle(start, end, 0.5, triangle).is_none());
    }
 }

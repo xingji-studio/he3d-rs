@@ -8,17 +8,15 @@ use crate::aabb::Aabb;
 /// Body 的质量分布：逆质量与逆惯量对角阵。
 ///
 /// The inertia is stored as three inverse values along the Body's **local** axes.
-/// Every supported Shape is symmetric about its local axes, so a diagonal tensor
-/// is exact and a full 3x3 matrix is never needed.
-/// 惯量以沿 Body **局部**轴的三组逆值存储。所有受支持的 Shape 都关于局部轴对称，因此
-/// 对角阵是精确的，永远不需要完整的 3x3 矩阵。
+/// Every supported Shape is symmetric about its local axes, so a diagonal tensor is exact and a full 3x3 matrix is never needed.
+/// 惯量以沿 Body **局部**轴的三组逆值存储。
+/// 所有受支持的 Shape 都关于局部轴对称，因此对角阵是精确的，永远不需要完整的 3x3 矩阵。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MassProperties {
    /// Inverse mass. Zero means nothing can accelerate the Body.
    /// 逆质量。为零表示没有任何东西能加速该 Body。
    pub inv_mass: f32,
-   /// Inverse inertia per local axis. A zero component means the Body does not
-   /// resist rotation about that axis.
+   /// Inverse inertia per local axis. A zero component means the Body does not resist rotation about that axis.
    /// 局部各轴的逆惯量。某分量为零表示 Body 不抵抗绕该轴的旋转。
    pub inv_inertia: Vec3,
 }
@@ -42,8 +40,7 @@ impl MassProperties {
 /// A convex collision shape.
 /// 凸碰撞形状。
 ///
-/// Cylinder, cone, and convex hull are planned but not implemented yet; see
-/// `docs/physics-spec.md` §4.
+/// Cylinder, cone, and convex hull are planned but not implemented yet; see `docs/physics-spec.md` §4.
 /// 圆柱、圆锥与凸包已规划但尚未实现；见 `docs/physics-spec.md` §4。
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]
@@ -62,14 +59,26 @@ pub enum Shape {
       /// 球的半径。
       radius: f32,
    },
+   /// A capsule: a segment swept by a sphere, with the segment along the local Y axis.
+   /// 胶囊：一条线段被球扫掠而成，线段沿局部 Y 轴。
+   ///
+   /// The central segment runs from `-half_height` to `+half_height` on the local Y axis, so the Shape is symmetric about all three local axes and a diagonal inertia tensor is exact.
+   /// 中央线段在局部 Y 轴上由 `-half_height` 延伸到 `+half_height`，因此该 Shape 关于三条局部轴都对称，对角惯量张量是精确的。
+   Capsule {
+      /// Half the length of the central segment, between the two hemisphere centres.
+      /// 中央线段的一半长度，即两个半球球心之间距离的一半。
+      half_height: f32,
+      /// The radius of the swept sphere.
+      /// 扫掠球的半径。
+      radius: f32,
+   },
 }
 
 impl Shape {
    /// An axis-aligned box with the given half extents.
    /// 给定半长的轴对齐盒。
    ///
-   /// Half extents are clamped to be non-negative, so a negative input yields a
-   /// degenerate (zero-volume) box rather than an inverted one.
+   /// Half extents are clamped to be non-negative, so a negative input yields a degenerate (zero-volume) box rather than an inverted one.
    /// 半长被钳制为非负，因此负输入得到退化的（零体积）盒，而不是内外翻转的盒。
    #[must_use]
    pub fn cuboid(half_extents: Vec3) -> Self {
@@ -87,6 +96,16 @@ impl Shape {
       }
    }
 
+   /// A capsule with the given half segment length and radius, clamped to be non-negative.
+   /// 给定线段半长与半径的胶囊；两者均被钳制为非负。
+   #[must_use]
+   pub fn capsule(half_height: f32, radius: f32) -> Self {
+      Self::Capsule {
+         half_height: half_height.max(0.0),
+         radius: radius.max(0.0),
+      }
+   }
+
    /// The shape's volume, used to sanity-check mass input.
    /// 形状的体积，用于校验质量输入。
    #[must_use]
@@ -94,6 +113,14 @@ impl Shape {
       match *self {
          Self::Box { half_extents } => 8.0 * half_extents.x * half_extents.y * half_extents.z,
          Self::Sphere { radius } => 4.0 / 3.0 * PI * radius * radius * radius,
+         Self::Capsule {
+            half_height,
+            radius,
+         } => {
+            // A cylinder of height 2*half_height plus two hemispheres, which together are one whole sphere.
+            // 高为 2*half_height 的圆柱加上两个半球，两个半球合起来正好是一个整球。
+            2.0 * PI * radius * radius * half_height + 4.0 / 3.0 * PI * radius * radius * radius
+         }
       }
    }
 
@@ -117,18 +144,40 @@ impl Shape {
             // 实心球是各向同性的：I = 2/5 * m * r^2。
             Vec3::splat(0.4 * mass * radius * radius)
          }
+         Self::Capsule {
+            half_height,
+            radius,
+         } => {
+            // Split the mass between the cylindrical middle and the two hemispherical caps by volume.
+            // 按体积把质量分配到圆柱中部与两个半球端帽上。
+            let cylinder_volume = 2.0 * PI * radius * radius * half_height;
+            let hemisphere_volume = 2.0 / 3.0 * PI * radius * radius * radius;
+            let total_volume = cylinder_volume + 2.0 * hemisphere_volume;
+            if total_volume <= 0.0 {
+               return Vec3::ZERO;
+            }
+            let cylinder_mass = mass * cylinder_volume / total_volume;
+            let hemisphere_mass = mass * hemisphere_volume / total_volume;
+            // About the axis: 1/2 * m * r^2 for the cylinder, 2/5 * m * r^2 for each hemisphere about its own axis.
+            // 绕轴：圆柱为 1/2 * m * r^2，每个半球绕自身轴为 2/5 * m * r^2。
+            let axis =
+               0.5 * cylinder_mass * radius * radius + 0.8 * hemisphere_mass * radius * radius;
+            // About a diameter: the cylinder plus each hemisphere moved out by the parallel-axis theorem.
+            // 绕直径：圆柱，加上每个半球经平行轴定理平移后的贡献。
+            let radial = cylinder_mass * (half_height * half_height / 3.0 + radius * radius / 4.0)
+               + hemisphere_mass * (0.8 * radius * radius + 2.0 * half_height * half_height);
+            Vec3::new(radial, axis, radial)
+         }
       }
    }
 
    /// Inverse mass properties for a given total mass.
    /// 给定总质量时的逆质量属性。
    ///
-   /// A non-finite or non-positive `mass` yields [`MassProperties::IMMOVABLE`]. A
-   /// component of the inertia tensor that is zero (a degenerate shape) yields a
-   /// zero inverse on that axis, so the Body simply never resists that rotation
-   /// instead of producing `inf`.
-   /// 非有限或非正的 `mass` 返回 [`MassProperties::IMMOVABLE`]。惯量张量的某个分量为零
-   /// （退化形状）时，该轴的逆值为零，于是 Body 只是不抵抗该轴旋转，而不会产生 `inf`。
+   /// A non-finite or non-positive `mass` yields [`MassProperties::IMMOVABLE`].
+   /// A component of the inertia tensor that is zero (a degenerate shape) yields a zero inverse on that axis, so the Body simply never resists that rotation instead of producing `inf`.
+   /// 非有限或非正的 `mass` 返回 [`MassProperties::IMMOVABLE`]。
+   /// 惯量张量的某个分量为零（退化形状）时，该轴的逆值为零，于是 Body 只是不抵抗该轴旋转，而不会产生 `inf`。
    #[must_use]
    pub fn mass_properties(&self, mass: f32) -> MassProperties {
       if !mass.is_finite() || mass <= 0.0 {
@@ -145,17 +194,14 @@ impl Shape {
       }
    }
 
-   /// The world-space bounding box of this shape placed at `position` with
-   /// `orientation`.
+   /// The world-space bounding box of this shape placed at `position` with `orientation`.
    /// 该形状以 `position` 与 `orientation` 摆放时的世界空间包围盒。
    #[must_use]
    pub fn aabb(&self, position: Vec3, orientation: Quat) -> Aabb {
       match *self {
          Self::Box { half_extents } => {
-            // Rotating the local basis and taking absolute values gives the
-            // world-axis extents directly: extent_i = sum_j |R[i][j]| * h_j.
-            // 旋转局部基向量并取绝对值即可直接得到世界轴向上的半长：
-            // extent_i = sum_j |R[i][j]| * h_j。
+            // Rotating the local basis and taking absolute values gives the world-axis extents directly: extent_i = sum_j |R[i][j]| * h_j.
+            // 旋转局部基向量并取绝对值即可直接得到世界轴向上的半长：extent_i = sum_j |R[i][j]| * h_j。
             let x = orientation * Vec3::X;
             let y = orientation * Vec3::Y;
             let z = orientation * Vec3::Z;
@@ -169,6 +215,20 @@ impl Shape {
             Aabb::from_center_half_extents(position, extent)
          }
          Self::Sphere { radius } => Aabb::from_center_half_extents(position, Vec3::splat(radius)),
+         Self::Capsule {
+            half_height,
+            radius,
+         } => {
+            // The two segment endpoints, each grown by the radius on every axis.
+            // 两个线段端点，各自在每个轴上向外扩一个半径。
+            let axis = orientation * Vec3::Y;
+            let reach = Vec3::new(
+               (axis.x * half_height).abs(),
+               (axis.y * half_height).abs(),
+               (axis.z * half_height).abs(),
+            ) + Vec3::splat(radius);
+            Aabb::from_center_half_extents(position, reach)
+         }
       }
    }
 }
@@ -211,6 +271,34 @@ mod tests {
    }
 
    #[test]
+   fn a_zero_height_capsule_is_a_sphere() {
+      let capsule = Shape::capsule(0.0, 2.0);
+      let sphere = Shape::sphere(2.0);
+      assert!((capsule.volume() - sphere.volume()).abs() < 1e-4);
+      let capsule_inertia = capsule.local_inertia(5.0);
+      let sphere_inertia = sphere.local_inertia(5.0);
+      assert!((capsule_inertia - sphere_inertia).length() < 1e-4);
+   }
+
+   #[test]
+   fn capsule_volume_is_a_cylinder_plus_a_sphere() {
+      let capsule = Shape::capsule(3.0, 1.0);
+      // 2*pi*r^2*h + 4/3*pi*r^3 = 6*pi + 4/3*pi.
+      let expected = 6.0 * core::f32::consts::PI + 4.0 / 3.0 * core::f32::consts::PI;
+      assert!((capsule.volume() - expected).abs() < 1e-3);
+   }
+
+   #[test]
+   fn a_stretched_capsule_resists_rolling_more_than_spinning() {
+      let capsule = Shape::capsule(3.0, 1.0);
+      let inertia = capsule.local_inertia(10.0);
+      // The axis (Y) inertia is smaller than the radial one for a long capsule.
+      // 对细长胶囊，绕轴（Y）的惯量小于绕径向的惯量。
+      assert!(inertia.y < inertia.x, "{inertia:?}");
+      assert!((inertia.x - inertia.z).abs() < 1e-4);
+   }
+
+   #[test]
    fn non_positive_mass_is_immovable() {
       assert_eq!(
          Shape::sphere(1.0).mass_properties(0.0),
@@ -228,8 +316,16 @@ mod tests {
       let flat = Shape::cuboid(Vec3::new(1.0, 0.0, 1.0));
       let props = flat.mass_properties(2.0);
       // Zero extent on Y means the box has no resistance about Y; no infinities.
+      // Y 方向零长度意味着盒绕 Y 无抵抗；不出现无穷。
       assert!(props.inv_inertia.y.is_finite());
       assert!(props.inv_inertia.x.is_finite());
+      assert!(props.inv_mass.is_finite());
+   }
+
+   #[test]
+   fn a_zero_radius_capsule_has_no_infinite_inertia() {
+      let props = Shape::capsule(2.0, 0.0).mass_properties(1.0);
+      assert!(props.inv_inertia.is_finite());
       assert!(props.inv_mass.is_finite());
    }
 
@@ -247,6 +343,7 @@ mod tests {
    fn rotated_aabb_grows_to_cover_the_corners() {
       let shape = Shape::cuboid(Vec3::splat(1.0));
       // A 45 degree turn about Z makes the diagonal the X/Y extent.
+      // 绕 Z 旋转 45 度使对角线成为 X/Y 方向的半长。
       let aabb = shape.aabb(
          Vec3::ZERO,
          Quat::from_rotation_z(core::f32::consts::FRAC_PI_4),
@@ -254,6 +351,15 @@ mod tests {
       let expected = 2.0_f32.sqrt();
       assert!((aabb.max.x - expected).abs() < 1e-4);
       assert!((aabb.max.y - expected).abs() < 1e-4);
+      assert!((aabb.max.z - 1.0).abs() < 1e-5);
+   }
+
+   #[test]
+   fn a_upright_capsule_aabb_grows_only_along_its_axis() {
+      let shape = Shape::capsule(3.0, 1.0);
+      let aabb = shape.aabb(Vec3::ZERO, Quat::IDENTITY);
+      assert!((aabb.max.y - 4.0).abs() < 1e-5);
+      assert!((aabb.max.x - 1.0).abs() < 1e-5);
       assert!((aabb.max.z - 1.0).abs() < 1e-5);
    }
 
@@ -266,5 +372,12 @@ mod tests {
          }
       );
       assert_eq!(Shape::sphere(-2.0), Shape::Sphere { radius: 0.0 });
+      assert_eq!(
+         Shape::capsule(-1.0, -2.0),
+         Shape::Capsule {
+            half_height: 0.0,
+            radius: 0.0
+         }
+      );
    }
 }

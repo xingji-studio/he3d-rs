@@ -17,17 +17,17 @@ their own [ADRs](./adr/).
 
 | Spec section | Gap |
 |---|---|
-| §4 Shapes | Only `Box` and `Sphere`. Capsule, cylinder, cone and convex hull are unimplemented. |
-| §5 Narrowphase | Only the analytic layer: box-box, sphere-box, sphere-sphere, and box/sphere against triangles. GJK and EPA do not exist, so the general-convex path does not either. |
-| §7 Internal edges | Filtered for box-versus-triangle only. A Sphere needs no filter — its normal is always the triangle's plane normal — and measurement confirms a seam between two separate meshes costs a rolling sphere exactly nothing (100.00% of its speed kept, no vertical dip). |
+| §4 Shapes | `Box`, `Sphere`, and `Capsule`. Cylinder, cone and convex hull are unimplemented. |
+| §5 Narrowphase | The six analytic core pairs (box, sphere, capsule against each other) and box/sphere/capsule against triangles are present. GJK and EPA do not exist, so cylinder, cone, convex hull, and every mixed pair are unimplemented. |
+| §7 Internal edges | Filtered for box-versus-triangle only. Sphere and capsule contacts are generated from the closest point of the triangle, so a coplanar seam yields no spurious normal, and no edge index is reported to filter. Measurement confirms a seam between two separate meshes costs a rolling sphere exactly nothing (100.00% of its speed kept, no vertical dip). |
 
 ### 尚未构建的部分
 
 | 规格章节 | 缺口 |
 |---|---|
-| §4 形状 | 只有 `Box` 与 `Sphere`。胶囊、圆柱、圆锥与凸包尚未实现。 |
-| §5 窄相位 | 只有解析层：盒-盒、球-盒、球-球，以及盒/球对三角形。GJK 与 EPA 不存在，因此通用凸体路径也不存在。 |
-| §7 内部边 | 仅对盒-三角形过滤。球不需要过滤——其法线始终是三角形平面法线——实测确认两块独立网格之间的接缝对滚动的球毫无影响（速度保留 100.00%，无竖直下沉）。 |
+| §4 形状 | `Box`、`Sphere` 与 `Capsule`。圆柱、圆锥与凸包尚未实现。 |
+| §5 窄相位 | 六个解析核心对（盒、球、胶囊两两之间）以及盒/球/胶囊对三角形均已具备。GJK 与 EPA 不存在，因此圆柱、圆锥、凸包以及所有混合对尚未实现。 |
+| §7 内部边 | 仅对盒-三角形过滤。球与胶囊的接触由三角形上的最近点生成，因此共面接缝不会产生伪法线，也没有棱索引可供过滤。实测确认两块独立网格之间的接缝对滚动的球毫无影响（速度保留 100.00%，无竖直下沉）。 |
 
 ---
 

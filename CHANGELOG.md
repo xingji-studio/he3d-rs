@@ -23,6 +23,15 @@ All notable changes to the HE3D workspace crates are documented here.
   (about 1.6 µs), so the tree is deferred and §10 records the measurement; a ray
   over two thousand Bodies costs about 20 µs. `Ray`, `RayHit` and `RayTarget` are
   new public types.
+- `he3d-physics`: a `Capsule` shape, the third core shape. It is a segment along the
+  local Y axis swept by a radius, with volume and a diagonal inertia tensor derived
+  from splitting the mass between the cylindrical middle and the two hemispherical
+  caps. The six analytic core pairs are now complete — capsule-sphere, capsule-box,
+  and capsule-capsule join the existing three, each reducing to a sphere pair or a
+  sphere-box test at the point of the segment closest to the other shape. `World::cast_ray`
+  gained a ray-capsule path (a finite cylinder plus two caps), and a capsule collides
+  with static triangles through `capsule_triangle`, treated like a sphere rather than
+  filtered for internal edges.
 
 ### Changed
 - `he3d-renderer`: `draw_mesh` no longer recomputes the camera's inverse rotation, the
