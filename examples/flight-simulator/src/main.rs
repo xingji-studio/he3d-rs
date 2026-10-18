@@ -88,14 +88,13 @@ fn main() {
       TERRAIN_STEP,
    );
 
-   // The Body is the engine's; `plane` names the render object that draws it, and
-   // the two are related only here. See `docs/adr/0001`.
-   // Body 归引擎所有；`plane` 是绘制它的渲染对象的名字，两者只在这里发生联系。见
-   // `docs/adr/0001`。
+   // The Body is the engine's; `plane` names the render object that draws it, and the two are related only here.
+   // See `docs/adr/0001`.
+   // Body 归引擎所有；`plane` 是绘制它的渲染对象的名字，两者只在这里发生联系。
+   // 见 `docs/adr/0001`。
    let mut world = World::new();
    world.set_gravity(flight_sim::FLIGHT_GRAVITY);
-   // The plane is one Body against immovable terrain, so a handful of iterations
-   // is plenty and keeps the frame budget for the rasterizer.
+   // The plane is one Body against immovable terrain, so a handful of iterations is plenty and keeps the frame budget for the rasterizer.
    // 飞机是单个 Body 与不可移动地形作用，少数几次迭代就足够，把帧预算留给光栅化器。
    world.set_velocity_iterations(4);
    let plane_body = world.add_body(
@@ -104,11 +103,10 @@ fn main() {
          .with_friction(0.5)
          .with_restitution(0.1)
          .with_damping(0.1, 0.1)
-         // The flight model owns this Body's velocity: it writes the whole vector
-         // every step, so gravity reaching it could only ever leak into the position
-         // as a steady sink. The wreck gets gravity back below.
-         // 飞行模型拥有此 Body 的速度：它每步重写整个向量，因此重力作用于它只会以恒定下沉的
-         // 形式漏进位置。残骸会在下面把重力要回去。
+         // The flight model owns this Body's velocity: it writes the whole vector every step, so gravity reaching it could only ever leak into the position as a steady sink.
+         // The wreck gets gravity back below.
+         // 飞行模型拥有此 Body 的速度：它每步重写整个向量，因此重力作用于它只会以恒定下沉的形式漏进位置。
+         // 残骸会在下面把重力要回去。
          .with_gravity_scale(0.0),
    );
 
@@ -127,8 +125,8 @@ fn main() {
    let mut controlled_orientation = Quat::IDENTITY;
    let mut crashed = false;
    // Ground-contact stickiness: once the plane touches down it stays in the decelerating "grounded" mode even across bounces, so intermittent contact cannot let it resume cruise speed.
-   // 着地“粘滞”效应：飞机一旦触地就保持在减速的“着地”模式，即使发生弹跳也不变，因此间歇性接触不会让它恢复巡航速度。
    // It only lifts off again after a short period without any contact (~0.08 s), long enough to tell a bounce from a real departure.
+   // 着地“粘滞”效应：飞机一旦触地就保持在减速的“着地”模式，即使发生弹跳也不变，因此间歇性接触不会让它恢复巡航速度。
    // 只有在持续一段时间（约 0.08 秒）无接触后才会再次起飞，足以区分弹跳与真正的离地。
    let mut grounded = false;
    let mut lift_off_frames = 0u32;
@@ -168,13 +166,10 @@ fn main() {
       let now = backend.time_seconds();
       let frame_delta = now - last_time;
       last_time = now;
-      // Clamp, never zero: a long frame (pause, stall, window drag) queues up to
-      // 0.25 s of simulation instead of freezing the physics in place. The fixed
-      // accumulator drains it at up to 8 substeps per frame, so the sim catches up
-      // without a spiral of death.
-      // 采用钳制而非清零：长帧（暂停、卡顿、拖动窗口）最多积压 0.25 秒模拟，
-      // 而不是让物理原地冻结。固定累加器每帧最多消耗 8 个子步，因此模拟会追平
-      // 时间而不会陷入"死亡螺旋"。
+      // Clamp, never zero: a long frame (pause, stall, window drag) queues up to 0.25 s of simulation instead of freezing the physics in place.
+      // The fixed accumulator drains it at up to 8 substeps per frame, so the sim catches up without a spiral of death.
+      // 采用钳制而非清零：长帧（暂停、卡顿、拖动窗口）最多积压 0.25 秒模拟，而不是让物理原地冻结。
+      // 固定累加器每帧最多消耗 8 个子步，因此模拟会追平时间而不会陷入"死亡螺旋"。
       let frame_delta = if frame_delta < 0.0 || frame_delta.is_nan() {
          0.0
       } else {
@@ -192,10 +187,10 @@ fn main() {
             terrain.refresh_one(&mut scene, &mut world);
             if crashed {
                // The wreck is no longer controlled: hand the plane back to the physics step so it settles against the terrain.
-               // 残骸不再受控：将飞机交还给物理步进，使其贴合地形静止下来。
                // Gravity pulls it down, contact keeps it from sinking, residual spin is damped out.
-               // 重力使其下压，接触防止其下沉，残余自旋被衰减。
                // Strong exponential damping bleeds off the remaining velocity and angular velocity so it comes to rest where it hit instead of sliding forever.
+               // 残骸不再受控：将飞机交还给物理步进，使其贴合地形静止下来。
+               // 重力使其下压，接触防止其下沉，残余自旋被衰减。
                // 强指数阻尼会逐渐消耗残余的线速度与角速度，使其在撞击处静止而非永久滑行。
                let damp = (-flight_sim::CRASH_DAMPING * PHYSICS_STEP as f32).exp();
                let velocity = world.velocity(plane_body).unwrap_or(Vec3::ZERO) * damp;
@@ -203,8 +198,7 @@ fn main() {
                let spin = world.angular_velocity(plane_body).unwrap_or(Vec3::ZERO) * damp;
                world.set_angular_velocity(plane_body, spin);
             } else {
-               // "Am I touching anything" is answered by the Contact list the last
-               // step produced; no geometry is recomputed here.
+               // "Am I touching anything" is answered by the Contact list the last step produced; no geometry is recomputed here.
                // "我碰到东西了吗"由上一步产出的 Contact 列表回答；这里不重算任何几何。
                let contacted = world.contacts().iter().any(|contact| {
                   contact.involves(plane_body) && contact.phase != ContactPhase::End
@@ -232,8 +226,7 @@ fn main() {
                   && world.velocity(plane_body).unwrap_or(Vec3::ZERO).length() < CRASH_SPEED
                {
                   crashed = true;
-                  // Hand the wreck back to gravity so it falls and settles against
-                  // the terrain instead of hanging where it stopped.
+                  // Hand the wreck back to gravity so it falls and settles against the terrain instead of hanging where it stopped.
                   // 把残骸交还给重力，使其下坠并贴合地形，而不是停在原地悬着。
                   world.set_gravity_scale(plane_body, 1.0);
                   world.set_velocity(plane_body, Vec3::ZERO);
@@ -310,10 +303,8 @@ fn main() {
          fps_start = now;
          fps_frames = 0;
       }
-      // No frame-rate lock: render as fast as the software rasterizer can;
-      // simulation time is kept independent by the fixed-step accumulator.
-      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染；模拟时间由固定步长累加器独立
-      // 维持。
+      // No frame-rate lock: render as fast as the software rasterizer can; simulation time is kept independent by the fixed-step accumulator.
+      // 不限制帧率：以软件光栅化器所能达到的最快速度渲染；模拟时间由固定步长累加器独立维持。
    }
 }
 

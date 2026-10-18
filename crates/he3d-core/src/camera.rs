@@ -1,9 +1,10 @@
 use he3d_math::{Quat, Vec3};
 
 /// Default distance to the near clipping plane.
+/// 近裁剪平面的默认距离。
 ///
 /// It is small but not zero: a near plane at the eye would push the far end of the inverse-depth range to infinity and destroy depth precision up close.
-/// 近裁剪平面的默认距离。它很小但不为零：若近平面落在眼睛处，逆深度范围远端的精度会被推到无穷，近处深度精度随之毁掉。
+/// 它很小但不为零：若近平面落在眼睛处，逆深度范围远端的精度会被推到无穷，近处深度精度随之毁掉。
 pub const DEFAULT_NEAR: f32 = 0.1;
 
 /// How a camera projects its view volume onto the viewport.

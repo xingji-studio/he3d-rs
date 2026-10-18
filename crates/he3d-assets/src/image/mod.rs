@@ -10,10 +10,9 @@ mod png;
 
 /// Maximum decoded image width or height.
 ///
-/// A header can claim any size it likes, so decoding is refused beyond this rather
-/// than letting a small file ask for an enormous allocation.
-/// 解码后图像的最大宽或高。文件头可以声称任意尺寸，因此超过此值即拒绝解码，而不是让一个小
-/// 文件索要一笔巨大的分配。
+/// A header can claim any size it likes, so decoding is refused beyond this rather than letting a small file ask for an enormous allocation.
+/// 解码后图像的最大宽或高。
+/// 文件头可以声称任意尺寸，因此超过此值即拒绝解码，而不是让一个小文件索要一笔巨大的分配。
 #[cfg_attr(
    not(any(feature = "bmp", feature = "png", feature = "jpeg")),
    allow(dead_code)
@@ -24,15 +23,13 @@ const MAX_IMAGE_DIMENSION: u32 = 8192;
 /// 从内存解码 BMP、PNG 或 JPEG 图像为 RGBA8。
 ///
 /// Format detection is by magic bytes.
-/// 通过魔数字节进行格式检测。
 /// Decoders for formats compiled out (via the `bmp`/`png`/`jpeg` features) report [`Error::UnsupportedFormat`].
+/// 通过魔数字节进行格式检测。
 /// 未编译进来的格式解码器（通过 `bmp`/`png`/`jpeg` 特性）会返回 [`Error::UnsupportedFormat`]。
 ///
 /// # Errors
-/// 数据无法被任何已启用的解码器识别，或对应的解码器被编译掉时返回 [`Error::UnsupportedFormat`]；
-/// 具体格式的解析错误由各解码器返回。
-/// Returns [`Error::UnsupportedFormat`] when the data matches no enabled decoder or
-/// its decoder was compiled out; format-specific parse errors are passed through.
+/// Returns [`Error::UnsupportedFormat`] when the data matches no enabled decoder or its decoder was compiled out; format-specific parse errors are passed through.
+/// 数据无法被任何已启用的解码器识别，或对应的解码器被编译掉时返回 [`Error::UnsupportedFormat`]；具体格式的解析错误由各解码器返回。
 ///
 /// # Examples
 /// # 示例
@@ -71,8 +68,8 @@ pub fn decode_image(bytes: &[u8]) -> Result<Texture, Error> {
 /// 将通道交错排列的像素扩展为 RGBA8。
 ///
 /// `sample(i)` returns the raw byte for absolute pixel-array index `i`.
-/// `sample(i)` 返回绝对像素数组索引 `i` 处的原始字节。
 /// Channels: 1 = gray, 2 = gray+alpha, 3 = RGB, 4 = RGBA.
+/// `sample(i)` 返回绝对像素数组索引 `i` 处的原始字节。
 /// 通道数：1 = 灰度，2 = 灰度+alpha，3 = RGB，4 = RGBA。
 #[cfg_attr(not(any(feature = "png", feature = "jpeg")), allow(dead_code))]
 // The channel-decode closure uses single-letter channel variables; idiomatic here.

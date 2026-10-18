@@ -1,20 +1,17 @@
 //! HE3D physics — rigid-body dynamics for interactive applications.
 //! HE3D 物理 —— 面向交互式应用的刚体动力学。
 //!
-//! The crate owns its Bodies through a [`BodyId`] and knows nothing about
-//! rendering: it never sees an `ObjectId`, a `Scene`, or a `Transform`. A Body's
-//! placement is a position and an orientation, and the application owns both the
-//! link between a Body and whatever draws it and the per-frame copy of that
-//! placement. See `docs/adr/0001`.
-//! 本 crate 通过 [`BodyId`] 拥有自己的 Body，且对渲染一无所知：它永远看不到
-//! `ObjectId`、`Scene` 或 `Transform`。Body 的摆放是位置与朝向；Body 与"画它的东西"
-//! 之间的联系、以及每帧复制该摆放的动作，都由应用拥有。见 `docs/adr/0001`。
+//! The crate owns its Bodies through a [`BodyId`] and knows nothing about rendering: it never sees an `ObjectId`, a `Scene`, or a `Transform`.
+//! A Body's placement is a position and an orientation, and the application owns both the link between a Body and whatever draws it and the per-frame copy of that placement.
+//! See `docs/adr/0001`.
+//! 本 crate 通过 [`BodyId`] 拥有自己的 Body，且对渲染一无所知：它永远看不到 `ObjectId`、`Scene` 或 `Transform`。
+//! Body 的摆放是位置与朝向；Body 与"画它的东西"之间的联系、以及每帧复制该摆放的动作，都由应用拥有。
+//! 见 `docs/adr/0001`。
 //!
-//! Bodies come in three motion modes; the one that needs care is
-//! [`MotionType::Kinematic`], driven by a velocity the application sets and
-//! changeable by no Contact. See [`MotionType`].
-//! Body 有三种运动模式；其中需要留意的是 [`MotionType::Kinematic`]：它由应用设定的速度
-//! 驱动，且没有任何 Contact 能改变它。见 [`MotionType`]。
+//! Bodies come in three motion modes; the one that needs care is [`MotionType::Kinematic`], driven by a velocity the application sets and changeable by no Contact.
+//! See [`MotionType`].
+//! Body 有三种运动模式；其中需要留意的是 [`MotionType::Kinematic`]：它由应用设定的速度驱动，且没有任何 Contact 能改变它。
+//! 见 [`MotionType`]。
 //!
 //! # Example
 //! # 示例

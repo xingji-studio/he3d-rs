@@ -5,12 +5,14 @@
 //! HE3D 核心。
 //!
 //! Owns the scene graph, resources (meshes, textures, materials), and stable generational IDs.
-//! 拥有场景图、资源（网格、纹理、材质）以及稳定的代际 ID。
 //! A [`Scene`] owns its resources directly through [`Arena`]s; IDs are cheap handles that never dangle.
+//! 拥有场景图、资源（网格、纹理、材质）以及稳定的代际 ID。
 //! 一个 [`Scene`] 直接通过 [`Arena`] 拥有其资源；ID 是永不悬垂的廉价句柄。
 //!
-//! Everything here is `no_std + alloc`. The optional `std` feature only adds convenience impls (e.g. `std::error::Error`); it never enables `std` for any dependency by default.
-//! 此处所有内容都是 `no_std + alloc`。可选的 `std` 特性仅添加便捷实现（例如 `std::error::Error`）；它永远不会默认启用任何依赖的 `std`。
+//! Everything here is `no_std + alloc`.
+//! The optional `std` feature only adds convenience impls (e.g. `std::error::Error`); it never enables `std` for any dependency by default.
+//! 此处所有内容都是 `no_std + alloc`。
+//! 可选的 `std` 特性仅添加便捷实现（例如 `std::error::Error`）；它永远不会默认启用任何依赖的 `std`。
 
 extern crate alloc;
 

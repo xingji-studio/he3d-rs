@@ -5,23 +5,20 @@ use he3d_math::{Vec2, Vec3};
 /// Parse a Wavefront OBJ mesh from memory.
 /// 从内存解析 Wavefront OBJ 网格。
 ///
-/// Supported: `v`, `vt`, and `f` faces with `v`, `v/vt`, `v/vt/vn`, or `v//vn`
-/// corner syntax. OBJ puts the texture origin at the bottom left, so V is flipped
-/// into this renderer's top-left convention on the way in.
-/// 支持 `v`、`vt` 以及 `f` 面，角语法为 `v`、`v/vt`、`v/vt/vn` 或 `v//vn`。OBJ 的纹理原点
-/// 在左下角，因此导入时 V 被翻转到本渲染器左上角的约定。
+/// Supported: `v`, `vt`, and `f` faces with `v`, `v/vt`, `v/vt/vn`, or `v//vn` corner syntax.
+/// OBJ puts the texture origin at the bottom left, so V is flipped into this renderer's top-left convention on the way in.
 /// Faces with three or more vertices are triangulated as a fan.
-/// 具有三个及以上顶点的面按扇形三角化。
 /// `vn` and other lines (`o`, `s`, `mtllib`, `usemtl`, comments) are ignored.
-/// `vn` 及其他行（`o`、`s`、`mtllib`、`usemtl`、注释）被忽略。
 /// Negative indices are rejected by skipping that face.
+/// 支持 `v`、`vt` 以及 `f` 面，角语法为 `v`、`v/vt`、`v/vt/vn` 或 `v//vn`。
+/// OBJ 的纹理原点在左下角，因此导入时 V 被翻转到本渲染器左上角的约定。
+/// 具有三个及以上顶点的面按扇形三角化。
+/// `vn` 及其他行（`o`、`s`、`mtllib`、`usemtl`、注释）被忽略。
 /// 负索引通过跳过该面来拒绝。
 ///
 /// # Errors
-/// 输入不是合法 UTF-8、解析失败，或产出的网格无效（空、顶点数不是 3 的倍数、超过
-/// 顶点上限）时返回相应错误。
-/// Returns an error when the input is not valid UTF-8, when parsing fails, or when
-/// the produced mesh is invalid (empty, non-triangle vertex count, or over budget).
+/// Returns an error when the input is not valid UTF-8, when parsing fails, or when the produced mesh is invalid (empty, non-triangle vertex count, or over budget).
+/// 输入不是合法 UTF-8、解析失败，或产出的网格无效（空、顶点数不是 3 的倍数、超过顶点上限）时返回相应错误。
 ///
 /// # Examples
 /// # 示例
@@ -235,10 +232,8 @@ f 1 2 -1\n";
 
    #[test]
    fn rejects_zero_uv_index_without_underflow() {
-      // `f 1/0 ...` must not underflow `u32` (debug panic / release wrap); the
-      // whole face is rejected like any other invalid corner.
-      // `f 1/0 ...` 不得让 `u32` 下溢（debug 下 panic / release 下回绕）；该面会被
-      // 像其它非法角一样整体拒绝。
+      // `f 1/0 ...` must not underflow `u32` (debug panic / release wrap); the whole face is rejected like any other invalid corner.
+      // `f 1/0 ...` 不得让 `u32` 下溢（debug 下 panic / release 下回绕）；该面会被像其它非法角一样整体拒绝。
       let obj = b"\
 v 0 0 0\n\
 v 1 0 0\n\

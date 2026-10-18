@@ -62,8 +62,7 @@ fn main() {
    };
 
    let mut scene = Scene::new();
-   // A strong warm key light from up and to the right, so the model reads with
-   // clear form and a warm cast rather than flat white.
+   // A strong warm key light from up and to the right, so the model reads with clear form and a warm cast rather than flat white.
    // 自右上方打来的强烈暖色主光，使模型形体清晰、带暖色调而非惨白。
    scene.light.direction = Vec3::new(1.0, 1.0, 0.5).normalize();
    scene.light.color = Rgb::new(1.5, 1.4, 1.2);

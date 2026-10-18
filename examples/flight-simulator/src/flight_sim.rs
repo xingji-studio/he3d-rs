@@ -9,19 +9,16 @@ use he3d::{
 /// Gravity used by the flight simulator.
 /// 飞行模拟器使用的重力。
 ///
-/// Ten times earth, and it is the only thing that moves the aircraft vertically: the
-/// control model rebuilds velocity as a horizontal cruise vector plus whatever
-/// vertical component gravity has already produced, so pitch steers but never
-/// climbs. Gravity therefore *is* the vertical handling, and this value is what makes
-/// a descent from the spawn altitude reach the ground in about half a second.
+/// Ten times earth, and it is the only thing that moves the aircraft vertically: the control model rebuilds velocity as a horizontal cruise vector plus whatever vertical component gravity has already produced, so pitch steers but never climbs.
+/// Gravity therefore *is* the vertical handling, and this value is what makes a descent from the spawn altitude reach the ground in about half a second.
 ///
-/// That is a flight-feel choice, not a physical one. If the model ever gains a lift
-/// or throttle term, this should come back down toward the engine's default.
-/// 十倍地球重力，而且它是唯一让飞机在竖直方向运动的东西：控制模型把速度重建为水平巡航
-/// 向量加上重力已经产生的竖直分量，因此俯仰只转向、永不爬升。重力因此**就是**竖直方向的
-/// 手感，而这个值正是让飞机从出生高度到触地只用约半秒的原因。
+/// That is a flight-feel choice, not a physical one.
+/// If the model ever gains a lift or throttle term, this should come back down toward the engine's default.
+/// 十倍地球重力，而且它是唯一让飞机在竖直方向运动的东西：控制模型把速度重建为水平巡航向量加上重力已经产生的竖直分量，因此俯仰只转向、永不爬升。
+/// 重力因此**就是**竖直方向的手感，而这个值正是让飞机从出生高度到触地只用约半秒的原因。
 ///
-/// 这是飞行手感的选择，不是物理选择。若模型将来引入升力或油门，这个值应当降回引擎默认值。
+/// 这是飞行手感的选择，不是物理选择。
+/// 若模型将来引入升力或油门，这个值应当降回引擎默认值。
 pub const FLIGHT_GRAVITY: Vec3 = Vec3::new(0.0, -100.0, 0.0);
 
 /// Deterministic pseudo-random noise at an integer grid point.
@@ -74,8 +71,8 @@ pub fn terrain_height_at(x: f32, z: f32) -> f32 {
 /// 创建以给定世界坐标为中心的地形网格块。
 ///
 /// The tile is `grid_count × grid_count` samples with `step` spacing.
-/// 该地形块为 `grid_count × grid_count` 个采样点、间距为 `step`。
 /// Heights are sampled from [`terrain_height_at`] in world space and stored in local coordinates (the tile transform carries the world offset).
+/// 该地形块为 `grid_count × grid_count` 个采样点、间距为 `step`。
 /// 高度在世界空间通过 [`terrain_height_at`] 采样，并以局部坐标存储（地形块的变换携带世界偏移）。
 pub fn create_plane(grid_count: i32, step: f32, world_x: f32, world_z: f32) -> Result<Mesh, Error> {
    if grid_count < 2 || !step.is_finite() || step <= 0.0 {
@@ -247,23 +244,20 @@ pub struct FlightControls {
    pub roll: f32,
 }
 
-// Key mapping, as wired in `update_flight_controls`: `W`/`S` pitch, `E`/`Q` yaw,
-// `A`/`D` roll, space to jump. Note the pitch direction — `W` is the *positive* axis
-// and a positive rotation about X sends `+Z` to `-Y`, so `W` pushes the nose **down**
-// and `S` pulls it **up**. That is the stick-forward convention, and it is stated
-// here because nothing else in the tree says which way these keys go.
-// 按键映射，如 `update_flight_controls` 中所接：`W`/`S` 俯仰、`E`/`Q` 偏航、`A`/`D`
-// 滚转、空格跳跃。注意俯仰方向——`W` 是**正**轴，而绕 X 的正向旋转把 `+Z` 送到 `-Y`，
-// 因此 `W` 把机头压**向下**、`S` 抬**向上**。这是"推杆向前"的约定；之所以写在这里，
-// 是因为整个仓库没有别的地方说明这些键往哪边去。
+// Key mapping, as wired in `update_flight_controls`: `W`/`S` pitch, `E`/`Q` yaw, `A`/`D` roll, space to jump.
+// Note the pitch direction — `W` is the *positive* axis and a positive rotation about X sends `+Z` to `-Y`, so `W` pushes the nose **down** and `S` pulls it **up**.
+// That is the stick-forward convention, and it is stated here because nothing else in the tree says which way these keys go.
+// 按键映射，如 `update_flight_controls` 中所接：`W`/`S` 俯仰、`E`/`Q` 偏航、`A`/`D` 滚转、空格跳跃。
+// 注意俯仰方向——`W` 是**正**轴，而绕 X 的正向旋转把 `+Z` 送到 `-Y`，因此 `W` 把机头压**向下**、`S` 抬**向上**。
+// 这是"推杆向前"的约定；之所以写在这里，是因为整个仓库没有别的地方说明这些键往哪边去。
 
 /// Ease a digital key pair into a smooth cubic control value.
 /// 将一组数字按键平滑为三次曲线控制值。
 ///
-/// `current` is smoothed state that eases toward the pressed key's direction
-/// `current` 是朝按键方向缓动、松开后
-/// and decays back to zero when released. The returned value is `±|v|³`.
-/// 衰减回零的平滑状态。返回值为 `±|v|³`。
+/// `current` is smoothed state that eases toward the pressed key's direction and decays back to zero when released.
+/// The returned value is `±|v|³`.
+/// `current` 是朝按键方向缓动、松开后衰减回零的平滑状态。
+/// 返回值为 `±|v|³`。
 pub fn input_curve(
    current: &mut f32,
    positive: bool,
@@ -320,40 +314,29 @@ pub fn axis_angle_quat(axis: Vec3, angle: f32) -> Quat {
 /// Cruise speed maintained while airborne.
 /// 空中保持的巡航速度。
 ///
-/// It sets the pace of the whole demo and is coupled to terrain streaming: a tile is
-/// `(TERRAIN_GRID_COUNT - 1) * TERRAIN_STEP` metres across, so this is how long the
-/// aircraft spends inside one before the streamer has to have the next ready.
-/// 它决定整个演示的节奏，并与地形流式加载耦合：一块地形宽
-/// `(TERRAIN_GRID_COUNT - 1) * TERRAIN_STEP` 米，因此这个值决定了飞机在单块地形内停留
-/// 多久、流式加载器需要在此之前备好下一块。
+/// It sets the pace of the whole demo and is coupled to terrain streaming: a tile is `(TERRAIN_GRID_COUNT - 1) * TERRAIN_STEP` metres across, so this is how long the aircraft spends inside one before the streamer has to have the next ready.
+/// 它决定整个演示的节奏，并与地形流式加载耦合：一块地形宽 `(TERRAIN_GRID_COUNT - 1) * TERRAIN_STEP` 米，因此这个值决定了飞机在单块地形内停留多久、流式加载器需要在此之前备好下一块。
 pub const CRUISE_SPEED: f32 = 15.0;
 
 /// How fast a held control key ramps to full deflection, in units per second.
 /// 按住控制键时达到满偏的速率，单位/秒。
 ///
-/// Full deflection in about 0.22 s: quick enough that a tap registers, slow enough
-/// that the aircraft does not snap between extremes.
+/// Full deflection in about 0.22 s: quick enough that a tap registers, slow enough that the aircraft does not snap between extremes.
 /// 约 0.22 秒达到满偏：快到一次轻点也能生效，慢到飞机不会在两个极端之间瞬间弹跳。
 pub const INPUT_ACCELERATION: f32 = 4.5;
 
 /// How fast a released control key returns to neutral, in units per second.
 /// 松开控制键后回到中位的速率，单位/秒。
 ///
-/// Deliberately slower than [`INPUT_ACCELERATION`] — about 0.40 s against 0.22 s — so
-/// the aircraft holds a turn briefly after the key is released instead of snapping
-/// back, which is what makes it feel like it has momentum.
-/// 刻意慢于 [`INPUT_ACCELERATION`]——约 0.40 秒对 0.22 秒——使飞机在松开按键后仍短暂保持
-/// 转向而非立刻弹回，这正是它感觉有惯性的来源。
+/// Deliberately slower than [`INPUT_ACCELERATION`] — about 0.40 s against 0.22 s — so the aircraft holds a turn briefly after the key is released instead of snapping back, which is what makes it feel like it has momentum.
+/// 刻意慢于 [`INPUT_ACCELERATION`]——约 0.40 秒对 0.22 秒——使飞机在松开按键后仍短暂保持转向而非立刻弹回，这正是它感觉有惯性的来源。
 pub const INPUT_RECOVERY: f32 = 2.5;
 
 /// Peak attitude rates, in radians per second at full deflection.
 ///
-/// Roll is the fastest and yaw the slowest, which is the ordering that makes a bank
-/// turn read correctly: rolling into the turn is immediate, the heading follows, and
-/// pitching never outruns either.
+/// Roll is the fastest and yaw the slowest, which is the ordering that makes a bank turn read correctly: rolling into the turn is immediate, the heading follows, and pitching never outruns either.
 /// 满偏时的峰值姿态角速度，单位弧度/秒。
-/// 滚转最快、偏航最慢，这个次序让倾斜转弯看起来正确：压坡度是立刻的，航向随后跟上，而俯仰
-/// 不会超过两者。
+/// 滚转最快、偏航最慢，这个次序让倾斜转弯看起来正确：压坡度是立刻的，航向随后跟上，而俯仰不会超过两者。
 pub const PITCH_RATE: f32 = 1.35;
 pub const YAW_RATE: f32 = 0.95;
 pub const ROLL_RATE: f32 = 1.75;
@@ -369,14 +352,16 @@ pub const CRASH_DAMPING: f32 = 6.0;
 /// Update the aircraft's orientation from controls and write its velocity.
 /// 根据控制输入更新飞机朝向并写入其速度。
 ///
-/// `controlled_orientation` is the player-owned heading. It is used instead of the Body's own rotation so ground collisions can never roll or pitch the plane away from player control.
-/// `controlled_orientation` 是玩家持有的朝向。使用它而非 Body 自身的旋转，这样地面碰撞永远不会让飞机滚转或俯仰偏离玩家控制。
+/// `controlled_orientation` is the player-owned heading.
+/// It is used instead of the Body's own rotation so ground collisions can never roll or pitch the plane away from player control.
 /// The angular velocity is also cleared each step so impacts cannot make the plane spin.
+/// `controlled_orientation` 是玩家持有的朝向。
+/// 使用它而非 Body 自身的旋转，这样地面碰撞永远不会让飞机滚转或俯仰偏离玩家控制。
 /// 每步还会清零角速度，使撞击不会导致飞机旋转。
 ///
 /// While `contacted` is true the plane is out of control: the heading is frozen (player input no longer changes it) and the velocity decays exponentially, so ground contact stops the plane promptly.
-/// 当 `contacted` 为真时飞机失去控制：朝向被冻结（玩家输入不再改变它），速度以指数方式衰减，因此触地能迅速停下飞机。
 /// Returns the current world-space forward direction.
+/// 当 `contacted` 为真时飞机失去控制：朝向被冻结（玩家输入不再改变它），速度以指数方式衰减，因此触地能迅速停下飞机。
 /// 返回当前世界空间的前向方向。
 pub fn update_flight_controls(
    world: &mut World,
@@ -445,19 +430,14 @@ pub fn update_flight_controls(
    *controlled_orientation = new_orientation;
 
    world.set_pose(plane, position, new_orientation);
-   // The nose owns the entire velocity vector, vertical component included. There is no
-   // lift term, so whichever way the aircraft points is where it goes, and holding
-   // pitch-up is what makes it climb.
+   // The nose owns the entire velocity vector, vertical component included.
+   // There is no lift term, so whichever way the aircraft points is where it goes, and holding pitch-up is what makes it climb.
    //
-   // Letting gravity keep the vertical component instead — leaving the controls to set
-   // only a horizontal cruise vector — reads as more physical but is not: the vertical
-   // velocity then becomes nothing but integrated gravity, so the aircraft can only ever
-   // descend and pitching has no effect on altitude at all.
-   // 机头拥有整个速度向量，包括竖直分量。没有升力项，因此飞机指向哪就飞向哪，而持续拉杆正是
-   // 它爬升的方式。
+   // Letting gravity keep the vertical component instead — leaving the controls to set only a horizontal cruise vector — reads as more physical but is not: the vertical velocity then becomes nothing but integrated gravity, so the aircraft can only ever descend and pitching has no effect on altitude at all.
+   // 机头拥有整个速度向量，包括竖直分量。
+   // 没有升力项，因此飞机指向哪就飞向哪，而持续拉杆正是它爬升的方式。
    //
-   // 反过来让重力保留竖直分量——控制只写水平巡航向量——看起来更"物理"，其实不是：竖直速度会
-   // 变成纯粹的重力积分，飞机只能一路下坠，俯仰对高度毫无影响。
+   // 反过来让重力保留竖直分量——控制只写水平巡航向量——看起来更"物理"，其实不是：竖直速度会变成纯粹的重力积分，飞机只能一路下坠，俯仰对高度毫无影响。
    world.set_velocity(plane, forward * CRUISE_SPEED);
    Some(forward)
 }
@@ -495,11 +475,10 @@ pub fn update_camera(
    }
 
    // Fixed downward pitch (0.15 rad) so the plane sits near screen center.
-   // 固定向下俯仰（0.15 弧度），使飞机位于屏幕中心附近。
    // `EulerRot::ZYX` takes angles in (Z, Y, X) axis order, so the pitch goes in the `z` slot.
+   // Roll is left at zero: the chase camera owns the roll it shows, so the aircraft's own orientation stays a pure yaw and pitch.
+   // 固定向下俯仰（0.15 弧度），使飞机位于屏幕中心附近。
    // `EulerRot::ZYX` 按 (Z, Y, X) 轴序接收角度，因此俯仰放在 `z` 槽位。
-   // Roll is left at zero: the chase camera owns the roll it shows, so the
-   // aircraft's own orientation stays a pure yaw and pitch.
    // 滚转保持为零：追尾相机自行表现滚转，因此飞机自身朝向只含偏航与俯仰。
    camera.orientation = Quat::from_euler(EulerRot::ZYX, 0.0, chase.yaw, 0.15);
    let yaw_rotation = Quat::from_rotation_y(chase.yaw);
@@ -522,10 +501,10 @@ fn tile_in_range(grid_x: i32, grid_z: i32, center_x: i32, center_z: i32, radius:
 /// A terrain tile slot: owns one render object and its Static geometry collider.
 /// 一个地形块槽位：拥有一个渲染对象及其 Static geometry 碰撞体。
 ///
-/// The render object and the collider are separate things with separate identities;
-/// the tile is where the application keeps them together. See `docs/adr/0001`.
-/// 渲染对象与碰撞体是两样各有身份的东西；瓦片就是应用把它们维系在一起的地方。见
-/// `docs/adr/0001`。
+/// The render object and the collider are separate things with separate identities; the tile is where the application keeps them together.
+/// See `docs/adr/0001`.
+/// 渲染对象与碰撞体是两样各有身份的东西；瓦片就是应用把它们维系在一起的地方。
+/// 见 `docs/adr/0001`。
 #[derive(Clone, Copy, Debug)]
 pub struct TerrainTile {
    pub mesh_id: MeshId,
@@ -539,8 +518,8 @@ pub struct TerrainTile {
 }
 
 /// Streams square terrain tiles around the aircraft, refreshing at most one tile per call.
-/// 在飞机周围流式加载方形地形块，每次调用最多刷新一个地形块。
 /// Terrain generation is spread across frames instead of blocking one frame.
+/// 在飞机周围流式加载方形地形块，每次调用最多刷新一个地形块。
 /// 地形生成分摊到多帧执行，而非阻塞单帧。
 pub struct TerrainManager {
    pub tiles: Vec<TerrainTile>,
@@ -662,9 +641,10 @@ impl TerrainManager {
          if tile.active {
             continue;
          }
-         // Free the previous per-tile mesh before replacing it. The shared
-         // placeholder is kept so inactive tiles can keep referencing it.
-         // 在替换前释放旧的逐块网格。共享占位网格保留，使未激活块仍可引用它。
+         // Free the previous per-tile mesh before replacing it.
+         // The shared placeholder is kept so inactive tiles can keep referencing it.
+         // 在替换前释放旧的逐块网格。
+         // 共享占位网格保留，使未激活块仍可引用它。
          if tile.mesh_id != self.placeholder_mesh {
             let _ = scene.meshes.remove(tile.mesh_id);
          }
@@ -686,11 +666,10 @@ impl TerrainManager {
          }
          tile.mesh_id = mesh_id;
 
-         // Refresh the Static geometry for the new tile. The renderer places the
-         // tile with its transform, but a collider has no transform, so the
-         // vertices are lifted into world space here.
-         // 为新地形块刷新 Static geometry。渲染器用变换摆放瓦片，但碰撞体没有变换，
-         // 因此这里把顶点抬升到世界空间。
+         // Refresh the Static geometry for the new tile.
+         // The renderer places the tile with its transform, but a collider has no transform, so the vertices are lifted into world space here.
+         // 为新地形块刷新 Static geometry。
+         // 渲染器用变换摆放瓦片，但碰撞体没有变换，因此这里把顶点抬升到世界空间。
          if let Some(previous) = tile.collider.take() {
             world.remove_static_mesh(previous);
          }
@@ -751,8 +730,7 @@ mod tests {
    #[test]
    fn input_curve_eases_toward_target() {
       let mut current = 0.0;
-      // The constants are referenced rather than restated, so retuning the handling
-      // cannot leave this test passing against stale numbers.
+      // The constants are referenced rather than restated, so retuning the handling cannot leave this test passing against stale numbers.
       // 这里引用常量而非重述其值，因此调整手感不会让本测试对着过期数字仍然通过。
       let value = input_curve(
          &mut current,
@@ -814,8 +792,8 @@ mod tests {
       let mut chase = FlightCamera::default();
       update_camera(&mut camera, &mut chase, Vec3::ZERO, Vec3::Z, 1.0 / 60.0);
       // The fixed downward pitch must never roll the view: the up vector keeps zero X component and the camera right axis stays horizontal.
-      // 固定的向下俯仰绝不能使视图滚转：上向量保持 X 分量为零，且相机右轴保持水平。
       // Regression: the pitch angle was once passed as the roll slot of `EulerRot::ZYX`, tipping the whole scene by 8.6°.
+      // 固定的向下俯仰绝不能使视图滚转：上向量保持 X 分量为零，且相机右轴保持水平。
       // 回归测试：俯仰角曾一度被传入 `EulerRot::ZYX` 的滚转槽位，导致整个场景倾斜 8.6°。
       let up = camera.orientation * Vec3::Y;
       let right = camera.orientation * Vec3::X;
@@ -830,8 +808,7 @@ mod tests {
       assert!(forward.y < 0.0, "camera should look slightly downward");
    }
 
-   /// Build the plane's render object and its Body, returning both halves of the
-   /// association the application owns.
+   /// Build the plane's render object and its Body, returning both halves of the association the application owns.
    /// 构建飞机的渲染对象与其 Body，返回由应用拥有的关联的两半。
    fn build_plane_scene(world: &mut World, scene: &mut Scene) -> (ObjectId, BodyId) {
       const SPAWN: Vec3 = Vec3::new(0.0, 13.0, 0.0);
@@ -855,8 +832,7 @@ mod tests {
       (plane, body)
    }
 
-   /// Build a World with the demo's gravity plus a large flat slab to land on,
-   /// and return the plane's Body.
+   /// Build a World with the demo's gravity plus a large flat slab to land on, and return the plane's Body.
    /// 构建一个带演示重力和一大块平坦地板的 World，并返回飞机的 Body。
    fn airborne_world() -> (World, BodyId) {
       let mut world = World::new();
@@ -878,12 +854,10 @@ mod tests {
 
    #[test]
    fn a_levelled_plane_holds_its_altitude() {
-      // The aircraft has no lift term: the only thing that can keep it up is the
-      // velocity the controls write. Levelled flight must therefore hold altitude
-      // rather than integrate gravity, which at this demo's gravity would put it on
-      // the ground in about half a second.
-      // 飞机没有升力项：唯一能托住它的就是控制写入的速度。因此平飞必须保持高度，而不是把
-      // 重力积分下去——在本演示的重力下，那会让它在约半秒内落地。
+      // The aircraft has no lift term: the only thing that can keep it up is the velocity the controls write.
+      // Levelled flight must therefore hold altitude rather than integrate gravity, which at this demo's gravity would put it on the ground in about half a second.
+      // 飞机没有升力项：唯一能托住它的就是控制写入的速度。
+      // 因此平飞必须保持高度，而不是把重力积分下去——在本演示的重力下，那会让它在约半秒内落地。
       let (mut world, plane) = airborne_world();
       let mut orientation = Quat::IDENTITY;
       let mut controls = FlightControls::default();
@@ -903,11 +877,8 @@ mod tests {
          world.step(1.0 / 120.0);
       }
 
-      // Exact, because the aircraft opts out of gravity: the controls write the whole
-      // velocity vector and nothing else touches it, so a level nose means the vertical
-      // velocity is exactly zero.
-      // 这是精确值，因为飞机退出了重力：控制写入整个速度向量，没有别的东西碰它，因此机头水平
-      // 就意味着竖直速度精确为零。
+      // Exact, because the aircraft opts out of gravity: the controls write the whole velocity vector and nothing else touches it, so a level nose means the vertical velocity is exactly zero.
+      // 这是精确值，因为飞机退出了重力：控制写入整个速度向量，没有别的东西碰它，因此机头水平就意味着竖直速度精确为零。
       let y = world.position(plane).expect("plane exists").y;
       assert!(
          (y - 13.0).abs() < 1e-3,
@@ -917,22 +888,21 @@ mod tests {
 
    #[test]
    fn pointing_the_nose_up_makes_the_plane_climb() {
-      // The other half of the same contract: the nose sets the vertical velocity, so
-      // holding pitch-up has to gain altitude. Without that the aircraft is a
-      // brick no matter what the player does.
-      // 同一契约的另一半：机头决定竖直速度，因此持续拉杆必须获得高度。没有这一点，无论
-      // 玩家怎么操作，飞机都只是一块砖。
+      // The other half of the same contract: the nose sets the vertical velocity, so holding pitch-up has to gain altitude.
+      // Without that the aircraft is a brick no matter what the player does.
+      // 同一契约的另一半：机头决定竖直速度，因此持续拉杆必须获得高度。
+      // 没有这一点，无论玩家怎么操作，飞机都只是一块砖。
       let (mut world, plane) = airborne_world();
       let mut orientation = Quat::IDENTITY;
       let mut controls = FlightControls::default();
       let mut keys = [false; 256];
-      // `S`, not `W`: pulling back is what points the nose up. See the key-mapping
-      // note on `FlightControls`.
-      // 用 `S` 而非 `W`：向后拉杆才是把机头抬起来。见 `FlightControls` 上的按键映射说明。
+      // `S`, not `W`: pulling back is what points the nose up.
+      // See the key-mapping note on `FlightControls`.
+      // 用 `S` 而非 `W`：向后拉杆才是把机头抬起来。
+      // 见 `FlightControls` 上的按键映射说明。
       keys[b's' as usize] = true;
 
-      // One second, not two: full deflection is about 77 degrees per second, so two
-      // seconds of held pitch is a complete loop that ends pointing at the ground.
+      // One second, not two: full deflection is about 77 degrees per second, so two seconds of held pitch is a complete loop that ends pointing at the ground.
       // 用一秒而非两秒：满偏约 77 度/秒，因此持续拉杆两秒是一整圈，最后机头朝下。
       for _ in 0..120 {
          update_flight_controls(
@@ -987,12 +957,10 @@ mod tests {
 
    #[test]
    fn flight_controls_give_the_nose_the_vertical_component() {
-      // The exact opposite of what this test once demanded. A stale vertical velocity
-      // has to be *overwritten*, because preserving it is what left gravity as the only
-      // thing setting the vertical component — and so the only thing the aircraft could
-      // ever do was descend, however it was pointed.
-      // 与本测试曾经要求的正好相反。陈旧的竖直速度必须被**覆盖**，因为保留它会让重力成为设置
-      // 竖直分量的唯一来源——于是无论机头朝向如何，飞机唯一能做的事就是下坠。
+      // The exact opposite of what this test once demanded.
+      // A stale vertical velocity has to be *overwritten*, because preserving it is what left gravity as the only thing setting the vertical component — and so the only thing the aircraft could ever do was descend, however it was pointed.
+      // 与本测试曾经要求的正好相反。
+      // 陈旧的竖直速度必须被**覆盖**，因为保留它会让重力成为设置竖直分量的唯一来源——于是无论机头朝向如何，飞机唯一能做的事就是下坠。
       let mut world = World::new();
       world.set_gravity(FLIGHT_GRAVITY);
       let mut scene = Scene::new();
@@ -1049,9 +1017,10 @@ mod tests {
          world.step(1.0 / 120.0);
       }
       assert_ne!(before, orientation, "holding W should pitch the plane");
-      // And in which direction. Without this the test passes just as happily if the
-      // control is inverted.
-      // 以及朝哪个方向。没有这一句，即便控制反了本测试也照样通过。
+      // And in which direction.
+      // Without this the test passes just as happily if the control is inverted.
+      // 以及朝哪个方向。
+      // 没有这一句，即便控制反了本测试也照样通过。
       let forward = orientation * Vec3::Z;
       assert!(
          forward.y < 0.0,
