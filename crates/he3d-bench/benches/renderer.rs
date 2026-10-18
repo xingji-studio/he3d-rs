@@ -95,6 +95,20 @@ fn renderer(c: &mut Criterion) {
       }
    }
 
+   // The same fill sweep under an orthographic camera, so the two projections' per-fragment costs can be compared directly.
+   // 在正交相机下进行同样的填充扫描，以便直接比较两种投影的逐片元成本。
+   for (w, h) in [(320u32, 180u32), (1280, 720)] {
+      let mut r = Renderer::new(RendererConfig::new(w, h)).expect("renderer");
+      let (scene, _) = workloads::render_scene_screen_fill(w, h, true);
+      let camera = workloads::ortho_camera();
+      c.bench_function(&format!("render/ortho/tex/{w}x{h}"), |b| {
+         b.iter(|| {
+            r.render(black_box(&scene), black_box(&camera), CLEAR)
+               .expect("render")
+         });
+      });
+   }
+
    // Anti-aliasing: same scene and resolution, one mode each.
    for (label, aa) in [
       ("none", AntiAliasing::None),

@@ -101,6 +101,13 @@ The render-side container: RenderObjects, meshes, textures, and a directional
 light.
 _Avoid_: world, level, stage
 
+**Projection**:
+How a Camera maps a view volume onto the viewport: a perspective projection
+carries a vertical field of view in degrees, an orthographic one carries a
+world-unit view height. A Camera holds exactly one, so neither mode's parameter
+can exist while the other is in force.
+_Avoid_: ortho flag, camera type, lens
+
 ### Platform
 
 **Platform**:

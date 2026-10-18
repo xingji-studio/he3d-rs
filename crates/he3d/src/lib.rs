@@ -74,8 +74,8 @@ pub use he3d_assets::{decode_image, parse_obj};
 pub use he3d_assets::{parse_glb, parse_gltf};
 #[doc(inline)]
 pub use he3d_core::{
-   Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, RenderObject,
-   Rgb, Scene, Texture, TextureId, Transform,
+   Camera, ColorRgba8, Error, MAX_VERTEX_COUNT, Material, Mesh, MeshId, ObjectId, Projection,
+   RenderObject, Rgb, Scene, Texture, TextureId, Transform,
 };
 #[doc(inline)]
 pub use he3d_math::{EulerRot, Mat4, Quat, Vec2, Vec3, Vec4};

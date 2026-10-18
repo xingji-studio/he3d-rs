@@ -35,7 +35,7 @@ fn main() {
       material: Material::new(Rgb::WHITE),
       visible: true,
    });
-   let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+   let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
 
    let mut renderer = match Renderer::new(RendererConfig::new(WINDOW_WIDTH, WINDOW_HEIGHT)) {
       Ok(renderer) => renderer,

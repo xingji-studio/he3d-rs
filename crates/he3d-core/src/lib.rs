@@ -26,7 +26,7 @@ mod texture;
 mod transform;
 
 pub use arena::{Arena, Id};
-pub use camera::Camera;
+pub use camera::{Camera, Projection};
 pub use color::{ColorRgba8, Rgb};
 pub use error::Error;
 pub use light::DirectionalLight;

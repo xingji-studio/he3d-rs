@@ -1,6 +1,6 @@
 use alloc::vec;
 use alloc::vec::Vec;
-use he3d_core::{Camera, ColorRgba8, Error, Mesh, RenderObject, Rgb, Scene, Texture};
+use he3d_core::{Camera, ColorRgba8, Error, Mesh, Projection, RenderObject, Rgb, Scene, Texture};
 use he3d_math::scalar::tan;
 use he3d_math::{Vec2, Vec3, conv};
 
@@ -194,13 +194,17 @@ impl Renderer {
    /// 将场景绘制到帧缓冲中。
    ///
    /// # Errors
-   /// `camera.near` 或 `camera.fov_y_degrees` 不是有限正数时返回 [`Error::InvalidSize`]。
-   /// Returns [`Error::InvalidSize`] when `camera.near` or `camera.fov_y_degrees` is not a positive finite number.
+   /// `camera.near` 或投影参数（透视的 `fov_y_degrees`、正交的 `height`）不是有限正数时返回 [`Error::InvalidSize`]。
+   /// Returns [`Error::InvalidSize`] when `camera.near` or the projection's parameter (the perspective `fov_y_degrees` or the orthographic `height`) is not a positive finite number.
    pub fn render(&mut self, scene: &Scene, camera: &Camera, clear_color: Rgb) -> Result<(), Error> {
       if !camera.near.is_finite() || camera.near <= 0.0 {
          return Err(Error::InvalidSize);
       }
-      if !camera.fov_y_degrees.is_finite() || camera.fov_y_degrees <= 0.0 {
+      let extent = match camera.projection {
+         Projection::Perspective { fov_y_degrees } => fov_y_degrees,
+         Projection::Orthographic { height } => height,
+      };
+      if !extent.is_finite() || extent <= 0.0 {
          return Err(Error::InvalidSize);
       }
       self.clear(clear_color);
@@ -391,11 +395,16 @@ impl Renderer {
       let view_trans = cam_inv_rot * (object.transform.position - camera.position);
       let light_dir = cam_inv_rot * light.direction;
 
-      let fov_scale = 1.0 / tan(conv::deg_to_rad(camera.fov_y_degrees) * 0.5);
       let half_w = self.width as f32 * 0.5;
       let half_h = self.height as f32 * 0.5;
-      let scale_x = fov_scale * half_w / (self.width as f32 / self.height as f32);
-      let scale_y = fov_scale * half_h;
+      // Both projections are isotropic in pixels, so one scale serves both axes and the viewport's aspect ratio is handled implicitly.
+      // 两种投影在像素上都是各向同性的，因此一个尺度即可服务两根轴，视口宽高比被隐式处理。
+      let (pixel_scale, perspective) = match camera.projection {
+         Projection::Perspective { fov_y_degrees } => {
+            (half_h / tan(conv::deg_to_rad(fov_y_degrees) * 0.5), true)
+         }
+         Projection::Orthographic { height } => (half_h / (height * 0.5), false),
+      };
       let near = camera.near;
 
       let vertices = mesh.vertices();
@@ -412,7 +421,10 @@ impl Renderer {
 
          let ab = view[1] - view[0];
          let ac = view[2] - view[0];
-         if ab.cross(ac).dot(view[0]) >= 0.0 {
+         // The cull direction is the view-space eye vector: the vertex itself for a perspective camera, the constant forward axis for an orthographic one whose eye sits at infinity.
+         // 剔除方向是视图空间中的眼向量：透视相机是顶点自身，正交相机（眼在无穷远）是恒定的前向轴。
+         let cull = if perspective { view[0] } else { Vec3::Z };
+         if ab.cross(ac).dot(cull) >= 0.0 {
             tri_index += 1;
             continue;
          }
@@ -460,7 +472,8 @@ impl Renderer {
 
          for k in 1..count - 1 {
             let tri_view = [clipped[0].view, clipped[k].view, clipped[k + 1].view];
-            let screen = project_triangle(&tri_view, half_w, half_h, scale_x, scale_y, jitter);
+            let screen =
+               project_triangle(&tri_view, half_w, half_h, pixel_scale, jitter, perspective);
             if triangle_outside_viewport(&screen, self.width, self.height) {
                continue;
             }
@@ -468,19 +481,22 @@ impl Renderer {
                continue;
             }
             let tri_uv = [clipped[0].uv, clipped[k].uv, clipped[k + 1].uv];
-            self.rasterize_textured(&tri_view, &screen, &tri_uv, lit, texture);
+            self.rasterize_textured(&tri_view, &screen, &tri_uv, lit, texture, perspective);
          }
          tri_index += 1;
       }
    }
 
    // The casts below are deliberate rasterizer math: screen coordinates are bounded by the framebuffer size, fixed-point lighting works in integers, and the x/y-paired names are idiomatic here.
+   // The single-sample and MSAA paths share a dozen interpolant locals, so splitting them into separate functions would trade the line count for a longer argument list.
    // 下面的转换都是刻意为之的光栅化数学：屏幕坐标受帧缓冲尺寸约束，定点光照在整数上运算，x/y 成对命名在此处是惯用法。
+   // 单样本与 MSAA 两条路径共享十来个插值局部变量，把它们拆成独立函数只会用行数换到更长的参数表。
    #[expect(
       clippy::cast_possible_truncation,
       clippy::cast_precision_loss,
       clippy::cast_sign_loss,
-      clippy::similar_names
+      clippy::similar_names,
+      clippy::too_many_lines
    )]
    fn rasterize_textured(
       &mut self,
@@ -489,6 +505,7 @@ impl Renderer {
       uvs: &[Vec2; 3],
       light: Rgb,
       tex: &Texture,
+      perspective: bool,
    ) {
       let left_f = screen[0].x.min(screen[1].x).min(screen[2].x);
       let right_f = screen[0].x.max(screen[1].x).max(screen[2].x);
@@ -518,13 +535,20 @@ impl Renderer {
       let dw0 = (y1 - y2) * inv_a;
       let dw1 = (y2 - y0) * inv_a;
       let dw2 = -dw0 - dw1;
-      let iz0 = 1.0 / view[0].z;
-      let iz1 = 1.0 / view[1].z;
-      let iz2 = 1.0 / view[2].z;
-      let uz0 = uvs[0] * iz0;
-      let uz1 = uvs[1] * iz1;
-      let uz2 = uvs[2] * iz2;
-      let diz_dx = dw0 * iz0 + dw1 * iz1 + dw2 * iz2;
+      // Depth is keyed on the reciprocal view depth, which is monotonic in both projections.
+      // 深度以视深度的倒数作为键，这在两种投影下都是单调的。
+      let (rz0, rz1, rz2) = (1.0 / view[0].z, 1.0 / view[1].z, 1.0 / view[2].z);
+      // Texture weights are the reciprocal depth under perspective and a constant under orthographic, so the sample path divides by the interpolated reciprocal depth only under perspective.
+      // 纹理权重在透视下是深度倒数，在正交下是常数，因此采样路径仅在透视下用插值的深度倒数做除法。
+      let (wz0, wz1, wz2) = if perspective {
+         (rz0, rz1, rz2)
+      } else {
+         (1.0, 1.0, 1.0)
+      };
+      let uz0 = uvs[0] * wz0;
+      let uz1 = uvs[1] * wz1;
+      let uz2 = uvs[2] * wz2;
+      let diz_dx = dw0 * rz0 + dw1 * rz1 + dw2 * rz2;
       let duz_dx = dw0 * uz0.x + dw1 * uz1.x + dw2 * uz2.x;
       let dvz_dx = dw0 * uz0.y + dw1 * uz1.y + dw2 * uz2.y;
 
@@ -552,7 +576,7 @@ impl Renderer {
          let mut w0 = ((x1 - px0) * (y2 - py) - (y1 - py) * (x2 - px0)) * inv_a;
          let mut w1 = ((x2 - px0) * (y0 - py) - (y2 - py) * (x0 - px0)) * inv_a;
          let mut w2 = 1.0 - w0 - w1;
-         let mut ciz = w0 * iz0 + w1 * iz1 + w2 * iz2;
+         let mut ciz = w0 * rz0 + w1 * rz1 + w2 * rz2;
          let mut cuz = w0 * uz0.x + w1 * uz1.x + w2 * uz2.x;
          let mut cvz = w0 * uz0.y + w1 * uz1.y + w2 * uz2.y;
 
@@ -571,10 +595,10 @@ impl Renderer {
                   let sw0 = ((x1 - spx) * (y2 - spy) - (y1 - spy) * (x2 - spx)) * inv_a;
                   let sw1 = ((x2 - spx) * (y0 - spy) - (y2 - spy) * (x0 - spx)) * inv_a;
                   let sw2 = 1.0 - sw0 - sw1;
-                  let sample_depth = sw0 * iz0 + sw1 * iz1 + sw2 * iz2;
+                  let sample_depth = sw0 * rz0 + sw1 * rz1 + sw2 * rz2;
                   let sample_idx = idx * 4 + sample as usize;
                   if sample_depth > self.msaa_depth_buf[sample_idx] {
-                     let inv_sample = 1.0 / sample_depth;
+                     let inv_sample = if perspective { 1.0 / sample_depth } else { 1.0 };
                      let u = (sw0 * uz0.x + sw1 * uz1.x + sw2 * uz2.x) * inv_sample;
                      let v = (sw0 * uz0.y + sw1 * uz1.y + sw2 * uz2.y) * inv_sample;
                      self.msaa_depth_buf[sample_idx] = sample_depth;
@@ -591,7 +615,7 @@ impl Renderer {
                if let Some(color) = flat {
                   self.color_buf[idx] = color;
                } else {
-                  let inv = 1.0 / ciz;
+                  let inv = if perspective { 1.0 / ciz } else { 1.0 };
                   self.color_buf[idx] = shade(tex.sample(cuz * inv, cvz * inv), lr, lg, lb);
                }
             }
@@ -1031,20 +1055,25 @@ fn clip_triangle_to_near(input: &[ClipVertex; 3], near: f32, out: &mut [ClipVert
    count
 }
 
+/// Project view-space vertices to screen space.
+/// 把视空间顶点投影到屏幕空间。
+///
+/// `perspective` divides by the view depth; an orthographic projection is affine and skips the divide.
+/// `perspective` 会除以视深度；正交投影是仿射的，因此跳过该除法。
 fn project_triangle(
    view: &[Vec3; 3],
    half_w: f32,
    half_h: f32,
-   scale_x: f32,
-   scale_y: f32,
+   scale: f32,
    jitter: Vec2,
+   perspective: bool,
 ) -> [Vec2; 3] {
    let mut screen = [Vec2::ZERO; 3];
    for (i, v) in view.iter().enumerate() {
-      let inv_z = 1.0 / v.z;
+      let inv_z = if perspective { 1.0 / v.z } else { 1.0 };
       screen[i] = Vec2::new(
-         half_w + v.x * inv_z * scale_x + jitter.x,
-         half_h - v.y * inv_z * scale_y + jitter.y,
+         half_w + v.x * inv_z * scale + jitter.x,
+         half_h - v.y * inv_z * scale + jitter.y,
       );
    }
    screen
@@ -1092,7 +1121,7 @@ mod tests {
          material: Material::new(Rgb::WHITE),
          visible: true,
       });
-      let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+      let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
       (scene, camera, Rgb::new(0.08, 0.10, 0.14))
    }
 
@@ -1174,13 +1203,158 @@ mod tests {
          material: Material::new(Rgb::WHITE),
          visible: true,
       });
-      let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+      let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
       let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
       renderer
          .render(&scene, &camera, Rgb::new(0.05, 0.05, 0.05))
          .unwrap();
       // Center pixel is the near triangle's lit color: near * 1.15.
       // 中心像素为近处三角形的受光颜色：near * 1.15。
+      let center = pixel(&renderer, 32, 32);
+      assert_eq!(center, ColorRgba8::from_rgb(255, 58, 87));
+   }
+
+   #[test]
+   fn orthographic_projection_is_independent_of_depth() {
+      // The same triangle at z=2 and z=8 covers the same screen rectangle, which is the defining property of a parallel projection.
+      // 同一三角形在 z=2 与 z=8 下覆盖相同的屏幕矩形，这是平行投影的定义性质。
+      let mesh = Mesh::triangle(1.0, 1.0).expect("triangle mesh is valid");
+      let mut frames = Vec::new();
+      for z in [2.0, 8.0] {
+         let mut scene = Scene::new();
+         let mesh_id = scene.meshes.insert(mesh.clone());
+         scene.spawn(RenderObject {
+            mesh: mesh_id,
+            texture: None,
+            transform: Transform::from_position(Vec3::new(0.0, 0.0, z)),
+            material: Material::new(Rgb::WHITE),
+            visible: true,
+         });
+         let camera = Camera::orthographic(Vec3::ZERO, Quat::IDENTITY, 2.0);
+         let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
+         renderer
+            .render(&scene, &camera, Rgb::new(0.0, 0.0, 0.0))
+            .unwrap();
+         frames.push(renderer);
+      }
+      assert_eq!(frames[0].pixels(), frames[1].pixels());
+   }
+
+   #[test]
+   fn orthographic_culls_a_back_facing_triangle() {
+      // A triangle wound the other way has a +Z normal, so a camera looking along +Z sees its back and culls it.
+      // 反向绕序的三角形法线为 +Z，因此沿 +Z 看的相机看到背面并将其剔除。
+      let mut scene = Scene::new();
+      scene.light.direction = Vec3::new(0.0, 0.0, -1.0);
+      let mesh = scene.meshes.insert(
+         Mesh::from_vertices(vec![
+            Vec3::new(-0.5, -0.5, 2.0),
+            Vec3::new(0.5, -0.5, 2.0),
+            Vec3::new(0.0, 0.5, 2.0),
+         ])
+         .expect("mesh is valid"),
+      );
+      scene.spawn(RenderObject {
+         mesh,
+         texture: None,
+         transform: Transform::default(),
+         material: Material::new(Rgb::WHITE),
+         visible: true,
+      });
+      let camera = Camera::orthographic(Vec3::ZERO, Quat::IDENTITY, 2.0);
+      let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
+      renderer
+         .render(&scene, &camera, Rgb::new(0.0, 0.0, 0.0))
+         .unwrap();
+      assert!(
+         renderer
+            .pixels()
+            .iter()
+            .all(|&p| p == ColorRgba8::from_rgb(0, 0, 0))
+      );
+   }
+
+   #[test]
+   fn orthographic_texture_interpolation_is_linear_on_a_sloped_triangle() {
+      // The triangle spans z from 2 to 6, so perspective-correct and plain barycentric interpolation disagree at the centre pixel.
+      // 该三角形跨越 z=2 到 z=6，因此在中心像素处透视正确插值与普通重心插值结果不同。
+      let mut scene = Scene::new();
+      scene.light.direction = Vec3::new(0.0, 0.0, -1.0);
+      let mesh = scene.meshes.insert(
+         Mesh::new(
+            vec![
+               Vec3::new(-1.0, -1.0, 2.0),
+               Vec3::new(0.0, 1.0, 6.0),
+               Vec3::new(1.0, -1.0, 2.0),
+            ],
+            vec![
+               Vec2::new(0.0, 0.0),
+               Vec2::new(0.0, 1.0),
+               Vec2::new(1.0, 0.0),
+            ],
+         )
+         .expect("mesh is valid"),
+      );
+      let texture = scene.textures.insert(
+         Texture::new(
+            2,
+            1,
+            vec![
+               ColorRgba8::from_rgb(0, 0, 0),
+               ColorRgba8::from_rgb(255, 255, 255),
+            ],
+         )
+         .expect("texture is valid"),
+      );
+      scene.spawn(RenderObject {
+         mesh,
+         texture: Some(texture),
+         transform: Transform::default(),
+         material: Material::new(Rgb::WHITE),
+         visible: true,
+      });
+      let camera = Camera::orthographic(Vec3::ZERO, Quat::IDENTITY, 2.0);
+      let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
+      renderer
+         .render(&scene, &camera, Rgb::new(0.0, 0.0, 0.0))
+         .unwrap();
+      // The centre pixel's affine u is 0.25, which samples the black half of the texture.
+      // 中心像素的仿射 u 为 0.25，采样到纹理的黑色半边。
+      assert_eq!(pixel(&renderer, 32, 32), ColorRgba8::from_rgb(0, 0, 0));
+   }
+
+   #[test]
+   fn orthographic_depth_still_orders_by_view_depth() {
+      // Two triangles at different depths, orthographically projected, with the nearer one winning the depth test.
+      // 两个不同深度的三角形经正交投影后，较近的那个赢得深度测试。
+      let mut scene = Scene::new();
+      scene.light.direction = Vec3::new(0.0, 0.0, -1.0);
+      let mesh = scene
+         .meshes
+         .insert(Mesh::triangle(2.0, 2.0).expect("triangle mesh is valid"));
+      let far = Rgb::new(0.2, 0.6, 0.9);
+      let near = Rgb::new(0.9, 0.2, 0.3);
+      let far_tex = scene.textures.insert(Texture::solid(far.to_rgba8()));
+      let near_tex = scene.textures.insert(Texture::solid(near.to_rgba8()));
+      scene.spawn(RenderObject {
+         mesh,
+         texture: Some(far_tex),
+         transform: Transform::from_position(Vec3::new(0.0, 0.0, 8.0)),
+         material: Material::new(Rgb::WHITE),
+         visible: true,
+      });
+      scene.spawn(RenderObject {
+         mesh,
+         texture: Some(near_tex),
+         transform: Transform::from_position(Vec3::new(0.0, 0.0, 3.0)),
+         material: Material::new(Rgb::WHITE),
+         visible: true,
+      });
+      let camera = Camera::orthographic(Vec3::ZERO, Quat::IDENTITY, 4.0);
+      let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
+      renderer
+         .render(&scene, &camera, Rgb::new(0.0, 0.0, 0.0))
+         .unwrap();
       let center = pixel(&renderer, 32, 32);
       assert_eq!(center, ColorRgba8::from_rgb(255, 58, 87));
    }
@@ -1201,7 +1375,7 @@ mod tests {
          material: Material::new(Rgb::WHITE),
          visible: true,
       });
-      let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+      let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
       let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
       renderer
          .render(&scene, &camera, Rgb::new(0.05, 0.05, 0.05))
@@ -1245,7 +1419,7 @@ mod tests {
          material: Material::new(Rgb::WHITE),
          visible: true,
       });
-      let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+      let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
       let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
       renderer
          .render(&scene, &camera, Rgb::new(0.0, 0.0, 0.0))
@@ -1267,7 +1441,7 @@ mod tests {
          material: Material::new(Rgb::new(1.0, 0.35, 0.15)),
          visible: false,
       });
-      let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+      let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
       let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
       renderer
          .render(&scene, &camera, Rgb::new(0.08, 0.10, 0.14))
@@ -1311,7 +1485,7 @@ mod tests {
          material: Material::new(Rgb::WHITE),
          visible: true,
       });
-      let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+      let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
       let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
       renderer
          .render(&scene, &camera, Rgb::new(0.05, 0.05, 0.05))
@@ -1339,7 +1513,7 @@ mod tests {
          material: Material::new(Rgb::new(0.5, 1.0, 1.0)),
          visible: true,
       });
-      let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+      let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
       let mut renderer = Renderer::new(RendererConfig::new(64, 64)).unwrap();
       renderer
          .render(&scene, &camera, Rgb::new(0.05, 0.05, 0.05))
@@ -1404,12 +1578,26 @@ mod tests {
       );
 
       bad = camera;
-      bad.fov_y_degrees = 0.0;
+      bad.projection = Projection::Perspective { fov_y_degrees: 0.0 };
       assert_eq!(
          renderer.render(&scene, &bad, clear),
          Err(Error::InvalidSize)
       );
-      bad.fov_y_degrees = f32::NAN;
+      bad.projection = Projection::Perspective {
+         fov_y_degrees: f32::NAN,
+      };
+      assert_eq!(
+         renderer.render(&scene, &bad, clear),
+         Err(Error::InvalidSize)
+      );
+      bad.projection = Projection::Orthographic { height: 0.0 };
+      assert_eq!(
+         renderer.render(&scene, &bad, clear),
+         Err(Error::InvalidSize)
+      );
+      bad.projection = Projection::Orthographic {
+         height: f32::NEG_INFINITY,
+      };
       assert_eq!(
          renderer.render(&scene, &bad, clear),
          Err(Error::InvalidSize)
@@ -1419,11 +1607,11 @@ mod tests {
    #[test]
    fn adversarial_inputs_never_panic() {
       let cameras = [
-         Camera::new(Vec3::new(f32::NAN, 0.0, 0.0), Quat::IDENTITY, 70.0),
-         Camera::new(Vec3::ZERO, Quat::IDENTITY, f32::NAN),
-         Camera::new(Vec3::ZERO, Quat::IDENTITY, 0.0),
-         Camera::new(Vec3::ZERO, Quat::IDENTITY, 360.0),
-         Camera::new(Vec3::new(1e30, 1e30, -1e30), Quat::IDENTITY, 70.0),
+         Camera::perspective(Vec3::new(f32::NAN, 0.0, 0.0), Quat::IDENTITY, 70.0),
+         Camera::perspective(Vec3::ZERO, Quat::IDENTITY, f32::NAN),
+         Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 0.0),
+         Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 360.0),
+         Camera::perspective(Vec3::new(1e30, 1e30, -1e30), Quat::IDENTITY, 70.0),
       ];
       let mut renderer = Renderer::new(RendererConfig::new(32, 32)).unwrap();
 
@@ -1511,7 +1699,7 @@ mod tests {
             material: Material::new(color),
             visible: next_u64(&mut state) & 1 == 1,
          });
-         let camera = Camera::new(
+         let camera = Camera::perspective(
             Vec3::new(
                next_f32(&mut state) * 40.0 - 20.0,
                next_f32(&mut state) * 40.0 - 20.0,
@@ -1547,7 +1735,7 @@ mod tests {
             material: Material::default(),
             visible: true,
          });
-         let camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 70.0);
+         let camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 70.0);
          let _ = renderer.render(&scene, &camera, Rgb::new(0.0, 0.0, 0.0));
       }
    }

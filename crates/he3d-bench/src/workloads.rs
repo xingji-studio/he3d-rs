@@ -232,7 +232,7 @@ pub fn sleeping_count(world: &World) -> usize {
 /// The camera every render scene is viewed through: at the origin, looking +Z.
 #[must_use]
 pub fn default_camera() -> Camera {
-   Camera::new(Vec3::ZERO, Quat::IDENTITY, 60.0)
+   Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 60.0)
 }
 
 /// A triangle-soup mesh of exactly `2 * ceil(tris/2)` triangles in the XY plane.
@@ -324,6 +324,20 @@ pub fn screen_fill_quad(width: u32, height: u32) -> Mesh {
       Vec3::new(half_w, half_h, distance),
    ])
    .expect("screen-fill quad is well formed")
+}
+
+/// The orthographic counterpart of [`default_camera`].
+///
+/// Its view height matches the perspective camera's at the fill quad's distance of 3 units, so [`screen_fill_quad`] fills the viewport under either projection.
+/// [`default_camera`] 的正交对应物。
+/// 其视高度与透视相机在填充四边形 3 单位距离处的视高度一致，因此 [`screen_fill_quad`] 在两种投影下都填满视口。
+#[must_use]
+pub fn ortho_camera() -> Camera {
+   Camera::orthographic(
+      Vec3::ZERO,
+      Quat::IDENTITY,
+      6.0 * tan(conv::deg_to_rad(60.0) * 0.5),
+   )
 }
 
 /// A scene with one screen-filling quad.

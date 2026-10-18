@@ -90,7 +90,7 @@ fn main() {
       material: Material::new(Rgb::WHITE),
       visible: true,
    });
-   let camera = Camera::new(Vec3::new(0.0, 1.4, -5.0), Quat::IDENTITY, 50.0);
+   let camera = Camera::perspective(Vec3::new(0.0, 1.4, -5.0), Quat::IDENTITY, 50.0);
 
    let mut world = World::new();
    // The floor is a static box: the mesh it draws is exactly this cuboid, so the collider and the picture agree by construction.

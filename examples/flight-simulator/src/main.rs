@@ -112,7 +112,7 @@ fn main() {
          .with_gravity_scale(0.0),
    );
 
-   let mut camera = Camera::new(Vec3::new(0.0, 12.0, 5.0), Quat::IDENTITY, 90.0);
+   let mut camera = Camera::perspective(Vec3::new(0.0, 12.0, 5.0), Quat::IDENTITY, 90.0);
    let mut chase = FlightCamera::default();
    let mut controls = FlightControls::default();
    let mut keys = [false; 256];

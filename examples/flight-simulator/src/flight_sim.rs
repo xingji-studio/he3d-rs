@@ -796,7 +796,7 @@ mod tests {
 
    #[test]
    fn camera_follows_plane_behind() {
-      let mut camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 90.0);
+      let mut camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 90.0);
       let mut chase = FlightCamera::default();
       let forward = Vec3::Z;
       for _ in 0..60 {
@@ -810,7 +810,7 @@ mod tests {
 
    #[test]
    fn camera_has_no_roll_when_flying_straight() {
-      let mut camera = Camera::new(Vec3::ZERO, Quat::IDENTITY, 90.0);
+      let mut camera = Camera::perspective(Vec3::ZERO, Quat::IDENTITY, 90.0);
       let mut chase = FlightCamera::default();
       update_camera(&mut camera, &mut chase, Vec3::ZERO, Vec3::Z, 1.0 / 60.0);
       // The fixed downward pitch must never roll the view: the up vector keeps zero X component and the camera right axis stays horizontal.

@@ -76,7 +76,7 @@ fn main() {
       material: Material::new(Rgb::new(1.0, 1.0, 1.0)),
       visible: true,
    });
-   let camera = Camera::new(Vec3::new(0.0, 1.2, -4.0), Quat::IDENTITY, 60.0);
+   let camera = Camera::perspective(Vec3::new(0.0, 1.2, -4.0), Quat::IDENTITY, 60.0);
 
    let mut angle = 0.0f32;
    let mut last_time = backend.time_seconds();

@@ -4,6 +4,25 @@ All notable changes to the HE3D workspace crates are documented here.
 
 ## [Unreleased]
 
+### Breaking
+- `he3d-core`: `Camera` now carries a `Projection` instead of a bare `fov_y_degrees`,
+  and `Camera::new` is replaced by `Camera::perspective` and `Camera::orthographic`.
+  The projection is an enum so that a perspective field of view cannot exist on an
+  orthographic camera; a call `Camera::new(position, orientation, fov)` becomes
+  `Camera::perspective(position, orientation, fov)`.
+
+### Added
+- `he3d-core` / `he3d-renderer`: an orthographic projection. `Camera::orthographic`
+  takes a world-unit view height — a length, not an angle — and the framebuffer's
+  aspect ratio supplies the width, mirroring how a perspective camera's field of view
+  and aspect supply the whole view box. Rasterizing an orthographic triangle
+  interpolates texture coordinates linearly instead of perspective-correctly, because
+  that projection is affine and `1/z` is not; a test on a triangle spanning a 3× depth
+  range pins the two apart. Depth keeps the reciprocal view depth, and back-face
+  culling uses the constant `+Z` view axis because the eye sits at infinity.
+  `he3d-bench` gains a `render/ortho/tex/{w}x{h}` fill-rate arm beside the perspective
+  one.
+
 ### Changed
 - The four `examples/` demos are `publish = false`, like `he3d-bench`. They exist to be
   run from this repository, and each names an SDL3 backend, so publishing one would make
