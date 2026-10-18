@@ -50,7 +50,7 @@ struct StaticSlot {
 /// 见 `CONTEXT.md` 与 `docs/adr/0001`。
 ///
 /// # Examples
-/// 示例
+/// # 示例
 /// ```
 /// use he3d_math::Vec3;
 /// use he3d_physics::{BodyDesc, Shape, World};

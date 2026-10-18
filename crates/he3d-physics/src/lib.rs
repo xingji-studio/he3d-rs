@@ -17,7 +17,7 @@
 //! 驱动，且没有任何 Contact 能改变它。见 [`MotionType`]。
 //!
 //! # Example
-//! 示例
+//! # 示例
 //! ```
 //! use he3d_math::Vec3;
 //! use he3d_physics::{BodyDesc, ContactPhase, Shape, World};

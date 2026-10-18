@@ -35,7 +35,7 @@ const MAX_IMAGE_DIMENSION: u32 = 8192;
 /// its decoder was compiled out; format-specific parse errors are passed through.
 ///
 /// # Examples
-/// 示例
+/// # 示例
 /// ```
 /// use he3d_assets::decode_image;
 ///

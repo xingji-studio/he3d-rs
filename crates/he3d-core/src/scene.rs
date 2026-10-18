@@ -48,7 +48,7 @@ impl Scene {
    /// 创建一个空场景。
    ///
    /// # Examples
-   /// 示例
+   /// # 示例
    /// ```
    /// use he3d_core::{Material, Mesh, RenderObject, Rgb, Scene, Transform};
    ///

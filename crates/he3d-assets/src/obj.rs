@@ -24,7 +24,7 @@ use he3d_math::{Vec2, Vec3};
 /// the produced mesh is invalid (empty, non-triangle vertex count, or over budget).
 ///
 /// # Examples
-/// 示例
+/// # 示例
 /// ```
 /// use he3d_assets::parse_obj;
 ///

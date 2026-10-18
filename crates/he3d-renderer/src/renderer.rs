@@ -98,7 +98,7 @@ impl Renderer {
    /// 使用 SSAA 时，内部渲染缓冲是输出分辨率的 `scale` 倍，仍受 `MAX_FRAMEBUFFER_PIXELS` 上限约束。
    ///
    /// # Examples
-   /// 示例
+   /// # 示例
    /// ```
    /// use he3d_core::{Camera, Rgb, Scene};
    /// use he3d_renderer::{Renderer, RendererConfig};
