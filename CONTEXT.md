@@ -186,12 +186,16 @@ would remove that. Not approved, so nothing has changed.
 ### Comment style migration
 
 `AGENTS.md` §5 makes a comment sentence occupy one line. The files converted so far
-are the ones the physics fix and the renderer pass touched; the rest of the tree
-converts when a file is next touched, which is what §5 asks for. Two things are
-unresolved:
+are the ones a fix or a pass touched; the rest of the tree converts when a file is
+next touched, which is what §5 asks for. `crates/he3d-renderer/src/renderer.rs` and
+`crates/he3d-core/src/texture.rs` are done: their comments were already one sentence
+per line, and the `# Errors` and `# Panics` sections that put Chinese before English
+have been swapped. Three things remain:
 
-- Five `# Errors` and `# Panics` sections put Chinese before English, which §5's
-  bilingual sentence does not allow (`crates/he3d-core/src/texture.rs`,
-  `crates/he3d-renderer/src/renderer.rs`).
-- `crates/he3d-renderer/src/renderer.rs` has two comment runs that are Chinese-only.
+- `crates/he3d/src/lib.rs`'s crate-level docs, and the sources of `examples/biplane`
+  and `examples/flight-simulator`, are still wrapped. A one-line API rename touched
+  them without giving a reason to rewrite their prose, so they wait for a dedicated
+  pass.
+- `# Examples` is translated as `示例` without the `#` in several files, so the
+  Chinese line renders as body text rather than a heading.
 

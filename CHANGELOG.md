@@ -34,6 +34,9 @@ All notable changes to the HE3D workspace crates are documented here.
   out, the three candidates left unmeasured (scanline rasterization, an interleaved
   colour/depth buffer, hoisting the per-frame constants out of `draw_mesh`), the
   PhysicsTest demo's constant torque, and where the §5 comment migration stands.
+- `he3d-core` / `he3d-renderer`: the `# Errors` and `# Panics` sections whose Chinese
+  line preceded its English translation are swapped, which is the last way those two
+  files disagreed with `AGENTS.md` §5's English-first rule.
 - `he3d-core`: the four primitive constructors' docs now say what they build rather
   than only which plane they lie in. `Mesh::triangle` is an isosceles triangle whose
   base spans `width` at `y = -height / 2` and whose apex sits at `(0, height / 2)`,
