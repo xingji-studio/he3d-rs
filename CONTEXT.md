@@ -180,14 +180,20 @@ Ruled out:
   rounding step, and a test pins the whole frame by hash (`fnv1a_pixels`). So the win
   is real only for the fill-bound arms, and buying it means adopting a different
   coverage rule and re-baselining that hash.
+- **Interleaving colour and depth into one buffer.** The premise was that every
+  fragment writes two cache lines, so one interleaved buffer would halve the traffic.
+  A throwaway fused `Vec<(ColorRgba8, f32)>` written by the fragment loop and cleared
+  in place says otherwise: `render/fill/tex/1280x720` 4.2% slower,
+  `render/scene8/1280x720` 4.4% slower, `render/n_objects/1000` 3.0% slower, and
+  `render/tris/10000` unchanged; only the constant-colour fill arm gained 1.8%. The
+  depth test reads each depth word before writing it, so the depth line is already
+  resident and the write never costs a second line — the two writes do not touch two
+  cold lines. Fusing widens the element to eight bytes and so halves the pixels per
+  cache line, which is why it loses where sampling costs little. Not pursued, and no
+  API decision is needed.
 
-Candidates, in the order worth trying. Not yet measured:
-
-1. **Interleave colour and depth into one buffer.** They are two `Vec`s today, so
-   every fragment writes two cache lines; interleaving would halve that. This is not a
-   local optimization: `Renderer::pixels` is public and returns the colour buffer, so
-   the interleaved layout forces an API decision (a copy, or a strided view) and a
-   minor version bump. Also estimated at 10-20%, unmeasured.
+Renderer performance has no measured candidate left. What remains is speculation, not
+a queue.
 
 ### Comment style migration
 
