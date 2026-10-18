@@ -32,8 +32,8 @@ All notable changes to the HE3D workspace crates are documented here.
   vocabulary, and its charter sentence now says so. It carries the renderer's landed
   optimizations and their measurements, the `floor`-to-truncation attempt that was ruled
   out, the three candidates left unmeasured (scanline rasterization, an interleaved
-  colour/depth buffer, hoisting the per-frame constants out of `draw_mesh`), the
-  PhysicsTest demo's constant torque, and where the §5 comment migration stands.
+  colour/depth buffer, hoisting the per-frame constants out of `draw_mesh`), and
+  where the §5 comment migration stands.
 - `he3d-core` / `he3d-renderer`: the `# Errors` and `# Panics` sections whose Chinese
   line preceded its English translation are swapped, which is the last way those two
   files disagreed with `AGENTS.md` §5's English-first rule.
@@ -48,6 +48,29 @@ All notable changes to the HE3D workspace crates are documented here.
   square of UVs and the sphere using longitude and latitude. The rest of `mesh.rs`'s
   comments are unwrapped to one sentence per line, which `AGENTS.md` §5 asks of a
   file being touched. No code changed.
+- `he3d-renderer`: `rasterize_textured` is split into a `ScreenTriangle` (the
+  triangle's raster-space edge and depth/texture coefficients), a `Shading` (the
+  per-triangle fixed-point light and a 1x1 texture's pre-shaded colour) and a
+  `resolve_msaa_pixel` that owns the four samples of one pixel. The loop that remains is
+  66 lines instead of the 102 that had forced an `#[expect(clippy::too_many_lines)]`,
+  which is gone. Behaviour is unchanged.
+- Every file this cycle has reached now follows `AGENTS.md` §5: the facade crate's docs,
+  both flight-simulator sources, the biplane example, `he3d-core`'s and `he3d-physics`'s
+  crate docs, `he3d-assets`'s `obj.rs` and `image/mod.rs`, and the two-sentence Chinese
+  line the orthographic commit left behind in `he3d-core`'s `camera.rs`. Wrapped
+  sentences are joined, sentences sharing a line are split, and a paragraph's Chinese
+  sentences now follow its English ones. The English text and the Chinese text are each
+  preserved character for character.
+
+### Fixed
+- `# Examples` is translated as `# 示例` in the six files that carry the heading; the `#`
+  had gone missing, so the Chinese line rendered as body text under an English-only
+  heading.
+- `examples/physics-test`: a held arrow no longer flings the cube off the platform. The
+  control applied its 6 N·m torque on every step and relied on 0.05 angular damping to
+  bound the spin, whose balance sits in the hundreds of radians per second; it now drives
+  the roll toward a 6 rad/s target and stops adding torque once there. A test spins a free
+  cube for 20 s, holds the roll near the target, and fails at 455 rad/s without the guard.
 
 ## [0.4.0] - 2026-10-17
 

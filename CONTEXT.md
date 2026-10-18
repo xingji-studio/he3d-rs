@@ -176,26 +176,18 @@ Candidates, in the order worth trying. None of the three has been measured:
    `light_dir` depend only on the camera and the light, and are recomputed for every
    RenderObject in a frame.
 
-### PhysicsTest demo controls
-
-The demo applies a constant 6 N·m torque about z and a 14 N push. The torque is what
-launches the cube off the platform once it rolls, because it never stops adding
-angular velocity. A bounded torque, or a roll driven toward a target angular velocity,
-would remove that. Not approved, so nothing has changed.
-
 ### Comment style migration
 
 `AGENTS.md` §5 makes a comment sentence occupy one line. The files converted so far
 are the ones a fix or a pass touched; the rest of the tree converts when a file is
-next touched, which is what §5 asks for. `crates/he3d-renderer/src/renderer.rs` and
-`crates/he3d-core/src/texture.rs` are done: their comments were already one sentence
-per line, and the `# Errors` and `# Panics` sections that put Chinese before English
-have been swapped. Three things remain:
+next touched, which is what §5 asks for. Everything this cycle reached is clean: the
+facade crate's docs, the flight-simulator and biplane sources, and the crates the
+orthographic change or the one-line `# 示例` heading fix touched.
 
-- `crates/he3d/src/lib.rs`'s crate-level docs, and the sources of `examples/biplane`
-  and `examples/flight-simulator`, are still wrapped. A one-line API rename touched
-  them without giving a reason to rewrite their prose, so they wait for a dedicated
-  pass.
-- `# Examples` is translated as `示例` without the `#` in several files, so the
-  Chinese line renders as body text rather than a heading.
+What is left is what nothing has opened since the rule landed — most of
+`crates/he3d-physics` (`body.rs`, `broadphase.rs`, `shape.rs`, `static_geometry.rs`,
+`storage.rs`), the `he3d-platform` crate and its two backends,
+`crates/he3d-assets/src/gltf.rs`, `crates/he3d-renderer/src/config.rs`, and
+`crates/he3d-math`. The `// ---- label` banners in test code are dividers rather than
+sentences, so they stay as they are.
 
