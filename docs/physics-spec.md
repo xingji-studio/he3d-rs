@@ -6,11 +6,11 @@ The feature set for `he3d-physics`. Sections 1–9 and 11–12 describe what the
 `he3d-physics` 的功能规格。第 1–9 节与第 11–12 节描述该 crate **当前的行为**；仍属计划的
 部分在各处单独标出。
 
-Status: **implemented, with gaps recorded in §4, §5, §10 and §14**. Vocabulary is
+Status: **implemented, with gaps recorded in §4, §5 and §14**. Vocabulary is
 fixed in [`CONTEXT.md`](../CONTEXT.md); the decisions that are hard to reverse have
 their own [ADRs](./adr/).
 
-状态：**已实现，缺口记录在 §4、§5、§10 与 §14**。术语固定在 [`CONTEXT.md`](../CONTEXT.md)；
+状态：**已实现，缺口记录在 §4、§5 与 §14**。术语固定在 [`CONTEXT.md`](../CONTEXT.md)；
 难以反悔的决定各有自己的 [ADR](./adr/)。
 
 ### What is not built yet
@@ -19,7 +19,6 @@ their own [ADRs](./adr/).
 |---|---|
 | §4 Shapes | Only `Box` and `Sphere`. Capsule, cylinder, cone and convex hull are unimplemented. |
 | §5 Narrowphase | Only the analytic layer: box-box, sphere-box, sphere-sphere, and box/sphere against triangles. GJK and EPA do not exist, so the general-convex path does not either. |
-| §10 Queries | No raycast at all. |
 | §7 Internal edges | Filtered for box-versus-triangle only. A Sphere needs no filter — its normal is always the triangle's plane normal — and measurement confirms a seam between two separate meshes costs a rolling sphere exactly nothing (100.00% of its speed kept, no vertical dip). |
 
 ### 尚未构建的部分
@@ -28,7 +27,6 @@ their own [ADRs](./adr/).
 |---|---|
 | §4 形状 | 只有 `Box` 与 `Sphere`。胶囊、圆柱、圆锥与凸包尚未实现。 |
 | §5 窄相位 | 只有解析层：盒-盒、球-盒、球-球，以及盒/球对三角形。GJK 与 EPA 不存在，因此通用凸体路径也不存在。 |
-| §10 查询 | 完全没有射线检测。 |
 | §7 内部边 | 仅对盒-三角形过滤。球不需要过滤——其法线始终是三角形平面法线——实测确认两块独立网格之间的接缝对滚动的球毫无影响（速度保留 100.00%，无竖直下沉）。 |
 
 ---
@@ -171,11 +169,16 @@ separate list checked against everything; they are expected to be few.
 预期数量很少。
 
 **Static geometry is not inserted into the grid.** It is a single global concept
-(§7) reached through its own triangle BVH, so a whole terrain never lands in every
-cell.
+(§7), reached by a linear per-triangle scan behind each triangle's own bounds — the
+narrow phase and the raycast (§10) both walk it that way. So a whole terrain never
+lands in every cell, and no separate acceleration structure has to be kept in step
+with the streaming that adds and removes tiles. A triangle BVH is deferred; §10 has
+the measurement.
 
-**静态几何不进入网格。** 它是单一全局概念（§7），通过自己的三角形 BVH 访问，因此
-整块地形永远不会落进每一个格子。
+**静态几何不进入网格。** 它是单一全局概念（§7），通过逐三角形、各自先过自身包围盒的
+线性扫描访问——窄相位与射线检测（§10）都这样遍历它。于是整块地形永远不会落进每一个
+格子，也不需要任何独立的加速结构去与增删瓦片的流式过程保持同步。三角形 BVH 已推迟；
+§10 给出了测量。
 
 ## 7. Static geometry and internal edges
 
@@ -267,21 +270,40 @@ rotation, and exists only because the engine could not answer the question.
 
 ## 10. Queries
 
-A **raycast** against both Body shapes and static geometry, returning the hit
-identity (a `BodyId`, or a reference to static geometry), the contact point, the
-normal, and the distance.
+`World::cast_ray` casts a ray against both Body shapes and static geometry and returns
+the nearest hit: its identity (a `BodyId` or a `StaticMeshId`), the contact point, the
+surface normal, and the distance. The ray's direction is normalized, so the distance is
+a world length.
 
-**射线检测**同时支持 Body 形状与静态几何，返回命中身份（`BodyId`，或对静态几何的
-引用）、命中点、法线与距离。
+`World::cast_ray` 对 Body 形状与静态几何投射一条射线，返回最近的命中：其身份（`BodyId`
+或 `StaticMeshId`）、命中点、表面法线与距离。射线方向会被归一化，因此距离是世界长度。
 
-Hit filtering ("only hit enemies") is **not** in this plan; it depends on collision
-filtering, which is also out. Ray-versus-convex-hull needs its own path (the slab
-method for polytopes, or a GJK-based cast) and ray-versus-static-geometry needs ray
-queries on the BVH — both are in scope here rather than deferred.
+A Body is tested against its shape directly — a slab test for a Box, the quadratic for a
+Sphere; a ray over the two thousand-Body §12 scene costs about 20 µs. Static geometry is
+scanned linearly, each mesh and then each triangle rejected by its own `Aabb` before the
+Möller–Trumbore triangle test, which is exactly how the narrow phase reaches it (§7).
+There is **no triangle BVH yet**: a ray over ten thousand triangles costs about 23 µs,
+and the flight simulator's nine streamed tiles hold only 648 (about 1.6 µs), so a BVH
+would not earn the rebuilding it would need every time a tile streams in and out. Revisit
+when rays-per-frame times triangles makes those microseconds matter. Measured by
+`benches/query.rs`.
 
-命中过滤（"只打敌人"）**不在**本次计划内；它依赖碰撞过滤，而碰撞过滤同样不做。
-ray-vs-凸包需要自己的路径（多面体的 slab 法，或基于 GJK 的投射），ray-vs-静态几何
-需要在 BVH 上做射线查询——这两项都在范围内，不推迟。
+Body 直接按其形状测试——Box 用 slab 法，Sphere 用二次方程；一条射线扫过 §12 的两千个 Body
+约 20 µs。静态几何则线性扫描，先以每个 mesh、再以每个三角形自身的 `Aabb` 排除，最后做
+Möller–Trumbore 三角形测试，这正是窄相位访问它的方式（§7）。目前**没有三角形 BVH**：一条
+射线扫过一万个三角形约 23 µs，而飞行模拟器九块流式瓦片只有 648 个三角形（约 1.6 µs），
+因此 BVH 挣不回它每次瓦片流入流出都需要的重建。当"每帧射线数 × 三角形数"让这些微秒变得
+要紧时再重启。由 `benches/query.rs` 测得。
+
+A Body's normal is its outward surface normal; a static triangle's is its winding's
+geometric normal, `(b - a) × (c - a)`. Hit filtering ("only hit enemies") stays out of
+scope: it depends on collision filtering, which is also out (§13). A ray against a convex
+hull also waits — the hull is itself a §5 gap, so the slab method for polytopes has
+nothing to test yet.
+
+Body 的法线是其朝外的表面法线；静态三角形的是其绕序的几何法线 `(b - a) × (c - a)`。命中
+过滤（"只打敌人"）仍在范围外：它依赖碰撞过滤，而碰撞过滤同样不做（§13）。对凸包的射线也
+一并等待——凸包本身是 §5 的缺口，多面体的 slab 法暂时没有可测的对象。
 
 ## 11. Time
 

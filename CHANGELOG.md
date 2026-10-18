@@ -13,6 +13,16 @@ All notable changes to the HE3D workspace crates are documented here.
   CPU additively rather than for worse. `workloads.rs` gains `sim_render_scene`, which
   pairs each Body with the object that draws it and exposes the per-frame `sync`. §12's
   frame-budget paragraph and §14 risk 4 now carry the measured numbers.
+- `he3d-physics`: a raycast. `World::cast_ray(ray, max_distance)` returns the nearest
+  hit within that distance as a `RayHit { target, point, normal, distance }`, where
+  `target` names a `BodyId` or a `StaticMeshId`. A Body is tested against its `Shape` —
+  a slab test for a Box, the quadratic for a Sphere — and static geometry is scanned
+  linearly, each mesh and triangle behind its own `Aabb`, matching how the narrow phase
+  reaches it. Hit filtering stays out of scope. The static path has no BVH: a ray
+  over ten thousand triangles costs about 23 µs against the flight simulator's 648
+  (about 1.6 µs), so the tree is deferred and §10 records the measurement; a ray
+  over two thousand Bodies costs about 20 µs. `Ray`, `RayHit` and `RayTarget` are
+  new public types.
 
 ### Changed
 - `he3d-renderer`: `draw_mesh` no longer recomputes the camera's inverse rotation, the

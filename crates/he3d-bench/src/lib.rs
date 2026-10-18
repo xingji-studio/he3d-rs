@@ -5,7 +5,7 @@
 //!
 //! * [`workloads`] — builders for the physics scenes, render scenes, and asset bytes the benchmarks run against, shared by the criterion benches and the `memreport` binary.
 //! * [`alloc`] — a counting global allocator that reports how many allocations a scenario makes and how much is live at its peak.
-//! * five criterion targets under `benches/` — `physics`, `renderer`, `frame`, `assets`, and `core_math`.
+//! * six criterion targets under `benches/` — `physics`, `renderer`, `frame`, `assets`, `core_math`, and `query`.
 //!
 //! # Running
 //!

@@ -79,6 +79,7 @@ mod body;
 mod broadphase;
 mod contact;
 mod narrowphase;
+mod query;
 mod shape;
 mod solver;
 mod static_geometry;
@@ -88,6 +89,7 @@ mod world;
 pub use aabb::Aabb;
 pub use body::{BodyDesc, BodyId, DEFAULT_FRICTION, MotionType};
 pub use contact::{Contact, ContactPartner, ContactPhase};
+pub use query::{Ray, RayHit, RayTarget};
 pub use shape::{MassProperties, Shape};
 pub use static_geometry::StaticMeshId;
 pub use world::{

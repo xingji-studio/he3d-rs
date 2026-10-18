@@ -9,7 +9,7 @@ rather than asserted.
 ## Running
 
 ```sh
-# Full criterion run: physics, renderer, assets, core/math.
+# Full criterion run: physics, renderer, frame, assets, core/math, query.
 cargo bench -p he3d-bench
 
 # Smoke run: every case exactly once. This is what CI runs.
@@ -37,6 +37,7 @@ cargo bench -p he3d-bench --bench physics
 | `benches/frame.rs` | One frame of two thousand Bodies stepped and drawn together, plus the draw alone and the pose copy alone: `docs/physics-spec.md` §14 risk 4 |
 | `benches/assets.rs` | `parse_obj` and `decode_image` on the shipped `biplane` fixtures, plus a scaling synthetic OBJ |
 | `benches/core_math.rs` | The `glam`/`Transform` operations the engine leans on |
+| `benches/query.rs` | `World::cast_ray`: a downward ray over a static triangle grid, and a swept ray through a lattice of Bodies |
 
 `src/bin/memreport.rs` installs `alloc::CountingAlloc` and prints, per scenario,
 the allocations made, bytes requested, and peak added, plus a `size_of` table.
@@ -110,6 +111,10 @@ above; the scenes are defined in `src/workloads.rs`.
   the two normal constraints as one 2×2 block removes it, for about 3% on the packed
   lattice. It does not move the tall-stack boundary: that limit is the load between
   layers, not coupling inside one contact.
+- **A raycast is linear in what it must look at.** `benches/query.rs`: a ray over the
+  two thousand-Body scene costs about 20 µs, and one over a static triangle grid about
+  23 µs at ten thousand triangles and 1.6 µs at the flight simulator's 648. There is no
+  triangle BVH; `docs/physics-spec.md` §10 records the reasoning.
 - **A renderer frame is pixels, and the hard floor is the clear.** An empty 720p
   frame — clearing colour + inverse depth, ~7.4 MB — costs 82.5 µs, which is
   0.089 ns per pixel at 64x36, 320x180, and 1280x720 alike. Drawing the 8-cube scene

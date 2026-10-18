@@ -40,5 +40,9 @@ harness = false
 name = "core_math"
 harness = false
 
+[[bench]]
+name = "query"
+harness = false
+
 [lints]
 workspace = true

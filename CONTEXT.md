@@ -83,6 +83,12 @@ that an edge lying between two separate meshes is still recognized as an
 Internal edge.
 _Avoid_: level geometry, world mesh, terrain
 
+**Raycast**:
+A query that shoots a half-line through the World and reports the nearest thing
+it meets: what it hit (a Body or a Static mesh), the point, the normal, and the
+distance. It is a read-only query, not a Body and not a Contact.
+_Avoid_: ray, trace, hitscan, pick
+
 ### Rendering
 
 **RenderObject**:
@@ -194,6 +200,16 @@ Ruled out:
 
 Renderer performance has no measured candidate left. What remains is speculation, not
 a queue.
+
+### Physics queries
+
+The raycast (§10) is built. Its static-geometry path is a linear per-triangle
+scan behind each triangle's `Aabb`, the same shape the narrow phase uses; there
+is no triangle BVH. That is a deferral, not an oversight: a ray over ten thousand
+triangles costs about 23 µs and the flight simulator's streamed terrain is 648
+triangles (about 1.6 µs), so a BVH would not earn the rebuilding it would need on
+every tile that streams in and out. Revisit when rays-per-frame times triangles
+makes those microseconds matter.
 
 ### Comment style migration
 

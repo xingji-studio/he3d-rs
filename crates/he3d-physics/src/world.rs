@@ -10,6 +10,7 @@ use crate::contact::{
    tangent_basis,
 };
 use crate::narrowphase;
+use crate::query::{self, Ray, RayHit};
 use crate::shape::{MassProperties, Shape};
 use crate::solver::{self, SolverSettings};
 use crate::static_geometry::{StaticMesh, StaticMeshId, StaticTopology};
@@ -34,9 +35,9 @@ pub const DEFAULT_GRAVITY: Vec3 = Vec3::new(0.0, -9.81, 0.0);
 /// One slot in the World's Static geometry storage.
 /// World 静态几何存储中的一个槽位。
 #[derive(Clone, Debug)]
-struct StaticSlot {
-   generation: u32,
-   mesh: Option<StaticMesh>,
+pub(crate) struct StaticSlot {
+   pub(crate) generation: u32,
+   pub(crate) mesh: Option<StaticMesh>,
 }
 
 /// Owns a set of Bodies and advances them through time.
@@ -333,6 +334,34 @@ impl World {
    #[must_use]
    pub fn contacts(&self) -> &[Contact] {
       &self.contacts
+   }
+
+   /// The nearest thing a ray meets within `max_distance`, or nothing at all.
+   /// 射线在 `max_distance` 内遇到的最近对象，若没有则为空。
+   ///
+   /// The ray's direction is normalized first, so a hit's distance is a world length.
+   /// A ray tests every Body's shape and every Static triangle and returns the closest hit, whatever kind it is; hit filtering is out of scope, per `docs/physics-spec.md` §10.
+   /// Static triangles are scanned linearly against their own bounds, matching how the narrow phase reaches them; a triangle BVH is deferred because the measured cost at the current scale does not earn one.
+   /// 射线的方向会先归一化，因此命中的距离是世界长度。
+   /// 射线测试每个 Body 的形状与每个 Static 三角形，返回最近的命中，无论它是哪一种；命中过滤不在范围内，见 `docs/physics-spec.md` §10。
+   /// Static 三角形对其自身包围盒做线性扫描，与窄相位访问它们的方式一致；三角形 BVH 被推迟，因为在当前规模下实测成本不足以挣得它。
+   ///
+   /// # Examples
+   /// 示例
+   /// ```
+   /// use he3d_math::Vec3;
+   /// use he3d_physics::{BodyDesc, Ray, RayTarget, Shape, World};
+   ///
+   /// let mut world = World::new();
+   /// let ball = world.add_body(BodyDesc::dynamic(Shape::sphere(1.0), 1.0).at(Vec3::new(0.0, 0.0, 5.0)));
+   ///
+   /// let hit = world.cast_ray(Ray::new(Vec3::ZERO, Vec3::Z), 100.0).expect("the ray meets the ball");
+   /// assert_eq!(hit.target, RayTarget::Body(ball));
+   /// assert!((hit.distance - 4.0).abs() < 1e-4);
+   /// ```
+   #[must_use]
+   pub fn cast_ray(&self, ray: Ray, max_distance: f32) -> Option<RayHit> {
+      query::cast_ray(&self.slots, &self.static_meshes, ray, max_distance)
    }
 
    /// The number of live Bodies.
