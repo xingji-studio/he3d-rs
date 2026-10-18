@@ -2,7 +2,7 @@
 
 All notable changes to the HE3D workspace crates are documented here.
 
-## [Unreleased]
+## [0.5.0] - 2026-10-18
 
 ### Breaking
 - `he3d-core`: `Camera` now carries a `Projection` instead of a bare `fov_y_degrees`,
