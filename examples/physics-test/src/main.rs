@@ -20,14 +20,21 @@ const FLOOR_HALF: Vec3 = Vec3::new(3.5, 0.1, 3.5);
 const CUBE_RESET_POS: Vec3 = Vec3::new(0.0, 3.0, 4.0);
 const CUBE_HALF: f32 = 0.5;
 
-/// Torque the arrow keys apply, about the horizontal Z axis.
-/// 方向键施加的力矩，绕水平的 Z 轴。
+/// Torque the arrow keys apply about the horizontal Z axis, while the roll is short of its target rate.
+/// 方向键施加的力矩，绕水平的 Z 轴；仅在翻滚速率低于目标时施加。
 ///
 /// A cube resting on the floor resists a roll until the torque exceeds `m·g·half_side`, here `1 × 9.81 × 0.5 ≈ 4.9`; below that it cannot turn at all, which is why the old 4.0 did nothing on its own.
 /// 静置在地板上的方块要克服 `m·g·半边长`（此处 `1 × 9.81 × 0.5 ≈ 4.9`）才会翻滚；低于它根本转不动——这正是原先 4.0 单独施加时毫无反应的原因。
 /// 6.0 leaves margin and starts the roll within a fraction of a second.
 /// 6.0 留有余量，零点几秒内就开始翻滚。
 const ARROW_TORQUE: f32 = 6.0;
+
+/// Roll rate the arrow keys drive the cube toward, in radians per second.
+/// 方向键驱动方块达到的翻滚角速度，单位弧度/秒。
+///
+/// Damping alone would not hold the roll: against `ARROW_TORQUE` and the cube's 0.05 angular damping the balance sits in the hundreds of radians per second, which is what flung the cube off the platform.
+/// 单靠阻尼按不住翻滚：在 `ARROW_TORQUE` 与方块 0.05 的角阻尼下，平衡点高达数百弧度/秒，这正是把方块甩出平台的原因。
+const ARROW_TARGET_SPIN: f32 = 6.0;
 
 /// The left and right arrows arrive as SDL keycodes, passed through unchanged.
 /// They do not fit the 256-entry ASCII-only `keys` array below, so they are tracked separately.
@@ -96,8 +103,8 @@ fn main() {
    // The floor is a static box: the mesh it draws is exactly this cuboid, so the collider and the picture agree by construction.
    // 地面是静态盒：它绘制的网格正是这个长方体，因此碰撞体与画面在构造上一致。
    let floor_body = world.add_body(BodyDesc::stationary(Shape::cuboid(FLOOR_HALF)).at(FLOOR_POS));
-   // Friction low enough to slide when pushed, restitution high enough that a drop visibly bounces, and light damping so a held key does not accelerate forever.
-   // 摩擦低到能被推得滑动，弹性高到落地有可见回弹，阻尼轻到按住方向键不会无限加速。
+   // Friction low enough to slide when pushed, restitution high enough that a drop visibly bounces, and light damping.
+   // 摩擦低到能被推得滑动，弹性高到落地有可见回弹，阻尼很轻。
    let cube_body = world.add_body(
       BodyDesc::dynamic(Shape::cuboid(Vec3::splat(CUBE_HALF)), 1.0)
          .at(CUBE_RESET_POS)
@@ -262,9 +269,9 @@ fn apply_input(
       world.apply_force(cube, Vec3::new(14.0, 0.0, 0.0));
    }
    if turn < 0 {
-      world.apply_torque(cube, Vec3::new(0.0, 0.0, ARROW_TORQUE));
+      roll_cube(world, cube, ARROW_TORQUE);
    } else if turn > 0 {
-      world.apply_torque(cube, Vec3::new(0.0, 0.0, -ARROW_TORQUE));
+      roll_cube(world, cube, -ARROW_TORQUE);
    }
 
    let jump_down = keys[b' ' as usize];
@@ -272,6 +279,26 @@ fn apply_input(
       world.apply_impulse(cube, Vec3::new(0.0, 5.0, 0.0));
    }
    *jump_was_down = jump_down;
+}
+
+/// Drive the cube's roll about Z toward [`ARROW_TARGET_SPIN`], adding torque only while it is short of that.
+/// 将方块绕 Z 轴的翻滚驱动向 [`ARROW_TARGET_SPIN`]，仅在未达到该速率时施加力矩。
+///
+/// `torque` carries the direction: a resting cube needs more than `m·g·half_side` to break free, but adding that much on every step never lets up, so the spin runs away and the cube leaves the platform.
+/// `torque` 携带方向：静置的方块需要超过 `m·g·半边长` 才能起转，但每一步都施加同样大小就永不收手，自转一路飙升，方块随之离开平台。
+/// Stopping at the target keeps the torque as strong as the first turn needs while the roll settles at a speed the eye can follow.
+/// 到达目标即停，使力矩始终保持起转所需的大小，同时让翻滚稳定在眼睛跟得上的速度。
+fn roll_cube(world: &mut World, cube: BodyId, torque: f32) {
+   let spin = world.angular_velocity(cube).map_or(0.0, |omega| omega.z);
+   let target = ARROW_TARGET_SPIN * torque.signum();
+   let short_of_target = if target >= 0.0 {
+      spin < target
+   } else {
+      spin > target
+   };
+   if short_of_target {
+      world.apply_torque(cube, Vec3::new(0.0, 0.0, torque));
+   }
 }
 
 /// Return the cube to its starting pose, at rest.
@@ -307,4 +334,37 @@ fn parse_frames(mut args: impl Iterator<Item = String>) -> Option<u32> {
       }
    }
    frames
+}
+
+#[cfg(test)]
+mod tests {
+   use super::*;
+
+   /// A held arrow must settle the roll near the target rate instead of accelerating without bound.
+   /// 按住方向键必须让翻滚稳定在目标速率附近，而不是无界加速。
+   #[test]
+   fn a_held_arrow_settles_at_the_target_rate() {
+      let mut world = World::new();
+      world.set_gravity(Vec3::ZERO);
+      let cube = world.add_body(
+         BodyDesc::dynamic(Shape::cuboid(Vec3::splat(CUBE_HALF)), 1.0).with_damping(0.05, 0.05),
+      );
+
+      let step = 1.0_f32 / 120.0;
+      let mut peak = 0.0_f32;
+      for _ in 0..2400 {
+         roll_cube(&mut world, cube, ARROW_TORQUE);
+         world.step(step);
+         let spin = world.angular_velocity(cube).expect("the cube is alive").z;
+         peak = peak.max(spin);
+      }
+
+      // One step of torque is worth about 0.3 rad/s here, so the roll may crest the target by that much before the next step withholds it.
+      // 此处一步力矩约值 0.3 弧度/秒，因此翻滚最多超出目标这一点，下一步便不再施加。
+      assert!(peak <= ARROW_TARGET_SPIN * 1.1, "roll ran away to {peak}");
+      assert!(
+         peak >= ARROW_TARGET_SPIN * 0.8,
+         "roll never built up: {peak}"
+      );
+   }
 }
